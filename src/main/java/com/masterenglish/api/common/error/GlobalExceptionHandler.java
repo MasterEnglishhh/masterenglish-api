@@ -3,6 +3,7 @@ package com.masterenglish.api.common.error;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -46,6 +47,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 exception.getMessage(), request, List.of()));
     }
 
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ResponseEntity<Object> handleOptimisticLock(OptimisticLockingFailureException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem(HttpStatus.CONFLICT,
+                ErrorCode.CONFLICT, "The resource has changed. Reload it and try again.", request, List.of()));
+    }
+
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
@@ -73,6 +81,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             case 401 -> ErrorCode.UNAUTHENTICATED;
             case 403 -> ErrorCode.ACCESS_DENIED;
             case 404 -> ErrorCode.RESOURCE_NOT_FOUND;
+            case 409 -> ErrorCode.CONFLICT;
+            case 413 -> ErrorCode.PAYLOAD_TOO_LARGE;
             case 429 -> ErrorCode.RATE_LIMITED;
             default -> status.is5xxServerError() ? ErrorCode.INTERNAL_ERROR : ErrorCode.VALIDATION_ERROR;
         };

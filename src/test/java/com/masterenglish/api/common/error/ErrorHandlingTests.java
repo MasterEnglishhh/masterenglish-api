@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
@@ -109,9 +110,23 @@ class ErrorHandlingTests {
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
+    @Test
+    void staleVersionReturnsConflictWithoutExposingPersistenceDetails() throws Exception {
+        mvc.perform(get("/base-test/conflict"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.traceId").isString())
+                .andExpect(content().string(not(containsString("internal-row-secret"))));
+    }
+
     @Profile("base-unit-fixture")
     @RestController
     static class ProbeController {
+        @GetMapping("/base-test/conflict")
+        String conflict() {
+            throw new OptimisticLockingFailureException("internal-row-secret");
+        }
+
         @GetMapping("/base-test/forbidden")
         String forbidden() {
             throw new AccessDeniedException("internal policy reason");
