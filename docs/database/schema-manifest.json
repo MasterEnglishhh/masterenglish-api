@@ -1,0 +1,21 @@
+{
+  "tables": 62,
+  "columns": 590,
+  "foreign_keys": 133,
+  "check_constraints": 238,
+  "additional_table_constraints": 293,
+  "explicit_indexes": 62,
+  "modules": {
+    "Identity": 11,
+    "Content": 8,
+    "Media": 4,
+    "Vocabulary": 5,
+    "Learning": 6,
+    "Grammar": 2,
+    "Practice": 10,
+    "Results": 9,
+    "Notifications": 4,
+    "Administration": 2,
+    "Infrastructure": 1
+  }
+}

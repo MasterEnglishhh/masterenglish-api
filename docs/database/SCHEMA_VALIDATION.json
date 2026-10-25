@@ -1,0 +1,286 @@
+{
+  "checked_at": "2026-10-25T14:29:04.946840+00:00",
+  "engine": "PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+  "database": "isolated synthetic approved_review; no project DB access",
+  "schema_sha256": "10f2047d317fb10d8f17eb6d531090a4dc3f73dd9fdd3378d569a04dc5ca949b",
+  "passed": 69,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "schema: 62 tables, 4 reporting views",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: case-insensitive email uniqueness",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: immutable email",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: first name max 30 characters",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: reject plaintext password",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: every user requires a role at commit",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: independent multiple roles accepted",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: protect last active system admin",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: security change revokes sessions and increments version",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: session deadline cannot slide",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: sixth login replaces oldest session",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: OTP cannot cross purpose",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: OTP cannot cross owner",
+      "status": "PASS"
+    },
+    {
+      "name": "identity: locked user cannot reset by OTP",
+      "status": "PASS"
+    },
+    {
+      "name": "content: Published revision is immutable",
+      "status": "PASS"
+    },
+    {
+      "name": "content: Published source snapshot is retained",
+      "status": "PASS"
+    },
+    {
+      "name": "content: pointer cannot refer to another item",
+      "status": "PASS"
+    },
+    {
+      "name": "content: archive stops selection and retains history",
+      "status": "PASS"
+    },
+    {
+      "name": "content: only one open draft branch",
+      "status": "PASS"
+    },
+    {
+      "name": "questions: exactly one correct choice",
+      "status": "PASS"
+    },
+    {
+      "name": "questions: two correct choices rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "questions: semantic context cannot change in place",
+      "status": "PASS"
+    },
+    {
+      "name": "questions: TOEIC Part 2 accepts exactly three options",
+      "status": "PASS"
+    },
+    {
+      "name": "questions: TOEIC Part 2 rejects a fourth option",
+      "status": "PASS"
+    },
+    {
+      "name": "groups: incomplete TOEIC Part 3 group rejected at commit",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: owner authorization",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: choice must belong to own snapshot",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: sealed snapshot is immutable",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: snapshot options retained after projection edit",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: clear answer increments version",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: same start request returns same ID",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: request payload mismatch is rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: sixth open attempt rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: blank submitted answer counts as wrong",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: correct answer scores one",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: answer cannot change after submit",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: result remains immutable",
+      "status": "PASS"
+    },
+    {
+      "name": "attempts: deadline auto-grades before accepting late answer",
+      "status": "PASS"
+    },
+    {
+      "name": "mistakes: blank result creates OPEN record",
+      "status": "PASS"
+    },
+    {
+      "name": "media: reject unverified avatar in profile",
+      "status": "PASS"
+    },
+    {
+      "name": "media: verified metadata requires positive dimensions",
+      "status": "PASS"
+    },
+    {
+      "name": "media: cannot use another user avatar",
+      "status": "PASS"
+    },
+    {
+      "name": "media: confirmed object cannot change bytes",
+      "status": "PASS"
+    },
+    {
+      "name": "media: cannot archive current avatar",
+      "status": "PASS"
+    },
+    {
+      "name": "media: avatar size hard cap 2 MiB",
+      "status": "PASS"
+    },
+    {
+      "name": "storage: ledger keeps reserved then committed bytes",
+      "status": "PASS"
+    },
+    {
+      "name": "storage: allocation cannot be deleted to bypass quota",
+      "status": "PASS"
+    },
+    {
+      "name": "goals: one target, score step five and daily limits",
+      "status": "PASS"
+    },
+    {
+      "name": "study: one active timeline across tabs",
+      "status": "PASS"
+    },
+    {
+      "name": "study: cannot credit more time than elapsed",
+      "status": "PASS"
+    },
+    {
+      "name": "study: context cannot refer to another learner attempt",
+      "status": "PASS"
+    },
+    {
+      "name": "notifications: internal target cannot be external URL",
+      "status": "PASS"
+    },
+    {
+      "name": "notifications: event dedupe is scoped to user and key",
+      "status": "PASS"
+    },
+    {
+      "name": "notifications: one delivery per event and channel",
+      "status": "PASS"
+    },
+    {
+      "name": "notifications: encrypted payload must name external key",
+      "status": "PASS"
+    },
+    {
+      "name": "import: file cap 5 MiB",
+      "status": "PASS"
+    },
+    {
+      "name": "import: row cap 5000 items",
+      "status": "PASS"
+    },
+    {
+      "name": "import: unique row ledger prevents duplicate retry",
+      "status": "PASS"
+    },
+    {
+      "name": "settings: unknown keys cannot become secret store",
+      "status": "PASS"
+    },
+    {
+      "name": "settings: BCrypt cost cannot drop below ten",
+      "status": "PASS"
+    },
+    {
+      "name": "audit: append-only record",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: OTP consumed exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: refresh old token rotates once",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: two tabs cannot overwrite same answer version",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: repeated submit is stable and idempotent",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: quota reservation serializes, one of two 60-byte claims fits 100",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: quota counter equals accepted reservations",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: cannot disable both final system admins",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrency: at least one active system admin remains",
+      "status": "PASS"
+    }
+  ]
+}
