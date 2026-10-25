@@ -2,11 +2,10 @@ package com.masterenglish.api.common.pagination;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-
-import java.util.Set;
 
 public final class PageRequestUtils {
 
@@ -15,21 +14,25 @@ public final class PageRequestUtils {
     public static final int MAX_SIZE = 100;
     public static final String DEFAULT_SORT_BY = "createdAt";
 
-    private PageRequestUtils() {
-    }
+    private PageRequestUtils() {}
 
     public static Pageable of(Integer page, Integer size) {
         return PageRequest.of(validPage(page), validSize(size));
     }
 
     /** Callers must supply an endpoint-specific allowlist of sortable fields. */
-    public static Pageable of(Integer page, Integer size, String sortBy, String sortDirection,
+    public static Pageable of(
+            Integer page,
+            Integer size,
+            String sortBy,
+            String sortDirection,
             Set<String> allowedSortFields) {
         String field = sortBy == null || sortBy.isBlank() ? DEFAULT_SORT_BY : sortBy.trim();
         if (!allowedSortFields.contains(field)) {
             throw invalid("Unsupported sort field.");
         }
-        String direction = sortDirection == null || sortDirection.isBlank() ? "desc" : sortDirection.trim();
+        String direction =
+                sortDirection == null || sortDirection.isBlank() ? "desc" : sortDirection.trim();
         if (!"asc".equalsIgnoreCase(direction) && !"desc".equalsIgnoreCase(direction)) {
             throw invalid("Sort direction must be asc or desc.");
         }

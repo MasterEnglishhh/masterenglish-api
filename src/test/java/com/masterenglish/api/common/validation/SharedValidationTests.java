@@ -1,13 +1,13 @@
 package com.masterenglish.api.common.validation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class SharedValidationTests {
     private static final ValidatorFactory FACTORY = Validation.buildDefaultValidatorFactory();
@@ -49,13 +49,17 @@ class SharedValidationTests {
 
     @Test
     void rejectsOffsetsTyposAndUnnormalizedZoneNames() {
-        for (String value : new String[]{"+07:00", "GMT+07:00", "Unknown/City", " Asia/Ho_Chi_Minh", ""}) {
+        for (String value :
+                new String[] {"+07:00", "GMT+07:00", "Unknown/City", " Asia/Ho_Chi_Minh", ""}) {
             assertThat(VALIDATOR.validate(new Zone(value))).as(value).hasSize(1);
         }
     }
 
-    record Secret(@Utf8ByteLength(max = 72) String value) { }
-    record RequiredSecret(@NotNull @Utf8ByteLength(max = 72) String value) { }
-    record BoundedValue(@Utf8ByteLength(min = 2, max = 4) String value) { }
-    record Zone(@IanaTimeZone String value) { }
+    record Secret(@Utf8ByteLength(max = 72) String value) {}
+
+    record RequiredSecret(@NotNull @Utf8ByteLength(max = 72) String value) {}
+
+    record BoundedValue(@Utf8ByteLength(min = 2, max = 4) String value) {}
+
+    record Zone(@IanaTimeZone String value) {}
 }

@@ -1,12 +1,11 @@
 package com.masterenglish.api.common.pagination;
 
-import com.masterenglish.api.common.error.BusinessException;
-import org.junit.jupiter.api.Test;
-
-import java.util.Set;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.masterenglish.api.common.error.BusinessException;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
 
 class PageRequestUtilsTests {
 

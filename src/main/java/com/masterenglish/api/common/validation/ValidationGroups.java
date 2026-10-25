@@ -6,9 +6,7 @@ public final class ValidationGroups {
         throw new UnsupportedOperationException("Utility class and cannot be instantiated");
     }
 
-    public interface OnCreate {
-    }
+    public interface OnCreate {}
 
-    public interface OnUpdate {
-    }
+    public interface OnUpdate {}
 }

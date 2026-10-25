@@ -1,8 +1,20 @@
 package com.masterenglish.api.common.error;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.masterenglish.api.common.api.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
@@ -19,28 +31,17 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 class ErrorHandlingTests {
 
     private MockMvc mvc;
 
     @BeforeEach
     void setup() {
-        mvc = MockMvcBuilders.standaloneSetup(new ProbeController())
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .addFilters(new RequestIdFilter()).build();
+        mvc =
+                MockMvcBuilders.standaloneSetup(new ProbeController())
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .addFilters(new RequestIdFilter())
+                        .build();
     }
 
     @Test
@@ -57,8 +58,10 @@ class ErrorHandlingTests {
 
     @Test
     void validationDoesNotExposeTheRejectedPassword() throws Exception {
-        mvc.perform(post("/base-test/validate").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"password\":\"short-secret\"}"))
+        mvc.perform(
+                        post("/base-test/validate")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"password\":\"short-secret\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("password"))
                 .andExpect(content().string(not(containsString("short-secret"))));
@@ -66,8 +69,10 @@ class ErrorHandlingTests {
 
     @Test
     void malformedJsonDoesNotEchoRequestContents() throws Exception {
-        mvc.perform(post("/base-test/validate").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"password\":\"never-echo-this\""))
+        mvc.perform(
+                        post("/base-test/validate")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"password\":\"never-echo-this\""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(content().string(not(containsString("never-echo-this"))));
@@ -83,14 +88,19 @@ class ErrorHandlingTests {
 
     @Test
     void replacesInvalidIncomingRequestIds() throws Exception {
-        var response = mvc.perform(get("/base-test/business")
-                        .header(RequestIdFilter.HEADER, "invalid request id !")).andReturn().getResponse();
+        var response =
+                mvc.perform(
+                                get("/base-test/business")
+                                        .header(RequestIdFilter.HEADER, "invalid request id !"))
+                        .andReturn()
+                        .getResponse();
         assertThat(UUID.fromString(response.getHeader(RequestIdFilter.HEADER))).isNotNull();
     }
 
     @Test
     void pageResponseMatchesTheApiContract() throws Exception {
-        mvc.perform(get("/base-test/page")).andExpect(status().isOk())
+        mvc.perform(get("/base-test/page"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0]").value("first"))
                 .andExpect(jsonPath("$.totalItems").value(2))
                 .andExpect(jsonPath("$.hasNext").value(true))
@@ -100,13 +110,15 @@ class ErrorHandlingTests {
 
     @Test
     void authorizationFailuresInsideMvcRemainForbidden() throws Exception {
-        mvc.perform(get("/base-test/forbidden")).andExpect(status().isForbidden())
+        mvc.perform(get("/base-test/forbidden"))
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
     @Test
     void authenticationFailuresInsideMvcRemainUnauthorized() throws Exception {
-        mvc.perform(get("/base-test/unauthenticated")).andExpect(status().isUnauthorized())
+        mvc.perform(get("/base-test/unauthenticated"))
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
@@ -158,5 +170,5 @@ class ErrorHandlingTests {
         }
     }
 
-    record Input(@Size(min = 20) String password) { }
+    record Input(@Size(min = 20) String password) {}
 }

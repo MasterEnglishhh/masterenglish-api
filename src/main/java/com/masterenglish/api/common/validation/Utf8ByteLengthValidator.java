@@ -2,10 +2,10 @@ package com.masterenglish.api.common.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
-
 import java.nio.charset.StandardCharsets;
 
-public final class Utf8ByteLengthValidator implements ConstraintValidator<Utf8ByteLength, CharSequence> {
+public final class Utf8ByteLengthValidator
+        implements ConstraintValidator<Utf8ByteLength, CharSequence> {
     private int min;
     private int max;
 

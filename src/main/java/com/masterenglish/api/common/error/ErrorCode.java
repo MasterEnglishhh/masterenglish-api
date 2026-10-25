@@ -3,7 +3,6 @@ package com.masterenglish.api.common.error;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
-
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST),
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED),
     ACCESS_DENIED(HttpStatus.FORBIDDEN),

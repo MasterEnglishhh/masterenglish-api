@@ -1,12 +1,16 @@
 package com.masterenglish.api;
 
-import com.masterenglish.api.modules.identity.entity.Role;
-import com.masterenglish.api.common.security.RoleCode;
-import com.masterenglish.api.modules.identity.entity.User;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.security.RoleCode;
+import com.masterenglish.api.modules.identity.entity.Role;
+import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import jakarta.persistence.EntityManager;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,11 +18,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -84,15 +83,19 @@ class IdentityDatabaseTests {
     void cannotRemoveTheLastRoleFromAnAccount() {
         User user = new User("last-role@example.com", "test-hash", "Learner");
         user.addRole(entityManager.find(Role.class, (short) 1));
-        assertThatThrownBy(() -> user.removeRole(RoleCode.LEARNER)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> user.removeRole(RoleCode.LEARNER))
+                .isInstanceOf(BusinessException.class);
         assertThat(user.getRoleNames()).containsExactly("LEARNER");
     }
 
     @Test
     void rejectsDuplicateRoleAssignments() {
         UUID user = insertUser("roles@example.com");
-        assertThatThrownBy(() -> jdbc.update(
-                "INSERT INTO user_roles(user_id, role_id) VALUES (?, 1)", user))
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        "INSERT INTO user_roles(user_id, role_id) VALUES (?, 1)",
+                                        user))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -110,15 +113,21 @@ class IdentityDatabaseTests {
         UUID previous = UUID.randomUUID();
         UUID replacement = UUID.randomUUID();
         insertToken(session, previous, 'a');
-        jdbc.update("""
+        jdbc.update(
+                """
                 UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP, replaced_by_id = ?
                 WHERE id = ?
-                """, replacement, previous);
+                """,
+                replacement,
+                previous);
         insertToken(session, replacement, 'b');
         jdbc.execute("SET CONSTRAINTS fk_refresh_tokens_replacement IMMEDIATE");
-        assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM refresh_tokens WHERE session_id = ? AND revoked_at IS NULL",
-                Integer.class, session)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM refresh_tokens WHERE session_id = ? AND revoked_at IS NULL",
+                                Integer.class,
+                                session))
+                .isEqualTo(1);
     }
 
     @Test
@@ -130,9 +139,14 @@ class IdentityDatabaseTests {
         UUID replacement = UUID.randomUUID();
         insertToken(firstSession, previous, 'a');
         insertToken(secondSession, replacement, 'b');
-        jdbc.update("UPDATE refresh_tokens SET revoked_at=CURRENT_TIMESTAMP, replaced_by_id=? WHERE id=?",
-                replacement, previous);
-        assertThatThrownBy(() -> jdbc.execute("SET CONSTRAINTS fk_refresh_tokens_replacement IMMEDIATE"))
+        jdbc.update(
+                "UPDATE refresh_tokens SET revoked_at=CURRENT_TIMESTAMP, replaced_by_id=? WHERE id=?",
+                replacement,
+                previous);
+        assertThatThrownBy(
+                        () ->
+                                jdbc.execute(
+                                        "SET CONSTRAINTS fk_refresh_tokens_replacement IMMEDIATE"))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -140,67 +154,99 @@ class IdentityDatabaseTests {
     void rejectsConcurrentOpenResetChallenges() {
         UUID user = insertUser("otp@example.com");
         insertChallenge(user);
-        assertThatThrownBy(() -> insertChallenge(user)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertChallenge(user))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void verifiedResetGrantMustHaveAnExpiry() {
         UUID user = insertUser("grant@example.com");
         UUID challenge = insertChallenge(user);
-        assertThatThrownBy(() -> jdbc.update("""
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        """
                 UPDATE password_reset_challenges
                 SET verified_at=CURRENT_TIMESTAMP, reset_token_hash=?
                 WHERE id=?
-                """, "c".repeat(64), challenge)).isInstanceOf(DataIntegrityViolationException.class);
+                """,
+                                        "c".repeat(64),
+                                        challenge))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void learningGoalRequiresAValidToeicScore() {
         UUID user = insertUser("goal@example.com");
-        assertThatThrownBy(() -> jdbc.update("""
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        """
                 INSERT INTO learning_goals(user_id, target_score, daily_minutes) VALUES (?, 499, 30)
-                """, user)).isInstanceOf(DataIntegrityViolationException.class);
+                """,
+                                        user))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void learnerHasAtMostOneCurrentGoal() {
         UUID user = insertUser("single-goal@example.com");
-        jdbc.update("INSERT INTO learning_goals(user_id,target_score,daily_minutes) VALUES (?,500,30)", user);
-        assertThatThrownBy(() -> jdbc.update("""
+        jdbc.update(
+                "INSERT INTO learning_goals(user_id,target_score,daily_minutes) VALUES (?,500,30)",
+                user);
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        """
                 INSERT INTO learning_goals(user_id,target_score,daily_minutes) VALUES (?,600,45)
-                """, user)).isInstanceOf(DataIntegrityViolationException.class);
+                """,
+                                        user))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private UUID insertUser(String email) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO users(id,email,password_hash,display_name) VALUES (?,?,'test-hash','Test')",
-                id, email);
+        jdbc.update(
+                "INSERT INTO users(id,email,password_hash,display_name) VALUES (?,?,'test-hash','Test')",
+                id,
+                email);
         jdbc.update("INSERT INTO user_roles(user_id,role_id) VALUES (?,1)", id);
         return id;
     }
 
     private UUID insertSession(UUID user) {
         UUID id = UUID.randomUUID();
-        jdbc.update("""
+        jdbc.update(
+                """
                 INSERT INTO auth_sessions(id,user_id,expires_at)
                 VALUES (?,?,CURRENT_TIMESTAMP + INTERVAL '7 days')
-                """, id, user);
+                """,
+                id,
+                user);
         return id;
     }
 
     private void insertToken(UUID session, UUID id, char hash) {
-        jdbc.update("""
+        jdbc.update(
+                """
                 INSERT INTO refresh_tokens(id,session_id,token_hash,expires_at)
                 VALUES (?,?,?,CURRENT_TIMESTAMP + INTERVAL '1 day')
-                """, id, session, String.valueOf(hash).repeat(64));
+                """,
+                id,
+                session,
+                String.valueOf(hash).repeat(64));
     }
 
     private UUID insertChallenge(UUID user) {
         UUID id = UUID.randomUUID();
-        jdbc.update("""
+        jdbc.update(
+                """
                 INSERT INTO password_reset_challenges(id,user_id,otp_hmac,expires_at)
                 VALUES (?,?,?,CURRENT_TIMESTAMP + INTERVAL '5 minutes')
-                """, id, user, "a".repeat(64));
+                """,
+                id,
+                user,
+                "a".repeat(64));
         return id;
     }
 }

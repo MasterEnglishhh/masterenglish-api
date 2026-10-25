@@ -17,8 +17,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "roles")
 public class Role {
 
-    @Id
-    private Short id;
+    @Id private Short id;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, unique = true, length = 30, updatable = false)

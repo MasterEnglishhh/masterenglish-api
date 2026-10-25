@@ -4,13 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 public final class UserPrincipal implements UserDetails, AuthenticatedUser {
 
@@ -29,8 +28,11 @@ public final class UserPrincipal implements UserDetails, AuthenticatedUser {
         password = user.getPasswordHash();
         authVersion = user.getAuthVersion();
         status = user.getStatus();
-        authorities = user.getRoleNames().stream().sorted()
-                .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList();
+        authorities =
+                user.getRoleNames().stream()
+                        .sorted()
+                        .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                        .toList();
     }
 
     public static UserPrincipal create(User user) {

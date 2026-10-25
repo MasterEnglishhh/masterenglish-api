@@ -14,10 +14,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashSet;
@@ -26,6 +22,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -64,8 +63,11 @@ public class User extends BaseEntity {
     private long version;
 
     @Getter(AccessLevel.NONE)
-    @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.MERGE},
-            fetch = FetchType.LAZY, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "user",
+            cascade = {CascadeType.PERSIST, CascadeType.MERGE},
+            fetch = FetchType.LAZY,
+            orphanRemoval = true)
     private Set<UserRole> userRoles = new HashSet<>();
 
     public User(String email, String passwordHash, String displayName) {
@@ -85,7 +87,8 @@ public class User extends BaseEntity {
     }
 
     public Set<String> getRoleNames() {
-        return userRoles.stream().map(link -> link.getRole().getCode().name())
+        return userRoles.stream()
+                .map(link -> link.getRole().getCode().name())
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -105,7 +108,8 @@ public class User extends BaseEntity {
             return;
         }
         if (userRoles.size() == 1) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "A user must retain at least one role.");
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "A user must retain at least one role.");
         }
         userRoles.removeIf(link -> link.getRole().getCode() == role);
         invalidateAuthentication();

@@ -1,9 +1,9 @@
 package com.masterenglish.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.core.ApplicationModules;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class ArchitectureTests {
 
