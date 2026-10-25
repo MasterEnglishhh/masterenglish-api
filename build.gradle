@@ -30,11 +30,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 	implementation 'org.springframework.modulith:spring-modulith-observability-api'
-	implementation 'org.springframework.modulith:spring-modulith-starter-core'
 	implementation 'org.springframework.modulith:spring-modulith-starter-jpa'
 	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'
 	runtimeOnly 'org.springframework.modulith:spring-modulith-actuator'
 	runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
@@ -56,6 +56,11 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+
+	implementation platform('software.amazon.awssdk:bom:2.57.3')
+	implementation 'software.amazon.awssdk:s3'
 }
 
 dependencyManagement {
@@ -66,4 +71,9 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	systemProperty 'user.timezone', 'UTC'
+}
+
+tasks.named('bootRun') {
+	systemProperty 'user.timezone', 'UTC'
 }

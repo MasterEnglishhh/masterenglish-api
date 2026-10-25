@@ -35,3 +35,10 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local environment and private keys ###
+.env
+.env.*
+!.env.example
+*.pem
+*.ppk
