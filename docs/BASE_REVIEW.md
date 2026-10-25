@@ -48,8 +48,9 @@ src/main/java/com/masterenglish/api/modules/identity/entity/UserRole.java.
 - X-Request-Id hợp lệ được giữ; input sai thay UUID; có MDC trong request.
 - Không echo giá trị password sai, JSON lỗi hoặc exception message nội bộ.
 - Danh tính đổi sang `roles` array theo quyết định nhiều role mới.
-- Handler Security 401/403/CSRF và cookie JWT cần làm cùng auth. MVC advice không
-  tự xử lý lỗi ở security filter; hiện vẫn dùng bảo mật mặc định Spring Boot.
+- Security đã có SecurityFilterChain, handler 401/403 và CSRF cookie/header cho
+  SPA; cấu hình env local ở backend. Xem docs/LOCAL_SECURITY_SETUP.md. JWT và
+  các luồng đăng nhập/thu hồi phiên tiếp tục triển khai trong Identity.
 - Thay role/status/password tăng auth_version. Service auth phải thu hồi phiên/token
   cùng transaction, kiểm tra phiên/version; bảo vệ SYSTEM_ADMIN cuối ở quản trị.
 

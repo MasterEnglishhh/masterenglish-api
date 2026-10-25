@@ -15,6 +15,8 @@ Không áp dụng migration hoặc triển khai chức năng auth/media trong l�
 | Enum dùng chung | RoleCode trong common.security, ErrorCode trong common.error |
 | Ranh giới module | ApplicationModule, NamedInterface và ArchitectureTests |
 | Validation groups | OnCreate/OnUpdate có sẵn; dùng theo nhu cầu của từng DTO |
+| CSRF/CORS | Cookie/header CSRF cho SPA, bootstrap public, allowlist origin và cookie Secure theo môi trường |
+| Backend local environment | API có .env/.env.example và Compose local; local profile đọc file của backend |
 
 ## Bổ sung trong lượt rà soát này
 
@@ -55,19 +57,28 @@ exception được Spring dịch trả ProblemDetail 409 với thông báo an to
 an toàn) theo hợp đồng. Không chuyển mọi lỗi ràng buộc DB thành conflict vì có
 những lỗi là sai sót mapping hoặc chương trình.
 
-Mã 413 được ánh xạ khi MVC xử lý lỗi tương ứng; **chưa cưỡng chế** ngân sách JSON
-1 MiB, depth 16 hay byte upload chỉ bằng việc thêm ErrorCode.
+Mã 413 được ánh xạ khi MVC xử lý lỗi tương ứng. Bước JSON tiếp theo đã được người
+dùng tạo theo hướng dẫn: JsonRequestSizeFilter kiểm tra header và byte thực tế,
+đọc tối đa 1 MiB + 1 byte; chỉ chuyển request <=1 MiB tới Spring MVC. Các request
+JSON và subtype +json đều áp dụng; multipart giữ đường kiểm tra riêng của Media.
+Response 413 có code/traceId/errors và X-Request-Id tương ứng.
+
+application.properties đã bật fail-on-unknown-properties và max-nesting-depth=16.
+Kiểm thử dùng mapper auto-configured từ file cấu hình thật: DTO hợp lệ đọc được,
+field ngoài DTO bị 400, 16 container lồng nhau hợp lệ và cấp 17 bị 400. Bộ lọc
+được thiết kế cho blocking body reads của Spring MVC; không cung cấp non-blocking
+ReadListener. Đây chưa phải giới hạn byte hoặc validation cho upload ảnh/audio.
 
 ## Phần còn thiếu và nơi triển khai
 
 | Phần | Hiện trạng | Bước phù hợp |
 |---|---|---|
-| Security filter errors | MVC advice không xử lý toàn bộ lỗi trước controller; chưa có entry point/access denied handler trả cùng ProblemDetail | Làm cùng SecurityFilterChain/JWT/cookie/CSRF của Identity, tránh cấu hình hai lần |
-| Request/JSON budgets | Hạn 1 MiB, depth 16, unknown fields mới có trong contract; chưa thực thi bằng cấu hình/filter/mapper | Trước khi mở các endpoint nhận JSON; giới hạn cả request chunked, không chỉ Content-Length |
-| Password và token | Chưa có encoder bean/policy, token generation/HMAC/rotation service | Identity; secret ở môi trường, không đưa vào constants hoặc common tùy tiện |
+| Security filter errors | Handler đã gắn vào SecurityFilterChain; có test 401/403, CSRF và method security qua chain | Duy trì khi nối JWT/đăng nhập và thu hồi phiên |
+| Request/JSON budgets | Đã có filter 1 MiB, depth 16 và từ chối field ngoài DTO; có test biên, UTF-8 và luồng không Content-Length | Giữ test cùng DTO thực; xác minh thêm qua HTTP/proxy khi tích hợp môi trường triển khai |
+| Password và token | Đã có PasswordConfiguration ở api.config cung cấp BCrypt cost 12; chưa có DTO/service kiểm tra toàn bộ policy hoặc token generation/HMAC/rotation | Identity dùng encoder chung; secret ở môi trường |
 | Rate limit/idempotency | Có thiết kế DB và ErrorCode, chưa có service sử dụng giao dịch thực | Identity/Practice/Media theo bảng sở hữu; giữ cùng giao thức khóa đã chốt |
 | OpenAPI | Có dependency springdoc; chưa có metadata API, tài liệu lỗi/phân trang hoặc scheme auth theo cơ chế đã triển khai | Cấu hình ứng dụng; scheme auth sau khi hoàn thiện auth thực |
-| HTTP/CORS theo môi trường | Chưa có cấu hình riêng; FE hiện dùng proxy | Kiểm tra đường gọi thực khi tích hợp FE; cấu hình origin cụ thể nếu cần gọi khác origin |
+| HTTP/CORS theo môi trường | WebSecurityProperties đọc origin/cookie policy từ môi trường; cấu hình local ở API .env, FE tiếp tục dùng proxy | Kiểm thử browser/proxy/HTTPS khi deploy; origin public cấu hình theo môi trường |
 | Upload/mail/worker | Có dependency và thiết kế; chưa có storage/mail adapter, byte validation, claim/retry hoặc job chạy thật | Các module Media/Notifications và cấu hình hạ tầng tương ứng |
 | Audit nghiệp vụ | Có schema đề xuất, chưa có service ghi actor/before-after an toàn cùng transaction | Administration và các module phát sinh sự kiện; tách với request logging |
 
@@ -75,13 +86,71 @@ Những phần này không được coi là hoàn thành vì có enum, dependenc
 tham chiếu. Common chỉ chứa hợp đồng/kỹ thuật dùng qua nhiều module; UserStatus,
 OTP purpose, content lifecycle và grading policy ở module sở hữu nghiệp vụ.
 
+## Cấu hình CSRF và môi trường đã hoàn thành
+
+Chi tiết ở [LOCAL_SECURITY_SETUP.md](LOCAL_SECURITY_SETUP.md). Có endpoint GET
+`/api/v1/auth/csrf`, cookie XSRF-TOKEN, header X-XSRF-TOKEN, SameSite=Lax,
+host-only, Path=/ và Secure theo môi trường. Token JSON lấy từ DeferredCsrfToken
+gốc để khớp plain header của cấu hình SPA. Cookie CSRF không phải cookie đăng nhập.
+CSRF giữ bật cho request ghi, kể cả trước khi user đăng nhập; session HTTP stateless.
+
+Ứng dụng local đọc `masterenglish-api/.env`, có `.env.example` trong repo, không
+còn đọc file Infra để chạy. Compose local ở backend giữ tên project/volume cũ.
+Chưa chạy up/down hoặc áp dụng migration lên database của người dùng.
+
 ## Kiểm tra đã chạy
 
-Lệnh: `gradlew.bat test --tests com.masterenglish.api.ArchitectureTests --tests com.masterenglish.api.common.*`.
+Lệnh đầy đủ hiện tại: `gradlew.bat spotlessCheck check bootJar`. Kết quả mới nhất: **94 tests đạt**, JAR
+đóng gói thành công. Có 66 tests nền/config, 20 tests database và 8 tests startup/HTTP thật.
+Test database dùng PostgreSQL tạm của Testcontainers; không dùng DB dự án.
 
-21 tests đạt: module boundaries, lỗi MVC (gồm conflict), phân trang, security view
-và validation. Đây là kiểm thử JVM/MVC, không kết nối database dự án, không kiểm
-thử mail/S3, JWT, request-size enforcement hoặc migration mới.
+Lệnh tập trung: `gradlew.bat test --tests com.masterenglish.api.ArchitectureTests --tests com.masterenglish.api.common.* --tests com.masterenglish.api.config.*`.
+
+Nhóm nền/config: module boundaries, lỗi MVC (gồm conflict), phân trang, security view,
+validation, 13 ca JSON và 3 ca PasswordConfiguration. Các ca JSON gồm đúng/vượt ngưỡng, header báo quá lớn,
+không có hoặc báo thấp Content-Length, byte UTF-8, +json, bỏ qua multipart,
+DTO/unknown fields, depth 16/17 và 413 khớp traceId. Ba ca password kiểm tra bean
+BCrypt cost 12/matches, salt ngẫu nhiên và encode tại/vượt 72 byte UTF-8. Yêu cầu
+tối thiểu 15 ký tự và validation ở endpoint đăng ký/đổi/reset/đăng nhập cần được
+triển khai cùng DTO/service; có encoder bean không thay thế các kiểm tra này.
+
+Bốn ca SecurityProblemHandler kiểm tra contract 401/403, trace ID dự phòng và
+không ghi đè response đã committed. Có thêm 21 ca filter chain/CSRF/CORS/role,
+4 ca cấu hình env/cookie/origin. Principal trong các test chain là fixture, không
+phải JWT thực. Các test database cũ kiểm tra schema đang có và proposal cũ, không
+chứng minh schema 62 bảng đã được migrate vào ứng dụng.
+
+Nhóm nền dùng JVM/MockMvc; nhóm servlet bổ sung khởi động Tomcat thật và gửi
+HTTP/1.1 bằng JDK HttpClient, gồm body streamed không có độ dài biết trước.
+Các test dùng PostgreSQL tạm, không kết nối DB dự án. Chưa kiểm thử mail/S3,
+JWT, HTTPS/proxy deploy hoặc migration mới.
+
+## Khắc phục lifecycle filter với Modulith — 26/10/2026
+
+Log local chỉ ra lỗi requestIdFilter khi Tomcat gọi phương thức final
+GenericFilterBean.init trên CGLIB proxy, dẫn tới logger null. Test startup trước
+đây dùng môi trường MOCK nên chưa gọi lifecycle servlet thật; số 87 tests ở lượt
+trước không chứng minh Tomcat đã khởi động được.
+
+Đã tái hiện cùng lỗi bằng RANDOM_PORT trước khi sửa. Đánh dấu RequestIdFilter,
+JsonRequestSizeFilter và GlobalExceptionHandler là ROLE_INFRASTRUCTURE để
+ModuleObservabilityBeanPostProcessor bỏ qua các bean kỹ thuật này. Module nghiệp
+vụ vẫn được observability theo dõi; không đổi cấu hình AOP toàn ứng dụng.
+
+MasterenglishApiApplicationTests hiện chạy Tomcat thật cùng PostgreSQL tạm và
+có 8 ca: startup, bean lifecycle không bị proxy, health/request ID, cookie CSRF
+SameSite trên HTTP, 413 với body biết/không biết độ dài, CSRF tách biệt xác thực,
+và lỗi MVC 400. Tất cả đã đạt. JAR được build lại và đã xác minh không chứa .env
+private hoặc controller probe của test.
+
+## Format Java — 26/10/2026
+
+Đã thiết lập EditorConfig/Git attributes và Spotless 8.10.4, formatter
+google-java-format 1.28.0/AOSP. Đã format 48/59 file Java thuộc src, lưu bản sao
+trước format và diff riêng trong build/format-review. Spotless check, toàn bộ
+94 tests và bootJar đều đạt sau format. Xem [FORMATTING.md](FORMATTING.md) để
+chạy lệnh và chia commit; các file có thay đổi chức năng từ trước không tự động
+được phân loại thành diff chỉ format.
 
 Nội dung commit gợi ý cho thay đổi lượt này:
 
