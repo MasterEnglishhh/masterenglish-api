@@ -58,3 +58,25 @@ Smoke test khởi động Tomcat trên cổng ngẫu nhiên và gửi request HT
 tra lifecycle filter, health, cookie/CSRF, lỗi MVC và giới hạn JSON.
 Không dùng database local của người phát triển. SQL thiết kế mới vẫn nằm ngoài
 Flyway; hướng dẫn/test riêng ở [docs/database/checks](docs/database/checks/README.md).
+
+## Đóng gói Docker image
+
+Gradle tạo executable JAR tại `build/libs/app.jar`. Dockerfile dùng JAR này cùng
+Java 21 JRE; ứng dụng trong container chạy bằng user `app` (UID 10001).
+Build JAR và chạy test trước khi tạo image, từ thư mục repo API:
+
+```powershell
+.\gradlew.bat spotlessCheck check bootJar
+docker build --tag masterenglish-api:local .
+```
+
+Docker cần đang chạy. `.dockerignore` chỉ cho phép JAR và các file cấu hình Docker
+đi vào build context; `.env`, Git history, source và tài liệu không được gửi.
+CI cũng build image sau khi các bước kiểm tra thành công. Bước này mới kiểm tra
+đóng gói image; image chưa được đẩy lên registry hay triển khai lên EC2.
+
+Khi chạy container, cấu hình kết nối PostgreSQL qua `SPRING_DATASOURCE_URL`,
+`SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`; cấu hình
+`APP_SECURITY_ALLOWED_ORIGINS` và `APP_SECURITY_COOKIE_SECURE` theo môi trường.
+Profile `local` dành cho chạy local và không được bật khi triển khai production.
+Cấu hình Docker Compose production và quản lý biến môi trường sẽ nằm trong repo Infra.

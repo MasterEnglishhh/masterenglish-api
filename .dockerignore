@@ -1,0 +1,9 @@
+# Send only the packaged application to Docker, excluding local files and secrets.
+**
+!Dockerfile
+!.dockerignore
+!build/
+build/**
+!build/libs/
+build/libs/**
+!build/libs/app.jar

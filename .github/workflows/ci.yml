@@ -32,3 +32,6 @@ jobs:
 
       - name: Check formatting, run tests, and build JAR
         run: bash ./gradlew spotlessCheck check bootJar --no-daemon
+
+      - name: Build Docker image
+        run: docker build --tag masterenglish-api:ci .

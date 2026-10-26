@@ -79,6 +79,10 @@ tasks.named('bootRun') {
 	systemProperty 'user.timezone', 'UTC'
 }
 
+tasks.named('bootJar') {
+	archiveFileName.set('app.jar')
+}
+
 spotless {
     java {
         target 'src/main/java/**/*.java', 'src/test/java/**/*.java'
