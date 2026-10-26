@@ -1,0 +1,66 @@
+name: Publish backend image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Check formatting, run tests, and build JAR
+        run: bash ./gradlew spotlessCheck check bootJar --no-daemon
+
+      - name: Build Docker image
+        id: image
+        run: |
+          backend_image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "$backend_image" .
+          printf 'image=%s\n' "$backend_image" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push Docker image and record version
+        env:
+          BACKEND_IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          docker push "$BACKEND_IMAGE"
+          backend_digest_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$BACKEND_IMAGE")"
+          {
+            printf '### Backend image published\n\n'
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Image tag: `%s`\n\n' "$BACKEND_IMAGE"
+            printf 'Deploy by digest: `%s`\n' "$backend_digest_ref"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
