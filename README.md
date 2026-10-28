@@ -99,3 +99,45 @@ Trong trang Summary của lượt chạy thành công, lấy dòng **Deploy by d
 triển khai. Tag theo commit giúp truy vết source; dùng digest để cố định nội dung
 image, kể cả khi chạy lại workflow cho cùng commit. Bước này chỉ xuất bản image;
 triển khai EC2 và quyền tải image từ EC2 được cấu hình riêng ở bước CD tiếp theo.
+
+## Cloudflare R2
+
+Backend có cấu hình S3 client/presigner cho bucket R2 private, bật bằng
+`R2_ENABLED=true`. Mặc định tắt để local/CI không cần credential thật.
+Các biến môi trường cần thiết khi bật:
+
+| Biến | Nội dung |
+| --- | --- |
+| `R2_ENDPOINT` | HTTPS S3 endpoint từ Cloudflare, không thêm tên bucket vào path |
+| `R2_REGION` | `auto` |
+| `R2_BUCKET` | `masterenglish-media-production` |
+| `R2_ACCESS_KEY_ID` | Access Key ID của token giới hạn đúng bucket |
+| `R2_SECRET_ACCESS_KEY` | Secret Access Key; chỉ lưu trong cấu hình môi trường |
+
+Nếu bật mà thiếu thông tin hoặc endpoint không phải HTTPS origin, ứng dụng
+từ chối khởi động. Cấu hình không dùng default AWS credential chain/EC2 IAM role;
+không cần IAM/OIDC AWS cho R2. Client dùng path-style, tắt chunked encoding và
+giới hạn checksum về WHEN_REQUIRED cho khả năng tương thích S3 của R2. Khi khởi
+động chỉ kiểm tra cấu hình và tạo client, không chứng minh credential kết nối được.
+
+`R2SmokeCheck` là công cụ kiểm tra riêng trong JAR, không tự chạy khi khởi động
+và không mở HTTP endpoint. Sau khi image mới cùng các biến R2 đã được chuyển lên
+EC2 qua cấu hình Infra, chạy từ `/srv/masterenglish`:
+
+```bash
+docker compose --env-file .env.prod -f compose.production.yaml -f compose.https.yaml \
+  run --rm --no-deps --entrypoint java api \
+  -Dloader.main=com.masterenglish.api.config.R2SmokeCheck \
+  -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher
+```
+
+Lệnh tạo file text vài chục byte tại `_checks/<UUID>.txt`, tải lại, so sánh bytes
+và xóa chính file này. Nó dùng cùng S3 client factory của ứng dụng, không chạy
+Spring/Flyway hoặc kết nối database. Nếu lỗi sẽ trả exit code khác 0; nếu cleanup
+lỗi, kiểm tra object `_checks/` trong bucket để xóa file thử còn lại. Lượt kiểm
+tra sử dụng một số thao tác R2 theo mức tính phí của tài khoản.
+
+Đây là nền tảng kết nối storage; API upload, phân quyền file, metadata, presigned
+URL cho trình duyệt và CORS bucket chưa được triển khai. Không bật public access
+cho bucket hoặc đưa credential vào frontend. Tests dùng credential giả và S3
+giả lập; kiểm tra R2 thật chỉ thực hiện trên EC2 bằng lệnh rõ ràng ở trên.
