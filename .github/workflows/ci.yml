@@ -34,4 +34,70 @@ jobs:
         run: bash ./gradlew spotlessCheck check bootJar --no-daemon
 
       - name: Build Docker image
-        run: docker build --tag masterenglish-api:ci .
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag masterenglish-api:ci .
+
+      - name: Save verified Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save masterenglish-api:ci | gzip > "$RUNNER_TEMP/backend-image.tar.gz"
+
+      - name: Transfer verified image to publish job
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-image-${{ github.sha }}
+          path: ${{ runner.temp }}/backend-image.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish verified backend image
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download verified image from this run
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-image-${{ github.sha }}
+          path: ${{ runner.temp }}/backend-image
+
+      - name: Load and tag verified image
+        id: image
+        run: |
+          docker load --input "$RUNNER_TEMP/backend-image/backend-image.tar.gz"
+          backend_image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
+          docker tag masterenglish-api:ci "$backend_image"
+          printf 'image=%s\n' "$backend_image" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push verified image and record version
+        env:
+          BACKEND_IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          docker push "$BACKEND_IMAGE"
+          backend_digest_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$BACKEND_IMAGE")"
+          {
+            printf '### Backend image automatically published\n\n'
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Image tag: `%s`\n\n' "$BACKEND_IMAGE"
+            printf 'Deploy by digest: `%s`\n' "$backend_digest_ref"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

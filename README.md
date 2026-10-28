@@ -73,7 +73,7 @@ docker build --tag masterenglish-api:local .
 Docker cần đang chạy. `.dockerignore` chỉ cho phép JAR và các file cấu hình Docker
 đi vào build context; `.env`, Git history, source và tài liệu không được gửi.
 Workflow `Backend CI` cũng build image sau khi các bước kiểm tra thành công.
-Workflow này kiểm tra đóng gói image; việc xuất bản nằm ở workflow riêng bên dưới.
+Khi push `main`, workflow tự xuất bản đúng image vừa build lên GHCR như bên dưới.
 
 Khi chạy container, cấu hình kết nối PostgreSQL qua `SPRING_DATASOURCE_URL`,
 `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`; cấu hình
@@ -83,13 +83,20 @@ Cấu hình Docker Compose production và quản lý biến môi trường sẽ 
 
 ## Xuất bản image lên GHCR
 
-Sau khi commit cấu hình lên `main`, vào GitHub repo API, chọn **Actions → Publish
-backend image → Run workflow**, chọn nhánh **main**, rồi chạy. Workflow chỉ cho
-phép xuất bản từ `main`; mỗi lần chạy kiểm tra format, chạy toàn bộ tests (gồm
-Testcontainers), tạo JAR, build Docker image rồi đẩy lên GHCR.
+Sau mỗi push lên `main`, **Backend CI** tự kiểm tra format, chạy toàn bộ tests
+(gồm Testcontainers), tạo JAR, build Docker image và xuất bản lên GHCR. Job
+`publish` chỉ chạy nếu job `verify` thành công. Nó nhận nguyên image từ job
+kiểm tra trong cùng workflow run qua artifact, không build lại image.
+Artifact trung chuyển giữ 1 ngày; image đã xuất bản nằm trên GHCR độc lập.
+
+Pull request và lần chạy thủ công `Backend CI` chỉ kiểm tra/build, không xuất
+bản. Không cần bấm workflow Publish sau mỗi push nữa. Workflow **Publish backend
+image** thủ công vẫn giữ để xuất bản lại khi cần; workflow đó chạy lại tests và
+build, nên lần build mới có thể cho digest khác dù cùng commit.
 
 Image có dạng `ghcr.io/masterenglishhh/masterenglish-api:sha-<commit SHA đầy đủ>`.
-Workflow dùng `GITHUB_TOKEN` do GitHub cấp cùng quyền `packages: write`; không cần
+Job xuất bản dùng `GITHUB_TOKEN` do GitHub cấp cùng quyền `packages: write`; job
+kiểm tra chỉ có `contents: read`. Không cần
 tạo PAT hoặc thêm secret cho bước xuất bản này. Label source liên kết package với
 repo API. Nếu tổ chức hạn chế tạo package hoặc package đã có nhưng chưa liên kết
 repo, cần kiểm tra quyền tại GitHub Packages khi workflow báo lỗi quyền truy cập.
@@ -97,8 +104,10 @@ repo, cần kiểm tra quyền tại GitHub Packages khi workflow báo lỗi quy
 Trong trang Summary của lượt chạy thành công, lấy dòng **Deploy by digest** dạng
 `ghcr.io/masterenglishhh/masterenglish-api@sha256:...` để xác định đúng image khi
 triển khai. Tag theo commit giúp truy vết source; dùng digest để cố định nội dung
-image, kể cả khi chạy lại workflow cho cùng commit. Bước này chỉ xuất bản image;
-triển khai EC2 và quyền tải image từ EC2 được cấu hình riêng ở bước CD tiếp theo.
+image, kể cả khi chạy lại workflow cho cùng commit. Sau khi **Backend CI** xanh,
+lấy dòng **Deploy by digest** từ Summary của job Publish, rồi chọn image này ở
+workflow **Deploy production** trong repo Infra. Production tiếp tục triển khai
+bằng nút chạy thủ công, không tự cập nhật khi push code.
 
 ## Cloudflare R2
 
