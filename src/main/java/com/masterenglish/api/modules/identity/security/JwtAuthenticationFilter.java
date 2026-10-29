@@ -48,7 +48,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         Optional<String> tokenOpt = authCookieHelper.extractAccessToken(request);
-        if (tokenOpt.isPresent()) {
+        if (tokenOpt.isPresent()
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
             String token = tokenOpt.get();
             try {
                 JwtClaims claims = jwtTokenService.parseAndValidateToken(token);
