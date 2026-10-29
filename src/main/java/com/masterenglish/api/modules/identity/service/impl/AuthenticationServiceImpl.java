@@ -14,11 +14,15 @@ import com.masterenglish.api.modules.identity.service.RateLimiterService;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AuthenticationServiceImpl implements AuthenticationService {
+
+    private static final String DUMMY_BCRYPT_HASH =
+            new BCryptPasswordEncoder(12).encode("dummy-password-for-timing-protection");
 
     private final UserRepository userRepository;
     private final AuthSessionService authSessionService;
@@ -49,14 +53,19 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         boolean valid = false;
         User user = null;
 
-        if (userOpt.isPresent() && password != null && !password.isBlank()) {
+        if (userOpt.isPresent()) {
             user = userOpt.get();
-            boolean passwordMatches = passwordEncoder.matches(password, user.getPasswordHash());
+            boolean passwordMatches =
+                    password != null
+                            && !password.isBlank()
+                            && passwordEncoder.matches(password, user.getPasswordHash());
             boolean active = user.isActive();
             boolean emailVerified = user.getEmailVerifiedAt() != null;
             boolean notLocked = user.getStatus() != UserStatus.LOCKED;
 
             valid = passwordMatches && active && emailVerified && notLocked;
+        } else {
+            passwordEncoder.matches(password != null ? password : "", DUMMY_BCRYPT_HASH);
         }
 
         if (!valid) {

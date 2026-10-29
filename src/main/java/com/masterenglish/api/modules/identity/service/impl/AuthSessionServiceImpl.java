@@ -51,6 +51,9 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         Objects.requireNonNull(user, "user must not be null");
         Instant now = clock.instant();
 
+        String normalizedClientIp =
+                (clientIp != null && !clientIp.isBlank()) ? clientIp.strip() : null;
+
         long activeCount = authSessionRepository.countActiveSessions(user.getId(), now);
         if (activeCount >= MAX_ACTIVE_SESSIONS) {
             List<AuthSession> oldestSessions =
@@ -64,14 +67,15 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                         .findBySessionIdAndRevokedAtIsNull(oldest.getId())
                         .ifPresent(
                                 token -> {
-                                    token.revoke(null, now);
+                                    token.revoke(now);
                                     refreshTokenRepository.save(token);
                                 });
             }
         }
 
         Instant sessionExpiresAt = now.plus(SESSION_DURATION);
-        AuthSession session = new AuthSession(user, clientIp, userAgent, sessionExpiresAt, now);
+        AuthSession session =
+                new AuthSession(user, normalizedClientIp, userAgent, sessionExpiresAt, now);
         session = authSessionRepository.saveAndFlush(session);
 
         String rawRefreshToken = jwtTokenService.generateRawRefreshToken();
@@ -120,11 +124,20 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                     ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
         }
 
+        session = authSessionRepository.findByIdForUpdate(session.getId()).orElse(session);
+
         if (oldToken.getRevokedAt() != null) {
             if (session.getRevokedAt() == null) {
                 session.revoke(RevokeReason.SECURITY, now);
                 authSessionRepository.save(session);
             }
+            refreshTokenRepository
+                    .findBySessionIdAndRevokedAtIsNull(session.getId())
+                    .ifPresent(
+                            activeToken -> {
+                                activeToken.revoke(now);
+                                refreshTokenRepository.save(activeToken);
+                            });
             throw new BusinessException(
                     ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
         }
@@ -205,7 +218,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                                     .findBySessionIdAndRevokedAtIsNull(sessionId)
                                     .ifPresent(
                                             token -> {
-                                                token.revoke(null, now);
+                                                token.revoke(now);
                                                 refreshTokenRepository.save(token);
                                             });
                         });

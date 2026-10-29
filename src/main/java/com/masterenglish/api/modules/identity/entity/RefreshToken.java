@@ -74,6 +74,10 @@ public class RefreshToken {
         revoke(replacedById, Instant.now());
     }
 
+    public void revoke(Instant revokedAt) {
+        revoke(null, revokedAt);
+    }
+
     public void revoke(UUID replacedById, Instant revokedAt) {
         this.revokedAt = revokedAt != null ? revokedAt : Instant.now();
         this.replacedById = replacedById;

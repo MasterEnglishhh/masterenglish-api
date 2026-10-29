@@ -63,7 +63,7 @@ public class AuthSession {
             User user, String ipAddress, String userAgent, Instant expiresAt, Instant createdAt) {
         this.id = UUID.randomUUID();
         this.user = Objects.requireNonNull(user);
-        this.ipAddress = ipAddress;
+        this.ipAddress = (ipAddress != null && !ipAddress.isBlank()) ? ipAddress.strip() : null;
         this.userAgent = userAgent;
         this.expiresAt = Objects.requireNonNull(expiresAt);
         this.createdAt = createdAt != null ? createdAt : Instant.now();

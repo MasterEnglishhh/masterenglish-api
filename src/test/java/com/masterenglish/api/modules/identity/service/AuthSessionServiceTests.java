@@ -198,10 +198,11 @@ class AuthSessionServiceTests {
                 authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
         String oldRawToken = loginResult.rawRefreshToken();
 
-        // Rotate once (oldRawToken becomes revoked)
-        authSessionService.rotateRefreshToken(oldRawToken);
+        // Rotate once (oldRawToken becomes revoked, replacement token active)
+        RefreshResult refreshResult = authSessionService.rotateRefreshToken(oldRawToken);
+        String replacementHash = jwtTokenService.hashToken(refreshResult.rawRefreshToken());
 
-        // Rotate again with the same (now revoked) token
+        // Rotate again with the same (now revoked) token -> reuse detected
         assertThatThrownBy(() -> authSessionService.rotateRefreshToken(oldRawToken))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
@@ -211,6 +212,56 @@ class AuthSessionServiceTests {
                             assertThat(be.getMessage())
                                     .isEqualTo("Phiên làm việc không hợp lệ hoặc đã hết hạn.");
                         });
+
+        // Verify session was revoked with RevokeReason.SECURITY
+        List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
+        assertThat(sessions).hasSize(1);
+        AuthSession session = sessions.get(0);
+        assertThat(session.getRevokedAt()).isNotNull();
+        assertThat(session.getRevokeReason()).isEqualTo(RevokeReason.SECURITY);
+
+        // Verify active replacement token was also revoked
+        assertThat(refreshTokenRepository.findBySessionIdAndRevokedAtIsNull(session.getId()))
+                .isEmpty();
+        RefreshToken replacementToken =
+                refreshTokenRepository.findByTokenHash(replacementHash).orElseThrow();
+        assertThat(replacementToken.getRevokedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("createSession with blank or empty clientIp normalizes to null")
+    void createSession_blankClientIp_normalizesToNull() {
+        LoginResult blankResult = authSessionService.createSession(testUser, "Mozilla/5.0", "   ");
+        LoginResult emptyResult = authSessionService.createSession(testUser, "Mozilla/5.0", "");
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
+        assertThat(sessions).extracting(AuthSession::getIpAddress).containsOnlyNulls();
+    }
+
+    @Test
+    @DisplayName(
+            "rotateRefreshToken sequential rotations succeed and maintain single unrevoked token")
+    void rotateRefreshToken_sequentialRotations_succeed() {
+        LoginResult loginResult =
+                authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
+        String currentToken = loginResult.rawRefreshToken();
+
+        for (int i = 0; i < 3; i++) {
+            RefreshResult refreshResult = authSessionService.rotateRefreshToken(currentToken);
+            assertThat(refreshResult.rawRefreshToken()).isNotEqualTo(currentToken);
+            currentToken = refreshResult.rawRefreshToken();
+        }
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
+        assertThat(sessions).hasSize(1);
+        UUID sessionId = sessions.get(0).getId();
+
+        // There should be exactly 1 active (unrevoked) token for this session
+        Optional<RefreshToken> activeToken =
+                refreshTokenRepository.findBySessionIdAndRevokedAtIsNull(sessionId);
+        assertThat(activeToken).isPresent();
+        assertThat(activeToken.get().getTokenHash())
+                .isEqualTo(jwtTokenService.hashToken(currentToken));
     }
 
     @Test
