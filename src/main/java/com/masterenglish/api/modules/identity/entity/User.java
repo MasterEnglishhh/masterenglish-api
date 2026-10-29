@@ -39,8 +39,11 @@ public class User extends BaseEntity {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "display_name", nullable = false, length = 100)
-    private String displayName;
+    @Column(name = "first_name", length = 30)
+    private String firstName;
+
+    @Column(name = "last_name", length = 30)
+    private String lastName;
 
     @Column(length = 30)
     private String phone;
@@ -49,8 +52,14 @@ public class User extends BaseEntity {
     private UUID avatarMediaId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private UserStatus status = UserStatus.ACTIVE;
+    @Column(nullable = false, length = 24)
+    private UserStatus status = UserStatus.PENDING_VERIFICATION;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
 
     @Column(name = "auth_version", nullable = false)
     private int authVersion;
@@ -70,18 +79,63 @@ public class User extends BaseEntity {
             orphanRemoval = true)
     private Set<UserRole> userRoles = new HashSet<>();
 
+    public User(String email, String passwordHash, String firstName, String lastName) {
+        this.email = Objects.requireNonNull(email).strip().toLowerCase(Locale.ROOT);
+        this.passwordHash = Objects.requireNonNull(passwordHash);
+        this.firstName = firstName != null ? firstName.strip() : null;
+        this.lastName = lastName != null ? lastName.strip() : null;
+    }
+
     public User(String email, String passwordHash, String displayName) {
         this.email = Objects.requireNonNull(email).strip().toLowerCase(Locale.ROOT);
         this.passwordHash = Objects.requireNonNull(passwordHash);
-        this.displayName = Objects.requireNonNull(displayName).strip();
+        Objects.requireNonNull(displayName);
+        String stripped = displayName.strip();
+        int spaceIndex = stripped.lastIndexOf(' ');
+        if (spaceIndex > 0) {
+            this.lastName = stripped.substring(0, spaceIndex).strip();
+            this.firstName = stripped.substring(spaceIndex + 1).strip();
+        } else {
+            this.firstName = stripped;
+            this.lastName = null;
+        }
+    }
+
+    public String getDisplayName() {
+        if (lastName != null && !lastName.isBlank() && firstName != null && !firstName.isBlank()) {
+            return lastName.strip() + " " + firstName.strip();
+        }
+        if (lastName != null && !lastName.isBlank()) {
+            return lastName.strip();
+        }
+        if (firstName != null && !firstName.isBlank()) {
+            return firstName.strip();
+        }
+        return "";
     }
 
     public Set<UserRole> getUserRoles() {
         return Collections.unmodifiableSet(userRoles);
     }
 
+    public void updateProfile(String firstName, String lastName, String phone, UUID avatarMediaId) {
+        this.firstName = firstName != null ? firstName.strip() : null;
+        this.lastName = lastName != null ? lastName.strip() : null;
+        this.phone = phone == null || phone.isBlank() ? null : phone.strip();
+        this.avatarMediaId = avatarMediaId;
+    }
+
     public void updateProfile(String displayName, String phone, UUID avatarMediaId) {
-        this.displayName = Objects.requireNonNull(displayName).strip();
+        Objects.requireNonNull(displayName);
+        String stripped = displayName.strip();
+        int spaceIndex = stripped.lastIndexOf(' ');
+        if (spaceIndex > 0) {
+            this.lastName = stripped.substring(0, spaceIndex).strip();
+            this.firstName = stripped.substring(spaceIndex + 1).strip();
+        } else {
+            this.firstName = stripped;
+            this.lastName = null;
+        }
         this.phone = phone == null || phone.isBlank() ? null : phone.strip();
         this.avatarMediaId = avatarMediaId;
     }
@@ -115,10 +169,30 @@ public class User extends BaseEntity {
         invalidateAuthentication();
     }
 
+    public void markEmailVerified(Instant verifiedAt) {
+        this.emailVerifiedAt = Objects.requireNonNull(verifiedAt);
+        this.status = UserStatus.ACTIVE;
+    }
+
+    public void lock(Instant until) {
+        this.status = UserStatus.LOCKED;
+        this.lockedUntil = Objects.requireNonNull(until);
+        invalidateAuthentication();
+    }
+
+    public void unlock() {
+        this.status = UserStatus.ACTIVE;
+        this.lockedUntil = null;
+        invalidateAuthentication();
+    }
+
     public void changeStatus(UserStatus status) {
         UserStatus next = Objects.requireNonNull(status);
         if (this.status != next) {
             this.status = next;
+            if (next == UserStatus.ACTIVE && this.emailVerifiedAt == null) {
+                this.emailVerifiedAt = Instant.now();
+            }
             invalidateAuthentication();
         }
     }
@@ -137,6 +211,6 @@ public class User extends BaseEntity {
     }
 
     public boolean isActive() {
-        return status == UserStatus.ACTIVE;
+        return status == UserStatus.ACTIVE && emailVerifiedAt != null;
     }
 }
