@@ -7,7 +7,10 @@ import com.masterenglish.api.modules.identity.dto.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
+import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.identity.security.JwtClaims;
+import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
 import com.masterenglish.api.modules.identity.service.AuthenticationService;
 import com.masterenglish.api.modules.identity.service.RateLimiterService;
@@ -17,6 +20,7 @@ import java.util.UUID;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthenticationServiceImpl implements AuthenticationService {
@@ -28,16 +32,29 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final AuthSessionService authSessionService;
     private final RateLimiterService rateLimiterService;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenService jwtTokenService;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     public AuthenticationServiceImpl(
             UserRepository userRepository,
             AuthSessionService authSessionService,
             RateLimiterService rateLimiterService,
-            PasswordEncoder passwordEncoder) {
-        this.userRepository = Objects.requireNonNull(userRepository);
-        this.authSessionService = Objects.requireNonNull(authSessionService);
-        this.rateLimiterService = Objects.requireNonNull(rateLimiterService);
-        this.passwordEncoder = Objects.requireNonNull(passwordEncoder);
+            PasswordEncoder passwordEncoder,
+            JwtTokenService jwtTokenService,
+            RefreshTokenRepository refreshTokenRepository) {
+        this.userRepository =
+                Objects.requireNonNull(userRepository, "userRepository must not be null");
+        this.authSessionService =
+                Objects.requireNonNull(authSessionService, "authSessionService must not be null");
+        this.rateLimiterService =
+                Objects.requireNonNull(rateLimiterService, "rateLimiterService must not be null");
+        this.passwordEncoder =
+                Objects.requireNonNull(passwordEncoder, "passwordEncoder must not be null");
+        this.jwtTokenService =
+                Objects.requireNonNull(jwtTokenService, "jwtTokenService must not be null");
+        this.refreshTokenRepository =
+                Objects.requireNonNull(
+                        refreshTokenRepository, "refreshTokenRepository must not be null");
     }
 
     @Override
@@ -86,5 +103,37 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     public void logout(UUID sessionId) {
         authSessionService.revokeSession(sessionId, RevokeReason.LOGOUT);
+    }
+
+    @Override
+    @Transactional
+    public void logout(String accessToken, String rawRefreshToken) {
+        UUID sessionId = null;
+
+        if (accessToken != null && !accessToken.isBlank()) {
+            try {
+                JwtClaims claims = jwtTokenService.parseTokenVerifyingSignature(accessToken);
+                sessionId = claims.sessionId();
+            } catch (Exception ignored) {
+                // Invalid signature, malformed, or unverified claims - do NOT extract or trust
+                // sessionId
+            }
+        }
+
+        if (sessionId == null && rawRefreshToken != null && !rawRefreshToken.isBlank()) {
+            try {
+                String tokenHash = jwtTokenService.hashToken(rawRefreshToken);
+                sessionId =
+                        refreshTokenRepository
+                                .findByTokenHash(tokenHash)
+                                .map(token -> token.getSession().getId())
+                                .orElse(null);
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (sessionId != null) {
+            logout(sessionId);
+        }
     }
 }

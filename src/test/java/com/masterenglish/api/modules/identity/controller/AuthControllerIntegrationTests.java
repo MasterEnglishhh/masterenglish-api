@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.masterenglish.api.TestcontainersConfiguration;
+import com.masterenglish.api.config.JwtProperties;
+import com.masterenglish.api.modules.identity.entity.AuthSession;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.AuthRateLimitEventRepository;
@@ -16,10 +18,19 @@ import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +63,7 @@ class AuthControllerIntegrationTests {
     @Autowired private AuthRateLimitEventRepository rateLimitEventRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
+    @Autowired private JwtProperties jwtProperties;
 
     private MockMvc mockMvc;
 
@@ -436,6 +448,115 @@ class AuthControllerIntegrationTests {
         mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", accessToken)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    @DisplayName("logout with expired access token successfully revokes session")
+    void logout_withExpiredAccessTokenCookie_succeedsAndRevokesSession() throws Exception {
+        User user = createVerifiedUser("expired-logout@example.com", CORRECT_PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+
+        String loginBody =
+                """
+                {
+                    "email": "expired-logout@example.com",
+                    "password": "%s"
+                }
+                """
+                        .formatted(CORRECT_PASSWORD);
+
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody))
+                .andExpect(status().isOk());
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(user.getId());
+        assertThat(sessions).hasSize(1);
+        UUID sessionId = sessions.get(0).getId();
+
+        SignedJWT expiredJwt =
+                new SignedJWT(
+                        new JWSHeader(JWSAlgorithm.HS256),
+                        new JWTClaimsSet.Builder()
+                                .subject(user.getId().toString())
+                                .issuer(jwtProperties.issuer())
+                                .issueTime(Date.from(Instant.now().minusSeconds(1000)))
+                                .expirationTime(Date.from(Instant.now().minusSeconds(100)))
+                                .claim("sessionId", sessionId.toString())
+                                .claim("authVersion", 1)
+                                .claim("roles", List.of("ROLE_LEARNER"))
+                                .build());
+        expiredJwt.sign(new MACSigner(jwtProperties.secret().getBytes(StandardCharsets.UTF_8)));
+        String expiredToken = expiredJwt.serialize();
+
+        mockMvc.perform(
+                        post("/api/v1/auth/logout")
+                                .cookie(csrf.cookie(), new Cookie("access_token", expiredToken))
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getRevokedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("logout with forged access token does not revoke victim session")
+    void logout_withForgedAccessTokenCookie_doesNotRevokeVictimSession() throws Exception {
+        User user = createVerifiedUser("victim-user@example.com", CORRECT_PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+
+        String loginBody =
+                """
+                {
+                    "email": "victim-user@example.com",
+                    "password": "%s"
+                }
+                """
+                        .formatted(CORRECT_PASSWORD);
+
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody))
+                .andExpect(status().isOk());
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(user.getId());
+        assertThat(sessions).hasSize(1);
+        UUID sessionId = sessions.get(0).getId();
+
+        SignedJWT forgedJwt =
+                new SignedJWT(
+                        new JWSHeader(JWSAlgorithm.HS256),
+                        new JWTClaimsSet.Builder()
+                                .subject(user.getId().toString())
+                                .issuer(jwtProperties.issuer())
+                                .issueTime(Date.from(Instant.now()))
+                                .expirationTime(Date.from(Instant.now().plusSeconds(600)))
+                                .claim("sessionId", sessionId.toString())
+                                .claim("authVersion", 1)
+                                .claim("roles", List.of("ROLE_LEARNER"))
+                                .build());
+        forgedJwt.sign(
+                new MACSigner(
+                        "untrusted-attacker-secret-key-32-bytes-length"
+                                .getBytes(StandardCharsets.UTF_8)));
+        String forgedToken = forgedJwt.serialize();
+
+        mockMvc.perform(
+                        post("/api/v1/auth/logout")
+                                .cookie(csrf.cookie(), new Cookie("access_token", forgedToken))
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getRevokedAt()).isNull();
     }
 
     private record CsrfBootstrap(Cookie cookie, String headerName, String token) {}

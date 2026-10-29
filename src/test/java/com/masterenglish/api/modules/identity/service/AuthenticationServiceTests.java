@@ -7,6 +7,7 @@ import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.error.RateLimitExceededException;
+import com.masterenglish.api.config.JwtProperties;
 import com.masterenglish.api.modules.identity.dto.LoginResult;
 import com.masterenglish.api.modules.identity.dto.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
@@ -15,8 +16,15 @@ import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.persistence.EntityManager;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +46,7 @@ class AuthenticationServiceTests {
     @Autowired private AuthSessionRepository authSessionRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
+    @Autowired private JwtProperties jwtProperties;
 
     private static final String RAW_PASSWORD = "CorrectPassword123!@#";
     private User activeUser;
@@ -213,6 +222,107 @@ class AuthenticationServiceTests {
         UUID sessionId = sessions.get(0).getId();
 
         authenticationService.logout(sessionId);
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getRevokedAt()).isNotNull();
+        assertThat(session.getRevokeReason()).isEqualTo(RevokeReason.LOGOUT);
+    }
+
+    @Test
+    @DisplayName("logout with valid accessToken and rawRefreshToken revokes session")
+    void logout_withValidTokens_revokesSession() {
+        LoginResult loginResult =
+                authenticationService.authenticate(
+                        "auth.user@example.com", RAW_PASSWORD, "Mozilla/5.0", "192.168.10.9");
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(activeUser.getId());
+        UUID sessionId = sessions.get(0).getId();
+
+        authenticationService.logout(loginResult.accessToken(), loginResult.rawRefreshToken());
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getRevokedAt()).isNotNull();
+        assertThat(session.getRevokeReason()).isEqualTo(RevokeReason.LOGOUT);
+    }
+
+    @Test
+    @DisplayName("logout with expired accessToken (valid signature) revokes session")
+    void logout_withExpiredAccessToken_revokesSession() throws Exception {
+        LoginResult loginResult =
+                authenticationService.authenticate(
+                        "auth.user@example.com", RAW_PASSWORD, "Mozilla/5.0", "192.168.10.10");
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(activeUser.getId());
+        UUID sessionId = sessions.get(0).getId();
+
+        SignedJWT expiredJwt =
+                new SignedJWT(
+                        new JWSHeader(JWSAlgorithm.HS256),
+                        new JWTClaimsSet.Builder()
+                                .subject(activeUser.getId().toString())
+                                .issuer(jwtProperties.issuer())
+                                .issueTime(Date.from(Instant.now().minusSeconds(1000)))
+                                .expirationTime(Date.from(Instant.now().minusSeconds(100)))
+                                .claim("sessionId", sessionId.toString())
+                                .claim("authVersion", 1)
+                                .claim("roles", List.of("ROLE_LEARNER"))
+                                .build());
+        expiredJwt.sign(new MACSigner(jwtProperties.secret().getBytes(StandardCharsets.UTF_8)));
+        String expiredToken = expiredJwt.serialize();
+
+        authenticationService.logout(expiredToken, null);
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getRevokedAt()).isNotNull();
+        assertThat(session.getRevokeReason()).isEqualTo(RevokeReason.LOGOUT);
+    }
+
+    @Test
+    @DisplayName("logout with forged signature accessToken does not revoke victim session")
+    void logout_withForgedAccessToken_doesNotRevokeSession() throws Exception {
+        LoginResult loginResult =
+                authenticationService.authenticate(
+                        "auth.user@example.com", RAW_PASSWORD, "Mozilla/5.0", "192.168.10.11");
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(activeUser.getId());
+        UUID sessionId = sessions.get(0).getId();
+
+        SignedJWT forgedJwt =
+                new SignedJWT(
+                        new JWSHeader(JWSAlgorithm.HS256),
+                        new JWTClaimsSet.Builder()
+                                .subject(activeUser.getId().toString())
+                                .issuer(jwtProperties.issuer())
+                                .issueTime(Date.from(Instant.now()))
+                                .expirationTime(Date.from(Instant.now().plusSeconds(600)))
+                                .claim("sessionId", sessionId.toString())
+                                .claim("authVersion", 1)
+                                .claim("roles", List.of("ROLE_LEARNER"))
+                                .build());
+        forgedJwt.sign(
+                new MACSigner(
+                        "untrusted-attacker-secret-key-32-bytes-length"
+                                .getBytes(StandardCharsets.UTF_8)));
+        String forgedToken = forgedJwt.serialize();
+
+        authenticationService.logout(forgedToken, null);
+
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
+        // Session must remain active and NOT revoked
+        assertThat(session.getRevokedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("logout with rawRefreshToken only revokes session")
+    void logout_withRefreshTokenOnly_revokesSession() {
+        LoginResult loginResult =
+                authenticationService.authenticate(
+                        "auth.user@example.com", RAW_PASSWORD, "Mozilla/5.0", "192.168.10.12");
+
+        List<AuthSession> sessions = authSessionRepository.findByUserId(activeUser.getId());
+        UUID sessionId = sessions.get(0).getId();
+
+        authenticationService.logout(null, loginResult.rawRefreshToken());
 
         AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
         assertThat(session.getRevokedAt()).isNotNull();

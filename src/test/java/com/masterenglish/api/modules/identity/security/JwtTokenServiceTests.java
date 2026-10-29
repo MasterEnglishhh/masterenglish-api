@@ -115,6 +115,57 @@ class JwtTokenServiceTests {
     }
 
     @Test
+    @DisplayName("parseTokenVerifyingSignature parses expired token successfully without throwing")
+    void parseTokenVerifyingSignature_expiredToken_succeeds() {
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        // Token expires in 5 minutes (at 10:05:00Z)
+        String token =
+                jwtTokenService.generateAccessToken(
+                        userId, sessionId, 1, Set.of("ROLE_LEARNER"), Duration.ofMinutes(5));
+
+        // Advance clock by 60 minutes
+        Clock futureClock = Clock.fixed(Instant.parse("2026-10-29T11:00:00Z"), ZoneOffset.UTC);
+        JwtTokenService verifyingService = new JwtTokenService(jwtProperties, futureClock);
+
+        JwtClaims claims = verifyingService.parseTokenVerifyingSignature(token);
+        assertThat(claims.userId()).isEqualTo(userId);
+        assertThat(claims.sessionId()).isEqualTo(sessionId);
+    }
+
+    @Test
+    @DisplayName("parseTokenVerifyingSignature throws BadJwtException on forged/tampered signature")
+    void parseTokenVerifyingSignature_tamperedOrForged_throwsBadJwtException() {
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        JwtProperties differentProperties =
+                new JwtProperties(
+                        "different-secret-key-32-bytes-minimum-length-abcdef",
+                        TEST_ISSUER,
+                        TEST_DURATION);
+        JwtTokenService differentService = new JwtTokenService(differentProperties, clock);
+
+        String forgedToken =
+                differentService.generateAccessToken(
+                        userId, sessionId, 1, Set.of("ROLE_LEARNER"), TEST_DURATION);
+
+        assertThatThrownBy(() -> jwtTokenService.parseTokenVerifyingSignature(forgedToken))
+                .isInstanceOf(BadJwtException.class)
+                .hasMessageContaining("signature");
+
+        // Also test tampered signature portion
+        String validToken =
+                jwtTokenService.generateAccessToken(
+                        userId, sessionId, 1, Set.of("ROLE_LEARNER"), TEST_DURATION);
+        String tamperedToken = validToken.substring(0, validToken.length() - 5) + "abcde";
+
+        assertThatThrownBy(() -> jwtTokenService.parseTokenVerifyingSignature(tamperedToken))
+                .isInstanceOf(BadJwtException.class);
+    }
+
+    @Test
     @DisplayName("Throws BadJwtException when token string is malformed or blank")
     void parseAndValidateToken_malformedOrBlankToken_throwsBadJwtException() {
         assertThatThrownBy(() -> jwtTokenService.parseAndValidateToken("not-a-valid-jwt"))

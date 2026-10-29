@@ -11,4 +11,6 @@ public interface AuthenticationService {
     RefreshResult refresh(String rawRefreshToken);
 
     void logout(UUID sessionId);
+
+    void logout(String accessToken, String rawRefreshToken);
 }

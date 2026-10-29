@@ -94,6 +94,14 @@ public class JwtTokenService {
     }
 
     public JwtClaims parseAndValidateToken(String token) {
+        return parseAndValidateToken(token, true);
+    }
+
+    public JwtClaims parseTokenVerifyingSignature(String token) {
+        return parseAndValidateToken(token, false);
+    }
+
+    private JwtClaims parseAndValidateToken(String token, boolean validateExpiry) {
         if (token == null || token.isBlank()) {
             throw new BadJwtException("Token must not be null or blank");
         }
@@ -132,7 +140,7 @@ public class JwtTokenService {
             throw new BadJwtException("JWT expiration time (exp) is missing");
         }
         Instant expiresAt = exp.toInstant();
-        if (now.isAfter(expiresAt)) {
+        if (validateExpiry && now.isAfter(expiresAt)) {
             throw new BadJwtException("JWT has expired at " + expiresAt);
         }
 
