@@ -17,11 +17,11 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -169,14 +169,14 @@ public class RateLimiterServiceImpl implements RateLimiterService {
                 .findByScopeAndSubjectHash(scope, subjectHash)
                 .orElseGet(
                         () -> {
-                            try {
-                                return rateLimitRepository.saveAndFlush(
-                                        new AuthRateLimit(scope, subjectHash));
-                            } catch (DataIntegrityViolationException e) {
-                                return rateLimitRepository
-                                        .findByScopeAndSubjectHash(scope, subjectHash)
-                                        .orElseThrow(() -> e);
-                            }
+                            rateLimitRepository.insertIfNotExists(
+                                    UUID.randomUUID(), scope, subjectHash, clock.instant());
+                            return rateLimitRepository
+                                    .findByScopeAndSubjectHash(scope, subjectHash)
+                                    .orElseThrow(
+                                            () ->
+                                                    new IllegalStateException(
+                                                            "Failed to get or create rate limit"));
                         });
     }
 

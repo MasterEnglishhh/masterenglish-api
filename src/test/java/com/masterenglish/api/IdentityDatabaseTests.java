@@ -302,6 +302,88 @@ class IdentityDatabaseTests {
         assertThat(count).isEqualTo(1);
     }
 
+    @Test
+    void insertIfNotExistsDoesNotThrowOnConflict() {
+        String scope = "LOGIN_IP";
+        String subjectHash = "b".repeat(64);
+        Instant now = Instant.now();
+
+        rateLimits.insertIfNotExists(UUID.randomUUID(), scope, subjectHash, now);
+        // Second call with different UUID and same scope/subjectHash should not throw or fail
+        rateLimits.insertIfNotExists(UUID.randomUUID(), scope, subjectHash, now);
+
+        AuthRateLimit loaded =
+                rateLimits.findByScopeAndSubjectHash(scope, subjectHash).orElseThrow();
+        assertThat(loaded.getScope()).isEqualTo(scope);
+        assertThat(loaded.getSubjectHash()).isEqualTo(subjectHash);
+    }
+
+    @Test
+    void userNameTrimmingAndBlankNormalization() {
+        User user = new User("blank-name@example.com", "test-hash", "   ", "   ");
+        assertThat(user.getFirstName()).isNull();
+        assertThat(user.getLastName()).isNull();
+
+        user.updateProfile("  John  ", "   ", null, null);
+        assertThat(user.getFirstName()).isEqualTo("John");
+        assertThat(user.getLastName()).isNull();
+
+        user.updateProfile("   ", "  Doe  ", null, null);
+        assertThat(user.getFirstName()).isNull();
+        assertThat(user.getLastName()).isEqualTo("Doe");
+
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        User loaded = users.findById(user.getId()).orElseThrow();
+        assertThat(loaded.getFirstName()).isNull();
+        assertThat(loaded.getLastName()).isEqualTo("Doe");
+    }
+
+    @Test
+    void userStatusTransitionsAlignConstraints() {
+        User user = new User("status-flow@example.com", "test-hash", "Status", "Tester");
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+
+        // LOCKED via changeStatus must throw IllegalArgumentException
+        assertThatThrownBy(() -> user.changeStatus(UserStatus.LOCKED))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Use lock(Instant until) to lock an account.");
+
+        // Lock properly
+        Instant lockUntil = Instant.now().plus(Duration.ofDays(1));
+        user.lock(lockUntil);
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        User lockedUser = users.findById(user.getId()).orElseThrow();
+        assertThat(lockedUser.getStatus()).isEqualTo(UserStatus.LOCKED);
+        assertThat(lockedUser.getLockedUntil()).isNotNull();
+
+        // Transition to ACTIVE sets emailVerifiedAt and clears lockedUntil
+        lockedUser.changeStatus(UserStatus.ACTIVE);
+        assertThat(lockedUser.getEmailVerifiedAt()).isNotNull();
+        assertThat(lockedUser.getLockedUntil()).isNull();
+        users.saveAndFlush(lockedUser);
+        entityManager.clear();
+
+        // Transition to PENDING_VERIFICATION clears emailVerifiedAt and lockedUntil
+        User activeUser = users.findById(user.getId()).orElseThrow();
+        activeUser.changeStatus(UserStatus.PENDING_VERIFICATION);
+        assertThat(activeUser.getEmailVerifiedAt()).isNull();
+        assertThat(activeUser.getLockedUntil()).isNull();
+        users.saveAndFlush(activeUser);
+        entityManager.clear();
+
+        // Transition to DISABLED clears lockedUntil
+        User pendingUser = users.findById(user.getId()).orElseThrow();
+        pendingUser.changeStatus(UserStatus.DISABLED);
+        assertThat(pendingUser.getLockedUntil()).isNull();
+        users.saveAndFlush(pendingUser);
+    }
+
     private UUID insertUser(String email) {
         UUID id = UUID.randomUUID();
         jdbc.update(

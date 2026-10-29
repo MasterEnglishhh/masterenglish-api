@@ -28,6 +28,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     public static final int MAX_ACTIVE_SESSIONS = 5;
     public static final Duration SESSION_DURATION = Duration.ofDays(7);
     public static final Duration ACCESS_TOKEN_DURATION = Duration.ofMinutes(15);
+    public static final Duration ROTATION_GRACE_PERIOD = Duration.ofSeconds(15);
 
     private final AuthSessionRepository authSessionRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -127,17 +128,24 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         session = authSessionRepository.findByIdForUpdate(session.getId()).orElse(session);
 
         if (oldToken.getRevokedAt() != null) {
-            if (session.getRevokedAt() == null) {
-                session.revoke(RevokeReason.SECURITY, now);
-                authSessionRepository.save(session);
+            boolean withinGracePeriod =
+                    oldToken.getRevokedAt() != null
+                            && Duration.between(oldToken.getRevokedAt(), now)
+                                            .compareTo(ROTATION_GRACE_PERIOD)
+                                    <= 0;
+            if (!withinGracePeriod) {
+                if (session.getRevokedAt() == null) {
+                    session.revoke(RevokeReason.SECURITY, now);
+                    authSessionRepository.save(session);
+                }
+                refreshTokenRepository
+                        .findBySessionIdAndRevokedAtIsNull(session.getId())
+                        .ifPresent(
+                                activeToken -> {
+                                    activeToken.revoke(now);
+                                    refreshTokenRepository.save(activeToken);
+                                });
             }
-            refreshTokenRepository
-                    .findBySessionIdAndRevokedAtIsNull(session.getId())
-                    .ifPresent(
-                            activeToken -> {
-                                activeToken.revoke(now);
-                                refreshTokenRepository.save(activeToken);
-                            });
             throw new BusinessException(
                     ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
         }

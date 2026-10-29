@@ -82,8 +82,8 @@ public class User extends BaseEntity {
     public User(String email, String passwordHash, String firstName, String lastName) {
         this.email = Objects.requireNonNull(email).strip().toLowerCase(Locale.ROOT);
         this.passwordHash = Objects.requireNonNull(passwordHash);
-        this.firstName = firstName != null ? firstName.strip() : null;
-        this.lastName = lastName != null ? lastName.strip() : null;
+        this.firstName = normalizeName(firstName);
+        this.lastName = normalizeName(lastName);
     }
 
     public User(String email, String passwordHash, String displayName) {
@@ -93,11 +93,11 @@ public class User extends BaseEntity {
         String stripped = displayName.strip();
         int spaceIndex = stripped.lastIndexOf(' ');
         if (spaceIndex > 0) {
-            this.lastName = stripped.substring(0, spaceIndex).strip();
-            this.firstName = stripped.substring(spaceIndex + 1).strip();
+            this.lastName = normalizeName(stripped.substring(0, spaceIndex));
+            this.firstName = normalizeName(stripped.substring(spaceIndex + 1));
         } else {
-            this.firstName = stripped;
-            this.lastName = stripped;
+            this.firstName = normalizeName(stripped);
+            this.lastName = normalizeName(stripped);
         }
     }
 
@@ -119,8 +119,8 @@ public class User extends BaseEntity {
     }
 
     public void updateProfile(String firstName, String lastName, String phone, UUID avatarMediaId) {
-        this.firstName = firstName != null ? firstName.strip() : null;
-        this.lastName = lastName != null ? lastName.strip() : null;
+        this.firstName = normalizeName(firstName);
+        this.lastName = normalizeName(lastName);
         this.phone = phone == null || phone.isBlank() ? null : phone.strip();
         this.avatarMediaId = avatarMediaId;
     }
@@ -130,11 +130,11 @@ public class User extends BaseEntity {
         String stripped = displayName.strip();
         int spaceIndex = stripped.lastIndexOf(' ');
         if (spaceIndex > 0) {
-            this.lastName = stripped.substring(0, spaceIndex).strip();
-            this.firstName = stripped.substring(spaceIndex + 1).strip();
+            this.lastName = normalizeName(stripped.substring(0, spaceIndex));
+            this.firstName = normalizeName(stripped.substring(spaceIndex + 1));
         } else {
-            this.firstName = stripped;
-            this.lastName = stripped;
+            this.firstName = normalizeName(stripped);
+            this.lastName = normalizeName(stripped);
         }
         this.phone = phone == null || phone.isBlank() ? null : phone.strip();
         this.avatarMediaId = avatarMediaId;
@@ -188,18 +188,28 @@ public class User extends BaseEntity {
 
     public void changeStatus(UserStatus status) {
         UserStatus next = Objects.requireNonNull(status);
+        if (next == UserStatus.LOCKED) {
+            throw new IllegalArgumentException("Use lock(Instant until) to lock an account.");
+        }
         if (this.status != next) {
             this.status = next;
-            if (next == UserStatus.ACTIVE) {
+            if (next == UserStatus.PENDING_VERIFICATION) {
+                this.emailVerifiedAt = null;
+                this.lockedUntil = null;
+            } else if (next == UserStatus.ACTIVE) {
                 if (this.emailVerifiedAt == null) {
                     this.emailVerifiedAt = Instant.now();
                 }
                 this.lockedUntil = null;
-            } else if (next != UserStatus.LOCKED) {
+            } else if (next == UserStatus.DISABLED) {
                 this.lockedUntil = null;
             }
             invalidateAuthentication();
         }
+    }
+
+    private static String normalizeName(String str) {
+        return (str != null && !str.isBlank()) ? str.strip() : null;
     }
 
     public void changePassword(String encodedPassword) {

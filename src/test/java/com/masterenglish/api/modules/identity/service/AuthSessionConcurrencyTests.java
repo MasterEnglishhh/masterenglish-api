@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -129,7 +128,6 @@ class AuthSessionConcurrencyTests {
         executor.shutdown();
 
         // Exactly one rotation should succeed, and one should fail due to reuse detection
-        // or both could fail if reuse was triggered immediately.
         // Crucially: no deadlock, and any exception must be UNAUTHENTICATED BusinessException.
         for (Throwable t : exceptions) {
             assertThat(t).isInstanceOf(BusinessException.class);
@@ -137,22 +135,23 @@ class AuthSessionConcurrencyTests {
             assertThat(be.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED);
         }
 
-        // At most 1 thread succeeded
-        assertThat(successes.size()).isLessThanOrEqualTo(1);
+        // Exactly 1 thread succeeded
+        assertThat(successes).hasSize(1);
 
-        // Verify database state: no constraint violations, unrevoked tokens <= 1
+        // Verify database state: session remains active and exactly 1 token unrevoked
         List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
         assertThat(sessions).hasSize(1);
-        UUID sessionId = sessions.get(0).getId();
+        AuthSession session = sessions.get(0);
+        assertThat(session.getRevokedAt()).isNull();
 
         // Database constraint uq_refresh_tokens_one_unrevoked must be satisfied
         long unrevokedCount =
                 refreshTokenRepository.findAll().stream()
                         .filter(
                                 rt ->
-                                        rt.getSession().getId().equals(sessionId)
+                                        rt.getSession().getId().equals(session.getId())
                                                 && rt.getRevokedAt() == null)
                         .count();
-        assertThat(unrevokedCount).isLessThanOrEqualTo(1);
+        assertThat(unrevokedCount).isEqualTo(1);
     }
 }

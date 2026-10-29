@@ -192,8 +192,9 @@ class AuthSessionServiceTests {
     }
 
     @Test
-    @DisplayName("rotateRefreshToken with already revoked token throws UNAUTHENTICATED")
-    void rotateRefreshToken_revokedToken_throwsUnauthenticated() {
+    @DisplayName(
+            "rotateRefreshToken with token revoked within grace period throws UNAUTHENTICATED but keeps session active")
+    void rotateRefreshToken_revokedTokenWithinGracePeriod_doesNotRevokeSession() {
         LoginResult loginResult =
                 authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
         String oldRawToken = loginResult.rawRefreshToken();
@@ -202,7 +203,55 @@ class AuthSessionServiceTests {
         RefreshResult refreshResult = authSessionService.rotateRefreshToken(oldRawToken);
         String replacementHash = jwtTokenService.hashToken(refreshResult.rawRefreshToken());
 
-        // Rotate again with the same (now revoked) token -> reuse detected
+        // Rotate again with the same (now revoked) token within grace period
+        assertThatThrownBy(() -> authSessionService.rotateRefreshToken(oldRawToken))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex -> {
+                            BusinessException be = (BusinessException) ex;
+                            assertThat(be.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED);
+                            assertThat(be.getMessage())
+                                    .isEqualTo("Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+                        });
+
+        // Verify session remains ACTIVE (not revoked)
+        List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
+        assertThat(sessions).hasSize(1);
+        AuthSession session = sessions.get(0);
+        assertThat(session.getRevokedAt()).isNull();
+
+        // Verify active replacement token remains ACTIVE
+        RefreshToken replacementToken =
+                refreshTokenRepository.findByTokenHash(replacementHash).orElseThrow();
+        assertThat(replacementToken.getRevokedAt()).isNull();
+        assertThat(refreshTokenRepository.findBySessionIdAndRevokedAtIsNull(session.getId()))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName(
+            "rotateRefreshToken with token revoked outside grace period revokes session and replacement token")
+    void rotateRefreshToken_revokedTokenOutsideGracePeriod_revokesSessionAndTokens() {
+        LoginResult loginResult =
+                authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
+        String oldRawToken = loginResult.rawRefreshToken();
+
+        // Rotate once (oldRawToken becomes revoked, replacement token active)
+        RefreshResult refreshResult = authSessionService.rotateRefreshToken(oldRawToken);
+        String replacementHash = jwtTokenService.hashToken(refreshResult.rawRefreshToken());
+        String oldTokenHash = jwtTokenService.hashToken(oldRawToken);
+
+        // Simulate token was revoked 30 seconds ago (outside 15s grace period)
+        entityManager
+                .createQuery(
+                        "UPDATE RefreshToken r SET r.revokedAt = :revokedAt WHERE r.tokenHash = :tokenHash")
+                .setParameter("revokedAt", Instant.now().minus(Duration.ofSeconds(30)))
+                .setParameter("tokenHash", oldTokenHash)
+                .executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
+
+        // Rotate again outside grace period -> reuse / security attack detected
         assertThatThrownBy(() -> authSessionService.rotateRefreshToken(oldRawToken))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(
