@@ -10,6 +10,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    @Override
+    @EntityGraph(attributePaths = {"userRoles", "userRoles.role"})
+    Optional<User> findById(UUID id);
+
     @EntityGraph(attributePaths = {"userRoles", "userRoles.role"})
     @Query("select u from User u where lower(u.email) = lower(:email)")
     Optional<User> findForAuthenticationByEmail(@Param("email") String email);

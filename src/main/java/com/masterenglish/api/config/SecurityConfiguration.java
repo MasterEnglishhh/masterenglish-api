@@ -1,9 +1,13 @@
 package com.masterenglish.api.config;
 
 import com.masterenglish.api.common.security.SecurityProblemHandler;
+import com.masterenglish.api.modules.identity.security.JwtAuthenticationFilter;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,6 +17,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -28,8 +33,16 @@ public class SecurityConfiguration {
             HttpSecurity http,
             SecurityProblemHandler problemHandler,
             CookieCsrfTokenRepository csrfTokenRepository,
-            UrlBasedCorsConfigurationSource corsConfigurationSource)
+            UrlBasedCorsConfigurationSource corsConfigurationSource,
+            ObjectProvider<JwtAuthenticationFilter> jwtAuthenticationFilterProvider)
             throws Exception {
+
+        JwtAuthenticationFilter jwtAuthenticationFilter =
+                jwtAuthenticationFilterProvider.getIfAvailable();
+        if (jwtAuthenticationFilter != null) {
+            http.addFilterBefore(
+                    jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        }
 
         http.formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -56,10 +69,26 @@ public class SecurityConfiguration {
                                         .permitAll()
                                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf")
                                         .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.POST,
+                                                "/api/v1/auth/login",
+                                                "/api/v1/auth/refresh",
+                                                "/api/v1/auth/logout")
+                                        .permitAll()
                                         .anyRequest()
                                         .authenticated());
 
         return http.build();
+    }
+
+    @Bean
+    @ConditionalOnBean(JwtAuthenticationFilter.class)
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration(
+            JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration =
+                new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean
