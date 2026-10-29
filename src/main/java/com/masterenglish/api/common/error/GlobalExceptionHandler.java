@@ -57,6 +57,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                 List.of()));
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<Object> handleRateLimit(
+            RateLimitExceededException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
+                .body(
+                        problem(
+                                HttpStatus.TOO_MANY_REQUESTS,
+                                ErrorCode.RATE_LIMITED,
+                                exception.getMessage(),
+                                request,
+                                List.of()));
+    }
+
     @ExceptionHandler(BusinessException.class)
     ResponseEntity<Object> handleBusiness(BusinessException exception, HttpServletRequest request) {
         return ResponseEntity.status(exception.getErrorCode().getHttpStatus())
