@@ -36,7 +36,7 @@ public class User extends BaseEntity {
     private String email;
 
     @JsonIgnore
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
     @Column(name = "first_name", length = 30)

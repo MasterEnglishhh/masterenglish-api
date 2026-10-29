@@ -39,7 +39,8 @@ class ProposedDatabaseSchemaTests {
                                 """
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema='public' AND table_type='BASE TABLE'
-                  AND table_name NOT IN ('flyway_schema_history', 'auth_rate_limits', 'auth_rate_limit_events')
+                  -- Keep this historical proposal count independent of newer Identity migrations.
+                  AND table_name NOT IN ('flyway_schema_history', 'auth_rate_limits', 'auth_rate_limit_events', 'otp_challenges', 'registration_requests', 'password_reset_grants')
                 """,
                                 Integer.class))
                 .isEqualTo(44);

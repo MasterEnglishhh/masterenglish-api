@@ -72,6 +72,10 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// Explicit test-only keys; bootRun/production must supply their own environment.
+	environment 'JWT_SECRET', 'test-only-jwt-signing-secret-at-least-32-bytes-long'
+	environment 'OTP_HMAC_SECRET', 'test-only-otp-hmac-secret-at-least-32-bytes-long'
+	environment 'RATE_LIMIT_SECRET', 'test-only-rate-limit-secret-at-least-32-bytes-long'
 	systemProperty 'user.timezone', 'UTC'
 }
 

@@ -74,8 +74,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             user = userOpt.get();
             boolean passwordMatches =
                     password != null
+                            && user.getPasswordHash() != null
                             && !password.isBlank()
-                            && passwordEncoder.matches(password, user.getPasswordHash());
+                            && passwordEncoder.matches(
+                                    java.text.Normalizer.normalize(
+                                            password, java.text.Normalizer.Form.NFC),
+                                    user.getPasswordHash());
             boolean active = user.isActive();
             boolean emailVerified = user.getEmailVerifiedAt() != null;
             boolean notLocked = user.getStatus() != UserStatus.LOCKED;

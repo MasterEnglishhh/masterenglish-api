@@ -34,9 +34,13 @@ CSRF bootstrap: `http://127.0.0.1:8080/api/v1/auth/csrf`.
 cookie CSRF, header và luồng gọi qua proxy Next.js. Frontend tiếp tục dùng
 `BACKEND_URL=http://127.0.0.1:8080` trong môi trường riêng của frontend.
 
-CSRF đã hoạt động; các endpoint nghiệp vụ còn lại yêu cầu xác thực. Cơ chế phát/
-kiểm JWT, đăng nhập và thu hồi phiên sẽ triển khai trong Identity; CSRF token
-không phải access token.
+Đăng nhập, profile, refresh/logout, đăng ký kèm OTP và quên mật khẩu qua OTP đã được triển khai.
+[REGISTRATION_SETUP.md](docs/REGISTRATION_SETUP.md) hướng dẫn `.env`, khóa JWT/OTP,
+hộp thư thử local và SMTP thật. JWT secret không còn giá trị mặc định; phải cấp
+khóa riêng qua môi trường. CSRF token không phải access token.
+
+[PASSWORD_RESET_SETUP.md](docs/PASSWORD_RESET_SETUP.md) mô tả ba bước OTP → quyền reset
+ngắn hạn → mật khẩu mới, các hạn mức và việc thu hồi toàn bộ phiên sau reset.
 
 ## Kiểm thử và đóng gói
 
