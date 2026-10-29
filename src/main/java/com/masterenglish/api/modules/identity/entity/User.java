@@ -97,7 +97,7 @@ public class User extends BaseEntity {
             this.firstName = stripped.substring(spaceIndex + 1).strip();
         } else {
             this.firstName = stripped;
-            this.lastName = null;
+            this.lastName = stripped;
         }
     }
 
@@ -134,7 +134,7 @@ public class User extends BaseEntity {
             this.firstName = stripped.substring(spaceIndex + 1).strip();
         } else {
             this.firstName = stripped;
-            this.lastName = null;
+            this.lastName = stripped;
         }
         this.phone = phone == null || phone.isBlank() ? null : phone.strip();
         this.avatarMediaId = avatarMediaId;
@@ -190,8 +190,13 @@ public class User extends BaseEntity {
         UserStatus next = Objects.requireNonNull(status);
         if (this.status != next) {
             this.status = next;
-            if (next == UserStatus.ACTIVE && this.emailVerifiedAt == null) {
-                this.emailVerifiedAt = Instant.now();
+            if (next == UserStatus.ACTIVE) {
+                if (this.emailVerifiedAt == null) {
+                    this.emailVerifiedAt = Instant.now();
+                }
+                this.lockedUntil = null;
+            } else if (next != UserStatus.LOCKED) {
+                this.lockedUntil = null;
             }
             invalidateAuthentication();
         }

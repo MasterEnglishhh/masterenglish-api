@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
     @Query(
-            "SELECT r FROM RefreshToken r JOIN FETCH r.session s JOIN FETCH s.user WHERE r.tokenHash = :tokenHash")
+            "SELECT r FROM RefreshToken r JOIN FETCH r.session s JOIN FETCH s.user u LEFT JOIN FETCH u.userRoles ur LEFT JOIN FETCH ur.role WHERE r.tokenHash = :tokenHash")
     Optional<RefreshToken> findByTokenHashWithSessionAndUser(@Param("tokenHash") String tokenHash);
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);

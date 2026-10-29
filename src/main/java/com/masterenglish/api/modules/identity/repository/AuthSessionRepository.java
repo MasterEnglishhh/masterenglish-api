@@ -21,7 +21,7 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
             @Param("userId") UUID userId, @Param("now") Instant now);
 
     @Query(
-            "SELECT s FROM AuthSession s JOIN FETCH s.user WHERE s.id = :id AND s.revokedAt IS NULL AND s.expiresAt > :now")
+            "SELECT s FROM AuthSession s JOIN FETCH s.user u LEFT JOIN FETCH u.userRoles ur LEFT JOIN FETCH ur.role WHERE s.id = :id AND s.revokedAt IS NULL AND s.expiresAt > :now")
     Optional<AuthSession> findActiveSessionWithUser(
             @Param("id") UUID id, @Param("now") Instant now);
 
