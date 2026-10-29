@@ -48,11 +48,16 @@ public class RefreshToken {
     private Instant lastUsedAt;
 
     public RefreshToken(AuthSession session, String tokenHash, Instant expiresAt) {
+        this(session, tokenHash, expiresAt, Instant.now());
+    }
+
+    public RefreshToken(
+            AuthSession session, String tokenHash, Instant expiresAt, Instant issuedAt) {
         this.id = UUID.randomUUID();
         this.session = Objects.requireNonNull(session);
         this.tokenHash = Objects.requireNonNull(tokenHash);
         this.expiresAt = Objects.requireNonNull(expiresAt);
-        this.issuedAt = Instant.now();
+        this.issuedAt = issuedAt != null ? issuedAt : Instant.now();
     }
 
     @PrePersist
@@ -66,7 +71,11 @@ public class RefreshToken {
     }
 
     public void revoke(UUID replacedById) {
-        this.revokedAt = Instant.now();
+        revoke(replacedById, Instant.now());
+    }
+
+    public void revoke(UUID replacedById, Instant revokedAt) {
+        this.revokedAt = revokedAt != null ? revokedAt : Instant.now();
         this.replacedById = replacedById;
     }
 

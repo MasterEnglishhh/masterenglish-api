@@ -56,12 +56,17 @@ public class AuthSession {
     private RevokeReason revokeReason;
 
     public AuthSession(User user, String ipAddress, String userAgent, Instant expiresAt) {
+        this(user, ipAddress, userAgent, expiresAt, Instant.now());
+    }
+
+    public AuthSession(
+            User user, String ipAddress, String userAgent, Instant expiresAt, Instant createdAt) {
         this.id = UUID.randomUUID();
         this.user = Objects.requireNonNull(user);
         this.ipAddress = ipAddress;
         this.userAgent = userAgent;
         this.expiresAt = Objects.requireNonNull(expiresAt);
-        this.createdAt = Instant.now();
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
     }
 
     @PrePersist
@@ -75,7 +80,11 @@ public class AuthSession {
     }
 
     public void revoke(RevokeReason reason) {
-        this.revokedAt = Instant.now();
+        revoke(reason, Instant.now());
+    }
+
+    public void revoke(RevokeReason reason, Instant revokedAt) {
+        this.revokedAt = revokedAt != null ? revokedAt : Instant.now();
         this.revokeReason = Objects.requireNonNull(reason);
     }
 
