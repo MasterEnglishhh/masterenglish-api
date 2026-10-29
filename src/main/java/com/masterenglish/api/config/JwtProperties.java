@@ -7,14 +7,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("app.security.jwt")
 public record JwtProperties(String secret, String issuer, Duration accessTokenDuration) {
 
-    public static final String DEFAULT_SECRET =
-            "masterenglish-test-secret-key-32-bytes-minimum-length-123456";
     public static final String DEFAULT_ISSUER = "masterenglish-api";
     public static final Duration DEFAULT_ACCESS_TOKEN_DURATION = Duration.ofMinutes(15);
 
     public JwtProperties {
         if (secret == null || secret.isBlank()) {
-            secret = DEFAULT_SECRET;
+            throw new IllegalArgumentException(
+                    "Set JWT_SECRET in the backend environment; no signing key is bundled with the application.");
         }
         if (issuer == null || issuer.isBlank()) {
             issuer = DEFAULT_ISSUER;
@@ -30,7 +29,8 @@ public record JwtProperties(String secret, String issuer, Duration accessTokenDu
         }
     }
 
-    public JwtProperties() {
-        this(DEFAULT_SECRET, DEFAULT_ISSUER, DEFAULT_ACCESS_TOKEN_DURATION);
+    @Override
+    public String toString() {
+        return "JwtProperties[secret redacted, issuer=" + issuer + "]";
     }
 }
