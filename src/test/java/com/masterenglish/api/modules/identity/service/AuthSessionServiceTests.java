@@ -333,12 +333,11 @@ class AuthSessionServiceTests {
         LoginResult loginResult =
                 authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
 
-        // Manually expire the session and token in DB while respecting ck_auth_sessions_expiry
-        // (expires_at > created_at)
+        // Keep the expired session within the maximum 7-day lifetime enforced by the DB.
         List<AuthSession> sessions = authSessionRepository.findByUserId(testUser.getId());
         AuthSession session = sessions.get(0);
         Instant eightDaysAgo = Instant.now().minus(Duration.ofDays(8));
-        Instant oneDayAgo = Instant.now().minus(Duration.ofDays(1));
+        Instant oneDayAgo = eightDaysAgo.plus(Duration.ofDays(7));
         entityManager
                 .createQuery(
                         "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired WHERE s.id = :id")
