@@ -42,7 +42,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
     private final AuthRateLimitRepository rateLimitRepository;
     private final AuthRateLimitEventRepository eventRepository;
     private final Clock clock;
-    private final String hmacSecret;
+    private final SecretKeySpec secretKeySpec;
 
     @Autowired
     public RateLimiterServiceImpl(
@@ -54,10 +54,12 @@ public class RateLimiterServiceImpl implements RateLimiterService {
         this.rateLimitRepository = Objects.requireNonNull(rateLimitRepository);
         this.eventRepository = Objects.requireNonNull(eventRepository);
         this.clock = Objects.requireNonNull(clock);
-        this.hmacSecret =
+        String secret =
                 (rateLimitSecret != null && !rateLimitSecret.isBlank())
                         ? rateLimitSecret
                         : Objects.requireNonNull(jwtProperties).secret();
+        this.secretKeySpec =
+                new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
     }
 
     public RateLimiterServiceImpl(
@@ -78,7 +80,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
             String emailHash = computeHmacSha256(normalizeEmail(email));
             Optional<AuthRateLimit> emailLimit =
                     rateLimitRepository.findByScopeAndSubjectHash(SCOPE_LOGIN_EMAIL, emailHash);
-            if (emailLimit.isPresent() && emailLimit.get().isBlocked()) {
+            if (emailLimit.isPresent() && emailLimit.get().isBlocked(now)) {
                 long retryAfter =
                         Duration.between(now, emailLimit.get().getBlockedUntil()).toSeconds();
                 maxRetryAfterSeconds = Math.max(maxRetryAfterSeconds, Math.max(1, retryAfter));
@@ -89,7 +91,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
             String ipHash = computeHmacSha256(normalizeIp(clientIp));
             Optional<AuthRateLimit> ipLimit =
                     rateLimitRepository.findByScopeAndSubjectHash(SCOPE_LOGIN_IP, ipHash);
-            if (ipLimit.isPresent() && ipLimit.get().isBlocked()) {
+            if (ipLimit.isPresent() && ipLimit.get().isBlocked(now)) {
                 long retryAfter =
                         Duration.between(now, ipLimit.get().getBlockedUntil()).toSeconds();
                 maxRetryAfterSeconds = Math.max(maxRetryAfterSeconds, Math.max(1, retryAfter));
@@ -181,9 +183,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
     private String computeHmacSha256(String data) {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            SecretKeySpec secretKey =
-                    new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
-            mac.init(secretKey);
+            mac.init(secretKeySpec);
             byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {

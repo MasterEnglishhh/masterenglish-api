@@ -31,15 +31,25 @@ import org.springframework.stereotype.Service;
 @Service
 public class JwtTokenService {
 
+    public static final Duration MAX_ACCESS_TOKEN_DURATION = Duration.ofMinutes(15);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final JwtProperties jwtProperties;
     private final Clock clock;
+    private final JWSSigner signer;
+    private final JWSVerifier verifier;
 
     public JwtTokenService(JwtProperties jwtProperties, Clock clock) {
         this.jwtProperties =
                 Objects.requireNonNull(jwtProperties, "jwtProperties must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        byte[] secretBytes = jwtProperties.secret().getBytes(StandardCharsets.UTF_8);
+        try {
+            this.signer = new MACSigner(secretBytes);
+            this.verifier = new MACVerifier(secretBytes);
+        } catch (JOSEException e) {
+            throw new IllegalArgumentException("Invalid JWT secret for HMAC-SHA256", e);
+        }
     }
 
     public String generateAccessToken(
@@ -57,6 +67,9 @@ public class JwtTokenService {
                 (duration != null && !duration.isNegative() && !duration.isZero())
                         ? duration
                         : jwtProperties.accessTokenDuration();
+        if (effectiveDuration.compareTo(MAX_ACCESS_TOKEN_DURATION) > 0) {
+            effectiveDuration = MAX_ACCESS_TOKEN_DURATION;
+        }
         Instant expiresAt = now.plus(effectiveDuration);
 
         JWTClaimsSet claimsSet =
@@ -72,8 +85,6 @@ public class JwtTokenService {
 
         SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
         try {
-            JWSSigner signer =
-                    new MACSigner(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
             signedJWT.sign(signer);
         } catch (JOSEException e) {
             throw new IllegalStateException("Failed to sign JWT access token", e);
@@ -100,8 +111,6 @@ public class JwtTokenService {
         }
 
         try {
-            JWSVerifier verifier =
-                    new MACVerifier(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
             if (!signedJWT.verify(verifier)) {
                 throw new BadJwtException("Invalid JWT signature");
             }

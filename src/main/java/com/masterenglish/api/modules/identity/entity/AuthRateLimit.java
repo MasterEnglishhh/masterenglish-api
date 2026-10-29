@@ -67,8 +67,12 @@ public class AuthRateLimit {
         this.updatedAt = Instant.now();
     }
 
+    public boolean isBlocked(Instant now) {
+        return blockedUntil != null && blockedUntil.isAfter(now);
+    }
+
     public boolean isBlocked() {
-        return blockedUntil != null && blockedUntil.isAfter(Instant.now());
+        return isBlocked(Instant.now());
     }
 
     public void blockUntil(Instant until) {
