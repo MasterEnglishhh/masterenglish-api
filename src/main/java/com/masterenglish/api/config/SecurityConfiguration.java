@@ -20,7 +20,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(WebSecurityProperties.class)
+@EnableConfigurationProperties({WebSecurityProperties.class, JwtProperties.class})
 public class SecurityConfiguration {
 
     @Bean
