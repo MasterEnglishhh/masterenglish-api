@@ -131,9 +131,23 @@ class ErrorHandlingTests {
                 .andExpect(content().string(not(containsString("internal-row-secret"))));
     }
 
+    @Test
+    void rateLimitExceededReturnsTooManyRequestsWithRetryAfterHeader() throws Exception {
+        mvc.perform(get("/base-test/rate-limited"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(org.springframework.http.HttpHeaders.RETRY_AFTER, "900"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+                .andExpect(jsonPath("$.detail").value("Too many login attempts."));
+    }
+
     @Profile("base-unit-fixture")
     @RestController
     static class ProbeController {
+        @GetMapping("/base-test/rate-limited")
+        String rateLimited() {
+            throw new RateLimitExceededException(900, "Too many login attempts.");
+        }
+
         @GetMapping("/base-test/conflict")
         String conflict() {
             throw new OptimisticLockingFailureException("internal-row-secret");

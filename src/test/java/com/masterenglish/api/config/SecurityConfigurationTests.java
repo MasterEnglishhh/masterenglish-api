@@ -218,6 +218,31 @@ class SecurityConfigurationTests {
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"})
+    void authEndpointsArePermitAllWithoutAuthenticationWhenCsrfValid(String endpoint)
+            throws Exception {
+        CsrfBootstrap csrf = bootstrap();
+        // Since no controller is registered in this test fixture for /api/v1/auth/*,
+        // reaching 404 (Not Found) proves it passed Spring Security authorization (not 401
+        // Unauthenticated).
+        mvc.perform(
+                        post(endpoint)
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"})
+    void authEndpointsStillRequireCsrfProtection(String endpoint) throws Exception {
+        mvc.perform(post(endpoint).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
     @Test
     void allowedOriginPreflightRunsBeforeAuthentication() throws Exception {
         mvc.perform(

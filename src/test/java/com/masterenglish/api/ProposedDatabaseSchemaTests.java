@@ -39,7 +39,7 @@ class ProposedDatabaseSchemaTests {
                                 """
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema='public' AND table_type='BASE TABLE'
-                  AND table_name <> 'flyway_schema_history'
+                  AND table_name NOT IN ('flyway_schema_history', 'auth_rate_limits', 'auth_rate_limit_events')
                 """,
                                 Integer.class))
                 .isEqualTo(44);

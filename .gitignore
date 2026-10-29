@@ -42,3 +42,7 @@ out/
 !.env.example
 *.pem
 *.ppk
+
+### Scratch & Superpowers ###
+.superpowers/
+

@@ -3,7 +3,7 @@ package com.masterenglish.api.common.error;
 import java.util.Objects;
 
 /** The message must be safe to return to the client. */
-public final class BusinessException extends RuntimeException {
+public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
 

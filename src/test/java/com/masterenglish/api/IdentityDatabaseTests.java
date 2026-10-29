@@ -5,11 +5,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.security.RoleCode;
+import com.masterenglish.api.modules.identity.entity.AuthRateLimit;
+import com.masterenglish.api.modules.identity.entity.AuthRateLimitEvent;
+import com.masterenglish.api.modules.identity.entity.AuthSession;
+import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.entity.UserStatus;
+import com.masterenglish.api.modules.identity.repository.AuthRateLimitEventRepository;
+import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository;
+import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +37,9 @@ class IdentityDatabaseTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager entityManager;
     @Autowired UserRepository users;
+    @Autowired AuthSessionRepository authSessions;
+    @Autowired AuthRateLimitRepository rateLimits;
+    @Autowired AuthRateLimitEventRepository rateLimitEvents;
 
     @Test
     void mapsMultipleRolesAndLoadsThemForAuthentication() {
@@ -202,6 +215,173 @@ class IdentityDatabaseTests {
                 """,
                                         user))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void v3MigrationAddsFirstAndLastNameAndStatusPendingVerification() {
+        User user = new User("unverified@example.com", "test-password-hash", "Huy", "Trịnh Đăng");
+        assertThat(user.getStatus()).isEqualTo(UserStatus.PENDING_VERIFICATION);
+        assertThat(user.getFirstName()).isEqualTo("Huy");
+        assertThat(user.getLastName()).isEqualTo("Trịnh Đăng");
+        assertThat(user.getDisplayName()).isEqualTo("Trịnh Đăng Huy");
+        assertThat(user.getEmailVerifiedAt()).isNull();
+        assertThat(user.isActive()).isFalse();
+
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        User loaded = users.findById(user.getId()).orElseThrow();
+        assertThat(loaded.getFirstName()).isEqualTo("Huy");
+        assertThat(loaded.getLastName()).isEqualTo("Trịnh Đăng");
+        assertThat(loaded.getDisplayName()).isEqualTo("Trịnh Đăng Huy");
+        assertThat(loaded.getStatus()).isEqualTo(UserStatus.PENDING_VERIFICATION);
+        assertThat(loaded.getEmailVerifiedAt()).isNull();
+        assertThat(loaded.isActive()).isFalse();
+
+        loaded.markEmailVerified(Instant.now());
+        users.saveAndFlush(loaded);
+        entityManager.clear();
+
+        User activated = users.findById(user.getId()).orElseThrow();
+        assertThat(activated.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(activated.getEmailVerifiedAt()).isNotNull();
+        assertThat(activated.isActive()).isTrue();
+    }
+
+    @Test
+    void sessionLimitRevocationReasonCanBeSaved() {
+        User user = new User("session-limit@example.com", "test-hash", "User", "Test");
+        user.markEmailVerified(Instant.now());
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+
+        AuthSession session =
+                new AuthSession(
+                        user, "192.168.1.1", "Mozilla/5.0", Instant.now().plus(Duration.ofDays(7)));
+        authSessions.saveAndFlush(session);
+        entityManager.clear();
+
+        AuthSession loaded = authSessions.findById(session.getId()).orElseThrow();
+        assertThat(loaded.getRevokedAt()).isNull();
+        assertThat(loaded.getRevokeReason()).isNull();
+        assertThat(loaded.getIpAddress()).isEqualTo("192.168.1.1");
+
+        loaded.revoke(RevokeReason.SESSION_LIMIT);
+        authSessions.saveAndFlush(loaded);
+        entityManager.clear();
+
+        AuthSession revoked = authSessions.findById(session.getId()).orElseThrow();
+        assertThat(revoked.getRevokedAt()).isNotNull();
+        assertThat(revoked.getRevokeReason()).isEqualTo(RevokeReason.SESSION_LIMIT);
+    }
+
+    @Test
+    void authRateLimitsCanBePersistedAndQueriedByScopeAndHash() {
+        String scope = "LOGIN_FAILURE_EMAIL";
+        String subjectHash = "a".repeat(64);
+
+        AuthRateLimit rateLimit = new AuthRateLimit(scope, subjectHash);
+        rateLimit.blockUntil(Instant.now().plus(Duration.ofMinutes(15)));
+        rateLimits.saveAndFlush(rateLimit);
+
+        AuthRateLimitEvent event = new AuthRateLimitEvent(rateLimit);
+        rateLimitEvents.saveAndFlush(event);
+        entityManager.clear();
+
+        AuthRateLimit loaded =
+                rateLimits.findByScopeAndSubjectHash(scope, subjectHash).orElseThrow();
+        assertThat(loaded.getScope()).isEqualTo(scope);
+        assertThat(loaded.getSubjectHash()).isEqualTo(subjectHash);
+        assertThat(loaded.isBlocked()).isTrue();
+        assertThat(loaded.getBlockedUntil()).isNotNull();
+
+        long count =
+                rateLimitEvents.countByRateLimitIdAndOccurredAtAfter(
+                        loaded.getId(), Instant.now().minus(Duration.ofMinutes(15)));
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void insertIfNotExistsDoesNotThrowOnConflict() {
+        String scope = "LOGIN_IP";
+        String subjectHash = "b".repeat(64);
+        Instant now = Instant.now();
+
+        rateLimits.insertIfNotExists(UUID.randomUUID(), scope, subjectHash, now);
+        // Second call with different UUID and same scope/subjectHash should not throw or fail
+        rateLimits.insertIfNotExists(UUID.randomUUID(), scope, subjectHash, now);
+
+        AuthRateLimit loaded =
+                rateLimits.findByScopeAndSubjectHash(scope, subjectHash).orElseThrow();
+        assertThat(loaded.getScope()).isEqualTo(scope);
+        assertThat(loaded.getSubjectHash()).isEqualTo(subjectHash);
+    }
+
+    @Test
+    void userNameTrimmingAndBlankNormalization() {
+        User user = new User("blank-name@example.com", "test-hash", "   ", "   ");
+        assertThat(user.getFirstName()).isNull();
+        assertThat(user.getLastName()).isNull();
+
+        user.updateProfile("  John  ", "   ", null, null);
+        assertThat(user.getFirstName()).isEqualTo("John");
+        assertThat(user.getLastName()).isNull();
+
+        user.updateProfile("   ", "  Doe  ", null, null);
+        assertThat(user.getFirstName()).isNull();
+        assertThat(user.getLastName()).isEqualTo("Doe");
+
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        User loaded = users.findById(user.getId()).orElseThrow();
+        assertThat(loaded.getFirstName()).isNull();
+        assertThat(loaded.getLastName()).isEqualTo("Doe");
+    }
+
+    @Test
+    void userStatusTransitionsAlignConstraints() {
+        User user = new User("status-flow@example.com", "test-hash", "Status", "Tester");
+        user.addRole(entityManager.find(Role.class, (short) 1));
+        users.saveAndFlush(user);
+
+        // LOCKED via changeStatus must throw IllegalArgumentException
+        assertThatThrownBy(() -> user.changeStatus(UserStatus.LOCKED))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Use lock(Instant until) to lock an account.");
+
+        // Lock properly
+        Instant lockUntil = Instant.now().plus(Duration.ofDays(1));
+        user.lock(lockUntil);
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        User lockedUser = users.findById(user.getId()).orElseThrow();
+        assertThat(lockedUser.getStatus()).isEqualTo(UserStatus.LOCKED);
+        assertThat(lockedUser.getLockedUntil()).isNotNull();
+
+        // Transition to ACTIVE sets emailVerifiedAt and clears lockedUntil
+        lockedUser.changeStatus(UserStatus.ACTIVE);
+        assertThat(lockedUser.getEmailVerifiedAt()).isNotNull();
+        assertThat(lockedUser.getLockedUntil()).isNull();
+        users.saveAndFlush(lockedUser);
+        entityManager.clear();
+
+        // Transition to PENDING_VERIFICATION clears emailVerifiedAt and lockedUntil
+        User activeUser = users.findById(user.getId()).orElseThrow();
+        activeUser.changeStatus(UserStatus.PENDING_VERIFICATION);
+        assertThat(activeUser.getEmailVerifiedAt()).isNull();
+        assertThat(activeUser.getLockedUntil()).isNull();
+        users.saveAndFlush(activeUser);
+        entityManager.clear();
+
+        // Transition to DISABLED clears lockedUntil
+        User pendingUser = users.findById(user.getId()).orElseThrow();
+        pendingUser.changeStatus(UserStatus.DISABLED);
+        assertThat(pendingUser.getLockedUntil()).isNull();
+        users.saveAndFlush(pendingUser);
     }
 
     private UUID insertUser(String email) {
