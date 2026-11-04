@@ -1,10 +1,10 @@
 package com.masterenglish.api.modules.identity.controller;
 
-import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
-import com.masterenglish.api.modules.identity.dto.response.RegistrationChallengeResponse;
 import com.masterenglish.api.modules.identity.dto.request.RegisterRequest;
 import com.masterenglish.api.modules.identity.dto.request.RegistrationOtpRequest;
 import com.masterenglish.api.modules.identity.dto.request.ResendRegistrationOtpRequest;
+import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
+import com.masterenglish.api.modules.identity.dto.response.RegistrationChallengeResponse;
 import com.masterenglish.api.modules.identity.service.RegistrationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -18,36 +18,36 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth/register")
 public class RegistrationController {
-        private final RegistrationService service;
+    private final RegistrationService service;
 
-        public RegistrationController(RegistrationService service) {
-                this.service = service;
-        }
+    public RegistrationController(RegistrationService service) {
+        this.service = service;
+    }
 
-        @PostMapping
-        public ResponseEntity<RegistrationChallengeResponse> register(
-                        @Valid @RequestBody RegisterRequest input, HttpServletRequest request) {
-                return ResponseEntity.accepted()
-                                .cacheControl(CacheControl.noStore())
-                                .body(service.register(input, request.getRemoteAddr()));
-        }
+    @PostMapping
+    public ResponseEntity<RegistrationChallengeResponse> register(
+            @Valid @RequestBody RegisterRequest input, HttpServletRequest request) {
+        return ResponseEntity.accepted()
+                .cacheControl(CacheControl.noStore())
+                .body(service.register(input, request.getRemoteAddr()));
+    }
 
-        @PostMapping("/resend")
-        public ResponseEntity<RegistrationChallengeResponse> resend(
-                        @Valid @RequestBody ResendRegistrationOtpRequest input, HttpServletRequest request) {
-                return ResponseEntity.accepted()
-                                .cacheControl(CacheControl.noStore())
-                                .body(service.resend(input, request.getRemoteAddr()));
-        }
+    @PostMapping("/resend")
+    public ResponseEntity<RegistrationChallengeResponse> resend(
+            @Valid @RequestBody ResendRegistrationOtpRequest input, HttpServletRequest request) {
+        return ResponseEntity.accepted()
+                .cacheControl(CacheControl.noStore())
+                .body(service.resend(input, request.getRemoteAddr()));
+    }
 
-        @PostMapping("/verify")
-        public ResponseEntity<AuthMessageResponse> verify(
-                        @Valid @RequestBody RegistrationOtpRequest input, HttpServletRequest request) {
-                service.verify(input, request.getRemoteAddr());
-                return ResponseEntity.ok()
-                                .cacheControl(CacheControl.noStore())
-                                .body(
-                                                new AuthMessageResponse(
-                                                                "Tài khoản đã được xác minh. Vui lòng đăng nhập để bắt đầu."));
-        }
+    @PostMapping("/verify")
+    public ResponseEntity<AuthMessageResponse> verify(
+            @Valid @RequestBody RegistrationOtpRequest input, HttpServletRequest request) {
+        service.verify(input, request.getRemoteAddr());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(
+                        new AuthMessageResponse(
+                                "Tài khoản đã được xác minh. Vui lòng đăng nhập để bắt đầu."));
+    }
 }

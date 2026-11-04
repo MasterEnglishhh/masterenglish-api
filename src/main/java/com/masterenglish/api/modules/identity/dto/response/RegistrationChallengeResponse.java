@@ -4,5 +4,4 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record RegistrationChallengeResponse(
-                UUID registrationId, Instant expiresAt, long resendAfterSeconds, String message) {
-}
+        UUID registrationId, Instant expiresAt, long resendAfterSeconds, String message) {}

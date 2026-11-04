@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.identity.entity;
 
+import com.masterenglish.api.common.security.IpAddressNormalizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -63,7 +64,7 @@ public class AuthSession {
             User user, String ipAddress, String userAgent, Instant expiresAt, Instant createdAt) {
         this.id = UUID.randomUUID();
         this.user = Objects.requireNonNull(user);
-        this.ipAddress = (ipAddress != null && !ipAddress.isBlank()) ? ipAddress.strip() : null;
+        this.ipAddress = IpAddressNormalizer.normalize(ipAddress);
         this.userAgent = userAgent;
         this.expiresAt = Objects.requireNonNull(expiresAt);
         this.createdAt = createdAt != null ? createdAt : Instant.now();

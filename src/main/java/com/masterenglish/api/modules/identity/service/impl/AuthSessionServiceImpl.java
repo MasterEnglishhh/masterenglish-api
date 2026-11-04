@@ -52,9 +52,6 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         Objects.requireNonNull(user, "user must not be null");
         Instant now = clock.instant();
 
-        String normalizedClientIp =
-                (clientIp != null && !clientIp.isBlank()) ? clientIp.strip() : null;
-
         long activeCount = authSessionRepository.countActiveSessions(user.getId(), now);
         if (activeCount >= MAX_ACTIVE_SESSIONS) {
             List<AuthSession> oldestSessions =
@@ -75,8 +72,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         }
 
         Instant sessionExpiresAt = now.plus(SESSION_DURATION);
-        AuthSession session =
-                new AuthSession(user, normalizedClientIp, userAgent, sessionExpiresAt, now);
+        AuthSession session = new AuthSession(user, clientIp, userAgent, sessionExpiresAt, now);
         session = authSessionRepository.saveAndFlush(session);
 
         String rawRefreshToken = jwtTokenService.generateRawRefreshToken();

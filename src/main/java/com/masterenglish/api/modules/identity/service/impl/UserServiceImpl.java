@@ -14,20 +14,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
-        private final UserRepository userRepository;
+    private final UserRepository userRepository;
 
-        public UserServiceImpl(UserRepository userRepository) {
-                this.userRepository = Objects.requireNonNull(userRepository, "userRepository must not be null");
-        }
+    public UserServiceImpl(UserRepository userRepository) {
+        this.userRepository =
+                Objects.requireNonNull(userRepository, "userRepository must not be null");
+    }
 
-        @Override
-        public UserProfileResponse findProfileById(UUID id) {
-                Objects.requireNonNull(id, "id must not be null");
-                return userRepository
-                                .findById(id)
-                                .map(UserProfileResponse::from)
-                                .orElseThrow(
-                                                () -> new BusinessException(
-                                                                ErrorCode.RESOURCE_NOT_FOUND, "User not found"));
-        }
+    @Override
+    public UserProfileResponse findProfileById(UUID id) {
+        Objects.requireNonNull(id, "id must not be null");
+        return userRepository
+                .findById(id)
+                .map(UserProfileResponse::from)
+                .orElseThrow(
+                        () ->
+                                new BusinessException(
+                                        ErrorCode.RESOURCE_NOT_FOUND, "User not found"));
+    }
 }

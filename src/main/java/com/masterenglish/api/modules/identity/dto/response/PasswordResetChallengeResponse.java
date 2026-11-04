@@ -4,5 +4,4 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record PasswordResetChallengeResponse(
-                UUID challengeId, Instant expiresAt, long resendAfterSeconds, String message) {
-}
+        UUID challengeId, Instant expiresAt, long resendAfterSeconds, String message) {}

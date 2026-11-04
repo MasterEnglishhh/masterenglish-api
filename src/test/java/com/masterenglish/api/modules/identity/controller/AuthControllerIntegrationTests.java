@@ -92,6 +92,80 @@ class AuthControllerIntegrationTests {
         return userRepository.saveAndFlush(user);
     }
 
+    @Test
+    @DisplayName(
+            "Login persists a bracketed IPv6 proxy address as inet and issues a working session")
+    void login_bracketedIpv6ProxyAddress_persistsAndAuthenticates() throws Exception {
+        User user = createVerifiedUser("ipv6-login@example.test", CORRECT_PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+        var result =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .cookie(csrf.cookie())
+                                        .header(csrf.headerName(), csrf.token())
+                                        .header("X-Forwarded-For", "[2a06:98c0:3600::103]")
+                                        .with(
+                                                request -> {
+                                                    request.setRemoteAddr("[2a06:98c0:3600::103]");
+                                                    return request;
+                                                })
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                jsonMapper.writeValueAsString(
+                                                        Map.of(
+                                                                "email",
+                                                                user.getEmail(),
+                                                                "password",
+                                                                CORRECT_PASSWORD))))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        var sessions = authSessionRepository.findByUserId(user.getId());
+        assertThat(sessions).hasSize(1);
+        assertThat(sessions.getFirst().getIpAddress()).doesNotContain("[", "]");
+        String access = extractCookieValue(result.getResponse(), "access_token");
+        String refresh = extractCookieValue(result.getResponse(), "refresh_token");
+        assertThat(access).isNotBlank();
+        assertThat(refresh).isNotBlank();
+        mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", access)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(user.getId().toString()));
+        CsrfBootstrap rotationCsrf = bootstrapCsrf();
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .cookie(rotationCsrf.cookie(), new Cookie("refresh_token", refresh))
+                                .header(rotationCsrf.headerName(), rotationCsrf.token()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Invalid optional IP metadata does not abort a valid login")
+    void login_invalidIpMetadata_storesNullInsteadOfFailingWithSqlError() throws Exception {
+        User user = createVerifiedUser("invalid-ip-login@example.test", CORRECT_PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .header("X-Forwarded-For", "not-an-ip")
+                                .with(
+                                        request -> {
+                                            request.setRemoteAddr("not-an-ip");
+                                            return request;
+                                        })
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of(
+                                                        "email",
+                                                        user.getEmail(),
+                                                        "password",
+                                                        CORRECT_PASSWORD))))
+                .andExpect(status().isOk());
+        var sessions = authSessionRepository.findByUserId(user.getId());
+        assertThat(sessions).hasSize(1);
+        assertThat(sessions.getFirst().getIpAddress()).isNull();
+    }
+
     private CsrfBootstrap bootstrapCsrf() throws Exception {
         var response =
                 mockMvc.perform(get("/api/v1/auth/csrf"))
