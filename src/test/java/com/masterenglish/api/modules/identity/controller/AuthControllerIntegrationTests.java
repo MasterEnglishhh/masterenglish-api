@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.identity.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -19,6 +20,7 @@ import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
@@ -75,6 +77,7 @@ class AuthControllerIntegrationTests {
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
     @Autowired private JwtProperties jwtProperties;
+    @Autowired private JwtTokenService jwtTokenService;
     @Autowired private JdbcTemplate jdbc;
 
     private MockMvc mockMvc;
@@ -727,6 +730,118 @@ class AuthControllerIntegrationTests {
 
         AuthSession session = authSessionRepository.findById(sessionId).orElseThrow();
         assertThat(session.getRevokedAt()).isNull();
+    }
+
+    @Test
+    void sessionManagementListsOwnActiveDevicesAndRevokesOnlyTheSelectedOne() throws Exception {
+        User owner = createVerifiedUser("session-owner@example.test", CORRECT_PASSWORD);
+        User other = createVerifiedUser("other-owner@example.test", CORRECT_PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+        MockHttpServletResponse desktop = loginDevice(owner, "Desktop", csrf);
+        MockHttpServletResponse mobile = loginDevice(owner, "Mobile", csrf);
+        MockHttpServletResponse expired = loginDevice(owner, "Expired", csrf);
+        MockHttpServletResponse foreign = loginDevice(other, "Foreign", csrf);
+        Cookie access = desktop.getCookie("access_token");
+        UUID desktopId = sessionId(desktop);
+        UUID mobileId = sessionId(mobile);
+        UUID foreignId = sessionId(foreign);
+        jdbc.update(
+                """
+                UPDATE auth_sessions SET created_at = now() - interval '2 minutes',
+                    expires_at = now() - interval '1 minute' WHERE id = ?
+                """,
+                sessionId(expired));
+
+        mockMvc.perform(get("/api/v1/auth/sessions")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/sessions").cookie(access))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(mobileId.toString()))
+                .andExpect(jsonPath("$[0].userAgent").value("Mobile"))
+                .andExpect(jsonPath("$[0].current").value(false))
+                .andExpect(jsonPath("$[1].id").value(desktopId.toString()))
+                .andExpect(jsonPath("$[1].current").value(true));
+
+        mockMvc.perform(delete("/api/v1/auth/sessions/{id}", mobileId).cookie(access))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        delete("/api/v1/auth/sessions/{id}", foreignId)
+                                .cookie(access, csrf.cookie())
+                                .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/users/me").cookie(foreign.getCookie("access_token")))
+                .andExpect(status().isOk());
+        String mismatchedJwt =
+                jwtTokenService.generateAccessToken(
+                        owner.getId(), foreignId, owner.getAuthVersion(), owner.getRoleNames());
+        mockMvc.perform(
+                        get("/api/v1/auth/sessions")
+                                .cookie(new Cookie("access_token", mismatchedJwt)))
+                .andExpect(status().isUnauthorized());
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var revoked =
+                    mockMvc.perform(
+                                    delete("/api/v1/auth/sessions/{id}", mobileId)
+                                            .cookie(access, csrf.cookie())
+                                            .header(csrf.headerName(), csrf.token()))
+                            .andExpect(status().isNoContent())
+                            .andReturn()
+                            .getResponse();
+            assertThat(findSetCookieHeader(revoked, "access_token")).isNull();
+            assertThat(findSetCookieHeader(revoked, "refresh_token")).isNull();
+        }
+        mockMvc.perform(get("/api/v1/users/me").cookie(mobile.getCookie("access_token")))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .cookie(mobile.getCookie("refresh_token"), csrf.cookie())
+                                .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/sessions").cookie(access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(desktopId.toString()));
+
+        var response =
+                mockMvc.perform(
+                                delete("/api/v1/auth/sessions/{id}", desktopId)
+                                        .cookie(access, csrf.cookie())
+                                        .header(csrf.headerName(), csrf.token()))
+                        .andExpect(status().isNoContent())
+                        .andReturn()
+                        .getResponse();
+        assertThat(findSetCookieHeader(response, "access_token")).contains("Max-Age=0");
+        assertThat(findSetCookieHeader(response, "refresh_token")).contains("Max-Age=0");
+        mockMvc.perform(get("/api/v1/auth/sessions").cookie(access))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private MockHttpServletResponse loginDevice(User user, String userAgent, CsrfBootstrap csrf)
+            throws Exception {
+        return mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .header(HttpHeaders.USER_AGENT, userAgent)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of(
+                                                        "email",
+                                                        user.getEmail(),
+                                                        "password",
+                                                        CORRECT_PASSWORD))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse();
+    }
+
+    private UUID sessionId(MockHttpServletResponse login) {
+        return jwtTokenService
+                .parseAndValidateToken(login.getCookie("access_token").getValue())
+                .sessionId();
     }
 
     private record CsrfBootstrap(Cookie cookie, String headerName, String token) {}

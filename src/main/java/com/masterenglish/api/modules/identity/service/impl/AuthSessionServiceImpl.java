@@ -4,6 +4,7 @@ import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.dto.LoginResult;
 import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.modules.identity.dto.response.AuthSessionResponse;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
 import com.masterenglish.api.modules.identity.entity.RefreshToken;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
@@ -213,21 +214,39 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean isSessionActive(UUID sessionId, int userAuthVersion) {
-        if (sessionId == null) {
+    public List<AuthSessionResponse> listSessions(UUID userId, UUID currentSessionId) {
+        return authSessionRepository.findActiveSessionsNewestFirst(userId, clock.instant()).stream()
+                .map(session -> AuthSessionResponse.from(session, currentSessionId))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void revokeOwnedSession(UUID userId, UUID sessionId) {
+        AuthSession session =
+                authSessionRepository
+                        .findOwnedSessionForUpdate(sessionId, userId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Không tìm thấy phiên đăng nhập."));
+        revokeLockedSession(session, RevokeReason.LOGOUT, clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isSessionActive(UUID sessionId, UUID userId, int userAuthVersion) {
+        if (sessionId == null || userId == null) {
             return false;
         }
         Instant now = clock.instant();
         return authSessionRepository
-                .findActiveSessionWithUser(sessionId, now)
+                .findActiveSessionWithUser(sessionId, userId, now)
                 .map(
                         session -> {
                             User user = session.getUser();
-                            return user != null
-                                    && user.isActive()
-                                    && user.getEmailVerifiedAt() != null
-                                    && user.getStatus() != UserStatus.LOCKED
-                                    && user.getAuthVersion() == userAuthVersion;
+                            return user.isActive() && user.getAuthVersion() == userAuthVersion;
                         })
                 .orElse(false);
     }
