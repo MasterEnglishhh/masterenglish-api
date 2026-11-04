@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.config.JwtProperties;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
+import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.AuthRateLimitEventRepository;
@@ -40,6 +41,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
@@ -51,7 +53,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-@TestPropertySource(properties = {"app.security.cookie-secure=false"})
+@TestPropertySource(
+        properties = {
+            "app.security.cookie-secure=false",
+            "app.security.trusted-proxy-addresses=192.0.2.10,192.0.2.11"
+        })
 class AuthControllerIntegrationTests {
 
     @Autowired private WebApplicationContext context;
@@ -64,6 +70,7 @@ class AuthControllerIntegrationTests {
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
     @Autowired private JwtProperties jwtProperties;
+    @Autowired private JdbcTemplate jdbc;
 
     private MockMvc mockMvc;
 
@@ -103,10 +110,13 @@ class AuthControllerIntegrationTests {
                                 post("/api/v1/auth/login")
                                         .cookie(csrf.cookie())
                                         .header(csrf.headerName(), csrf.token())
-                                        .header("X-Forwarded-For", "[2a06:98c0:3600::103]")
+                                        .header(
+                                                "X-Forwarded-For",
+                                                "198.51.100.3, [2a06:98c0:3600::103]",
+                                                "192.0.2.11")
                                         .with(
                                                 request -> {
-                                                    request.setRemoteAddr("[2a06:98c0:3600::103]");
+                                                    request.setRemoteAddr("192.0.2.10");
                                                     return request;
                                                 })
                                         .contentType(MediaType.APPLICATION_JSON)
@@ -121,7 +131,7 @@ class AuthControllerIntegrationTests {
                         .andReturn();
         var sessions = authSessionRepository.findByUserId(user.getId());
         assertThat(sessions).hasSize(1);
-        assertThat(sessions.getFirst().getIpAddress()).doesNotContain("[", "]");
+        assertThat(sessions.getFirst().getIpAddress()).isEqualTo("2a06:98c0:3600::103");
         String access = extractCookieValue(result.getResponse(), "access_token");
         String refresh = extractCookieValue(result.getResponse(), "refresh_token");
         assertThat(access).isNotBlank();
@@ -224,6 +234,7 @@ class AuthControllerIntegrationTests {
                                 post("/api/v1/auth/login")
                                         .cookie(csrf.cookie())
                                         .header(csrf.headerName(), csrf.token())
+                                        .header("X-Forwarded-For", "198.51.100.3")
                                         .contentType(MediaType.APPLICATION_JSON)
                                         .content(requestBody))
                         .andExpect(status().isOk())
@@ -250,11 +261,14 @@ class AuthControllerIntegrationTests {
         assertThat(refreshCookie).contains("SameSite=Lax");
         assertThat(refreshCookie).contains("Path=/api/v1/auth");
         assertThat(refreshCookie).contains("Max-Age=604800");
+        assertThat(authSessionRepository.findByUserId(user.getId()).getFirst().getIpAddress())
+                .isEqualTo("127.0.0.1");
     }
 
     @Test
     @DisplayName(
-            "Test 3: Đăng nhập sai mật khẩu trả 401 ProblemDetail thông báo 'Email hoặc mật khẩu không chính xác'")
+            "Test 3: Đăng nhập sai mật khẩu trả 401 ProblemDetail thông báo 'Email hoặc mật khẩu"
+                    + " không chính xác'")
     void login_wrongPassword_returns401ProblemDetail() throws Exception {
         createVerifiedUser("learner@example.com", CORRECT_PASSWORD);
         CsrfBootstrap csrf = bootstrapCsrf();
@@ -304,7 +318,8 @@ class AuthControllerIntegrationTests {
 
     @Test
     @DisplayName(
-            "Test 4: Đăng nhập sai 5 lần liên tiếp trả 429 Too Many Requests kèm header Retry-After")
+            "Test 4: Đăng nhập sai 5 lần liên tiếp trả 429 Too Many Requests kèm header"
+                    + " Retry-After")
     void login_rateLimitExceeded_returns429WithRetryAfterHeader() throws Exception {
         createVerifiedUser("ratelimit@example.com", CORRECT_PASSWORD);
         CsrfBootstrap csrf = bootstrapCsrf();
@@ -415,9 +430,9 @@ class AuthControllerIntegrationTests {
     }
 
     @Test
-    @DisplayName("Test 7: Tái sử dụng refresh token cũ trả 401 và thu hồi phiên")
+    @DisplayName("Refresh lặp trong thời gian chờ giữ cookie; phát lại sau đó thu hồi phiên")
     void refresh_reuseOldRefreshToken_returns401() throws Exception {
-        createVerifiedUser("learner@example.com", CORRECT_PASSWORD);
+        User user = createVerifiedUser("learner@example.com", CORRECT_PASSWORD);
         CsrfBootstrap csrf = bootstrapCsrf();
 
         String loginBody =
@@ -442,16 +457,37 @@ class AuthControllerIntegrationTests {
         String initialRefreshToken = extractCookieValue(loginResult.getResponse(), "refresh_token");
 
         // Rotate once: initialRefreshToken is revoked and replaced
+        MvcResult rotation =
+                mockMvc.perform(
+                                post("/api/v1/auth/refresh")
+                                        .cookie(
+                                                csrf.cookie(),
+                                                new Cookie("refresh_token", initialRefreshToken))
+                                        .header(csrf.headerName(), csrf.token())
+                                        .contentType(MediaType.APPLICATION_JSON))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        String replacementAccess = extractCookieValue(rotation.getResponse(), "access_token");
+        String replacementRefresh = extractCookieValue(rotation.getResponse(), "refresh_token");
+
+        // Reusing initialRefreshToken must fail with 401
         mockMvc.perform(
                         post("/api/v1/auth/refresh")
                                 .cookie(
                                         csrf.cookie(),
                                         new Cookie("refresh_token", initialRefreshToken))
-                                .header(csrf.headerName(), csrf.token())
-                                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
+                                .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
 
-        // Reusing initialRefreshToken must fail with 401
+        AuthSession session = authSessionRepository.findByUserId(user.getId()).getFirst();
+        assertThat(session.getRevokedAt()).isNull();
+        jdbc.update(
+                "UPDATE refresh_tokens SET revoked_at = now() - interval '30 seconds' WHERE"
+                        + " session_id = ? AND replaced_by_id IS NOT NULL",
+                session.getId());
+
         MvcResult reuseResult =
                 mockMvc.perform(
                                 post("/api/v1/auth/refresh")
@@ -469,6 +505,21 @@ class AuthControllerIntegrationTests {
         String refreshCookie = findSetCookieHeader(reuseResult.getResponse(), "refresh_token");
         assertThat(accessCookie).contains("Max-Age=0");
         assertThat(refreshCookie).contains("Max-Age=0");
+        assertThat(authSessionRepository.findById(session.getId()).orElseThrow().getRevokeReason())
+                .isEqualTo(RevokeReason.SECURITY);
+        assertThat(refreshTokenRepository.findBySessionIdAndRevokedAtIsNull(session.getId()))
+                .isEmpty();
+        mockMvc.perform(
+                        get("/api/v1/users/me")
+                                .cookie(new Cookie("access_token", replacementAccess)))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .cookie(
+                                        csrf.cookie(),
+                                        new Cookie("refresh_token", replacementRefresh))
+                                .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

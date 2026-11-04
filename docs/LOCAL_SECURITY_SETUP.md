@@ -136,3 +136,13 @@ final `GenericFilterBean.init()` trên proxy có trạng thái chưa khởi tạ
 MasterenglishApiApplicationTests chạy RANDOM_PORT cùng Testcontainers để kiểm
 tra startup này và request HTTP thật. Chỉ kiểm tra MockMvc/context giả không đủ
 để xác nhận servlet container đã gọi thành công lifecycle của filter.
+
+## IP qua proxy
+
+Mặc định Identity lấy IP từ kết nối trực tiếp. Khi triển khai sau reverse proxy,
+đặt `APP_SECURITY_TRUSTED_PROXY_ADDRESSES` thành danh sách IP kết nối nội bộ của
+các proxy tin cậy, phân cách bằng dấu phẩy. Giữ `server.forward-headers-strategy=none`.
+Proxy biên phải ghi đè `X-Forwarded-For` từ Internet bằng IP đã xác minh.
+Các proxy nội bộ nối tiếp IP của peer ngay trước chúng. Backend duyệt từ phải
+sang trái đến hop đầu tiên ngoài danh sách tin cậy. Cấu hình này áp dụng cho
+đăng nhập, đăng ký và khôi phục mật khẩu.

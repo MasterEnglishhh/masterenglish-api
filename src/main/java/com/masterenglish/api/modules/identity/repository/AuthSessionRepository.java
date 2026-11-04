@@ -18,16 +18,20 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
     Optional<AuthSession> findByIdForUpdate(@Param("id") UUID id);
 
     @Query(
-            "SELECT count(s) FROM AuthSession s WHERE s.user.id = :userId AND s.revokedAt IS NULL AND s.expiresAt > :now")
+            "SELECT count(s) FROM AuthSession s WHERE s.user.id = :userId AND s.revokedAt IS NULL"
+                    + " AND s.expiresAt > :now")
     long countActiveSessions(@Param("userId") UUID userId, @Param("now") Instant now);
 
     @Query(
-            "SELECT s FROM AuthSession s WHERE s.user.id = :userId AND s.revokedAt IS NULL AND s.expiresAt > :now ORDER BY s.createdAt ASC")
-    List<AuthSession> findActiveSessionsOldestFirst(
+            "SELECT s.id FROM AuthSession s WHERE s.user.id = :userId AND s.revokedAt IS NULL AND"
+                    + " s.expiresAt > :now ORDER BY s.createdAt, s.id")
+    List<UUID> findActiveSessionIdsOldestFirst(
             @Param("userId") UUID userId, @Param("now") Instant now);
 
     @Query(
-            "SELECT s FROM AuthSession s JOIN FETCH s.user u LEFT JOIN FETCH u.userRoles ur LEFT JOIN FETCH ur.role WHERE s.id = :id AND s.revokedAt IS NULL AND s.expiresAt > :now")
+            "SELECT s FROM AuthSession s JOIN FETCH s.user u LEFT JOIN FETCH u.userRoles ur LEFT"
+                    + " JOIN FETCH ur.role WHERE s.id = :id AND s.revokedAt IS NULL AND s.expiresAt >"
+                    + " :now")
     Optional<AuthSession> findActiveSessionWithUser(
             @Param("id") UUID id, @Param("now") Instant now);
 

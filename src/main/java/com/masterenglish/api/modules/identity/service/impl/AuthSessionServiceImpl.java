@@ -11,8 +11,10 @@ import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
+import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
+import com.masterenglish.api.modules.identity.service.RefreshTokenRejectedException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,43 +34,41 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
     private final AuthSessionRepository authSessionRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
     private final JwtTokenService jwtTokenService;
     private final Clock clock;
 
     public AuthSessionServiceImpl(
             AuthSessionRepository authSessionRepository,
             RefreshTokenRepository refreshTokenRepository,
+            UserRepository userRepository,
             JwtTokenService jwtTokenService,
             Clock clock) {
         this.authSessionRepository = Objects.requireNonNull(authSessionRepository);
         this.refreshTokenRepository = Objects.requireNonNull(refreshTokenRepository);
+        this.userRepository = Objects.requireNonNull(userRepository);
         this.jwtTokenService = Objects.requireNonNull(jwtTokenService);
         this.clock = Objects.requireNonNull(clock);
     }
 
     @Override
     @Transactional
-    public LoginResult createSession(User user, String userAgent, String clientIp) {
-        Objects.requireNonNull(user, "user must not be null");
+    public LoginResult createSession(User authenticatedUser, String userAgent, String clientIp) {
+        // Serialize admissions for this user, including when there are no sessions to lock.
+        User user = userRepository.findByIdForUpdate(authenticatedUser.getId()).orElse(null);
+        if (user == null
+                || !user.isActive()
+                || user.getEmailVerifiedAt() == null
+                || user.getAuthVersion() != authenticatedUser.getAuthVersion()) {
+            throw new BusinessException(
+                    ErrorCode.UNAUTHENTICATED, "Email hoặc mật khẩu không chính xác");
+        }
         Instant now = clock.instant();
 
-        long activeCount = authSessionRepository.countActiveSessions(user.getId(), now);
-        if (activeCount >= MAX_ACTIVE_SESSIONS) {
-            List<AuthSession> oldestSessions =
-                    authSessionRepository.findActiveSessionsOldestFirst(user.getId(), now);
-            int toRevoke = (int) (activeCount - MAX_ACTIVE_SESSIONS + 1);
-            for (int i = 0; i < Math.min(toRevoke, oldestSessions.size()); i++) {
-                AuthSession oldest = oldestSessions.get(i);
-                oldest.revoke(RevokeReason.SESSION_LIMIT, now);
-                authSessionRepository.save(oldest);
-                refreshTokenRepository
-                        .findBySessionIdAndRevokedAtIsNull(oldest.getId())
-                        .ifPresent(
-                                token -> {
-                                    token.revoke(now);
-                                    refreshTokenRepository.save(token);
-                                });
-            }
+        List<UUID> activeSessions =
+                authSessionRepository.findActiveSessionIdsOldestFirst(user.getId(), now);
+        for (int i = 0; i <= activeSessions.size() - MAX_ACTIVE_SESSIONS; i++) {
+            revokeSession(activeSessions.get(i), RevokeReason.SESSION_LIMIT);
         }
 
         Instant sessionExpiresAt = now.plus(SESSION_DURATION);
@@ -96,64 +96,43 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = RefreshTokenRejectedException.class)
     public RefreshResult rotateRefreshToken(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+            throw new RefreshTokenRejectedException(false);
         }
 
-        Instant now = clock.instant();
         String tokenHash = jwtTokenService.hashToken(rawRefreshToken);
-
+        UUID sessionId =
+                refreshTokenRepository
+                        .findSessionIdByTokenHash(tokenHash)
+                        .orElseThrow(() -> new RefreshTokenRejectedException(false));
+        // Every path that mutates tokens locks their session before reading token state.
+        AuthSession session =
+                authSessionRepository
+                        .findByIdForUpdate(sessionId)
+                        .orElseThrow(() -> new RefreshTokenRejectedException(false));
+        Instant now = clock.instant();
+        if (session.getRevokedAt() != null || !session.getExpiresAt().isAfter(now)) {
+            throw new RefreshTokenRejectedException(false);
+        }
         RefreshToken oldToken =
                 refreshTokenRepository
-                        .findByTokenHashWithSessionAndUser(tokenHash)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                ErrorCode.UNAUTHENTICATED,
-                                                "Phiên làm việc không hợp lệ hoặc đã hết hạn."));
-
-        AuthSession session = oldToken.getSession();
-        if (session == null) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
-        }
-
-        session = authSessionRepository.findByIdForUpdate(session.getId()).orElse(session);
+                        .findByTokenHash(tokenHash)
+                        .orElseThrow(() -> new RefreshTokenRejectedException(false));
 
         if (oldToken.getRevokedAt() != null) {
-            boolean withinGracePeriod =
-                    oldToken.getRevokedAt() != null
-                            && Duration.between(oldToken.getRevokedAt(), now)
-                                            .compareTo(ROTATION_GRACE_PERIOD)
-                                    <= 0;
-            if (!withinGracePeriod) {
-                if (session.getRevokedAt() == null) {
-                    session.revoke(RevokeReason.SECURITY, now);
-                    authSessionRepository.save(session);
+            if (oldToken.getReplacedById() != null) {
+                if (!now.isAfter(oldToken.getRevokedAt().plus(ROTATION_GRACE_PERIOD))) {
+                    throw new RefreshTokenRejectedException(true);
                 }
-                refreshTokenRepository
-                        .findBySessionIdAndRevokedAtIsNull(session.getId())
-                        .ifPresent(
-                                activeToken -> {
-                                    activeToken.revoke(now);
-                                    refreshTokenRepository.save(activeToken);
-                                });
+                revokeLockedSession(session, RevokeReason.SECURITY, now);
             }
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+            throw new RefreshTokenRejectedException(false);
         }
 
-        if (session.getRevokedAt() != null) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
-        }
-
-        if (!oldToken.getExpiresAt().isAfter(now) || !session.getExpiresAt().isAfter(now)) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+        if (!oldToken.getExpiresAt().isAfter(now)) {
+            throw new RefreshTokenRejectedException(false);
         }
 
         User user = session.getUser();
@@ -161,8 +140,7 @@ public class AuthSessionServiceImpl implements AuthSessionService {
                 || !user.isActive()
                 || user.getEmailVerifiedAt() == null
                 || user.getStatus() == UserStatus.LOCKED) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+            throw new RefreshTokenRejectedException(false);
         }
 
         String newRawRefreshToken = jwtTokenService.generateRawRefreshToken();
@@ -175,17 +153,12 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         oldToken.markUsed(now);
         refreshTokenRepository.saveAndFlush(oldToken);
 
-        newToken = refreshTokenRepository.saveAndFlush(newToken);
+        refreshTokenRepository.saveAndFlush(newToken);
 
         session.touch(now);
         authSessionRepository.save(session);
 
         Duration remainingSessionDuration = Duration.between(now, session.getExpiresAt());
-        if (remainingSessionDuration.isNegative() || remainingSessionDuration.isZero()) {
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
-        }
-
         Duration accessTokenDuration =
                 remainingSessionDuration.compareTo(ACCESS_TOKEN_DURATION) < 0
                         ? remainingSessionDuration
@@ -209,23 +182,23 @@ public class AuthSessionServiceImpl implements AuthSessionService {
         if (sessionId == null) {
             return;
         }
-        Instant now = clock.instant();
         authSessionRepository
-                .findById(sessionId)
+                .findByIdForUpdate(sessionId)
                 .ifPresent(
-                        session -> {
-                            if (session.getRevokedAt() == null) {
-                                session.revoke(reason != null ? reason : RevokeReason.LOGOUT, now);
-                                authSessionRepository.save(session);
-                            }
-                            refreshTokenRepository
-                                    .findBySessionIdAndRevokedAtIsNull(sessionId)
-                                    .ifPresent(
-                                            token -> {
-                                                token.revoke(now);
-                                                refreshTokenRepository.save(token);
-                                            });
-                        });
+                        session ->
+                                revokeLockedSession(
+                                        session,
+                                        reason != null ? reason : RevokeReason.LOGOUT,
+                                        clock.instant()));
+    }
+
+    private void revokeLockedSession(AuthSession session, RevokeReason reason, Instant now) {
+        if (session.getRevokedAt() == null) {
+            session.revoke(reason, now);
+        }
+        refreshTokenRepository
+                .findBySessionIdAndRevokedAtIsNull(session.getId())
+                .ifPresent(token -> token.revoke(now));
     }
 
     @Override

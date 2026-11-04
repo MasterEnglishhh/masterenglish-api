@@ -125,15 +125,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         if (sessionId == null && rawRefreshToken != null && !rawRefreshToken.isBlank()) {
-            try {
-                String tokenHash = jwtTokenService.hashToken(rawRefreshToken);
-                sessionId =
-                        refreshTokenRepository
-                                .findByTokenHash(tokenHash)
-                                .map(token -> token.getSession().getId())
-                                .orElse(null);
-            } catch (Exception ignored) {
-            }
+            String tokenHash = jwtTokenService.hashToken(rawRefreshToken);
+            sessionId = refreshTokenRepository.findSessionIdByTokenHash(tokenHash).orElse(null);
         }
 
         if (sessionId != null) {
