@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -179,6 +180,96 @@ class UserControllerIntegrationTests {
                                 .cookie(new Cookie("access_token", "invalid.jwt.token")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void updateProfile_persistsNamesAndOptionalPhoneForCurrentUser() throws Exception {
+        User user = createVerifiedUser("profile@example.com", PASSWORD);
+        User other = createVerifiedUser("other@example.com", PASSWORD);
+        String token = loginAndGetAccessToken(user.getEmail(), PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+        Cookie access = new Cookie("access_token", token);
+
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .cookie(access, csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {"firstName":"  Ánh Ngọc  ","lastName":"  Nguyễn  ","phone":"  +84 901 234 567  "}
+                                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(user.getId().toString()))
+                .andExpect(jsonPath("$.email").value(user.getEmail()))
+                .andExpect(jsonPath("$.roles[0]").value("LEARNER"))
+                .andExpect(jsonPath("$.displayName").value("Nguyễn Ánh Ngọc"))
+                .andExpect(jsonPath("$.phone").value("+84 901 234 567"));
+        mockMvc.perform(get("/api/v1/users/me").cookie(access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Ánh Ngọc"))
+                .andExpect(jsonPath("$.lastName").value("Nguyễn"))
+                .andExpect(jsonPath("$.phone").value("+84 901 234 567"));
+        assertThat(userRepository.findById(other.getId()).orElseThrow().getDisplayName())
+                .isEqualTo(other.getDisplayName());
+
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .cookie(access, csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {"firstName":"Ánh Ngọc","lastName":"Nguyễn","phone":null}
+                                        """))
+                .andExpect(status().isOk());
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPhone()).isNull();
+    }
+
+    @Test
+    void updateProfile_requiresAuthenticationAndCsrfAndRejectsUneditableFields() throws Exception {
+        User user = createVerifiedUser("profile@example.com", PASSWORD);
+        Cookie access =
+                new Cookie("access_token", loginAndGetAccessToken(user.getEmail(), PASSWORD));
+        CsrfBootstrap csrf = bootstrapCsrf();
+        String valid =
+                """
+                {"firstName":"An","lastName":"Nguyễn"}
+                """;
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .cookie(csrf.cookie())
+                                .header(csrf.headerName(), csrf.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(valid))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .cookie(access)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(valid))
+                .andExpect(status().isForbidden());
+        for (String invalid :
+                java.util.List.of(
+                        """
+                {"firstName":"   ","lastName":"Nguyễn"}
+                """,
+                        """
+                {"firstName":"An","lastName":"Nguyễn","phone":"1234567890123456789012345678901"}
+                """,
+                        """
+                {"firstName":"An","lastName":"Nguyễn","roles":["SYSTEM_ADMIN"]}
+                """)) {
+            mockMvc.perform(
+                            put("/api/v1/users/me")
+                                    .cookie(access, csrf.cookie())
+                                    .header(csrf.headerName(), csrf.token())
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(invalid))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getDisplayName())
+                .isEqualTo(user.getDisplayName());
     }
 
     private record CsrfBootstrap(Cookie cookie, String headerName, String token) {}
