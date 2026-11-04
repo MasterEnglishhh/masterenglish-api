@@ -30,10 +30,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -356,6 +361,46 @@ class AuthControllerIntegrationTests {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
                 .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
+    void concurrentWrongPasswordsCannotExceedFiveAttemptsForOneEmail() throws Exception {
+        CsrfBootstrap csrf = bootstrapCsrf();
+        int attempts = 12;
+        var ready = new CountDownLatch(attempts);
+        var start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        try (var executor = Executors.newFixedThreadPool(attempts)) {
+            for (int i = 0; i < attempts; i++) {
+                results.add(
+                        executor.submit(
+                                () -> {
+                                    ready.countDown();
+                                    start.await();
+                                    return mockMvc.perform(
+                                                    post("/api/v1/auth/login")
+                                                            .cookie(csrf.cookie())
+                                                            .header(csrf.headerName(), csrf.token())
+                                                            .contentType(MediaType.APPLICATION_JSON)
+                                                            .content(
+                                                                    """
+                                    {"email":"concurrent-review@example.test","password":"incorrect password"}
+                                    """))
+                                            .andReturn()
+                                            .getResponse()
+                                            .getStatus();
+                                }));
+            }
+            boolean started = ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+            assertThat(started).isTrue();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) {
+                statuses.add(result.get(25, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsOnly(401, 429);
+            assertThat(statuses.stream().filter(status -> status == 401)).hasSize(5);
+        }
     }
 
     @Test

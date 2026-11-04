@@ -30,8 +30,11 @@ public class AuthRateLimitEvent {
     @JoinColumn(name = "rate_limit_id", nullable = false)
     private AuthRateLimit rateLimit;
 
-    @Column(name = "occurred_at", nullable = false, updatable = false)
+    @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
+
+    @Column(name = "reserved_until")
+    private Instant reservedUntil;
 
     public AuthRateLimitEvent(AuthRateLimit rateLimit) {
         this.rateLimit = Objects.requireNonNull(rateLimit);
@@ -41,6 +44,17 @@ public class AuthRateLimitEvent {
     public AuthRateLimitEvent(AuthRateLimit rateLimit, Instant occurredAt) {
         this.rateLimit = Objects.requireNonNull(rateLimit);
         this.occurredAt = Objects.requireNonNull(occurredAt);
+    }
+
+    public static AuthRateLimitEvent reserve(AuthRateLimit rateLimit, Instant now, Instant until) {
+        AuthRateLimitEvent event = new AuthRateLimitEvent(rateLimit, now);
+        event.reservedUntil = Objects.requireNonNull(until);
+        return event;
+    }
+
+    public void recordFailure(Instant now) {
+        occurredAt = Objects.requireNonNull(now);
+        reservedUntil = null;
     }
 
     @PrePersist

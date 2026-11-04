@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.identity.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,7 +52,8 @@ public class PasswordChangeStore {
                 ts(expiresAt));
     }
 
-    public Optional<Pending> find(UUID id, UUID userId, UUID sessionId, int authVersion) {
+    public Optional<Pending> find(
+            UUID id, UUID userId, UUID sessionId, int authVersion, Instant now) {
         return jdbc
                 .query(
                         """
@@ -59,8 +61,9 @@ public class PasswordChangeStore {
                         FROM password_change_requests r JOIN otp_challenges c ON c.id = r.otp_challenge_id
                         WHERE r.id = ? AND r.user_id = ? AND r.session_id = ?
                           AND r.auth_version_at_request = ?
-                          AND r.completed_at IS NULL AND r.invalidated_at IS NULL
-                          AND c.consumed_at IS NULL AND c.invalidated_at IS NULL
+                          AND r.completed_at IS NULL AND c.consumed_at IS NULL
+                          AND ((r.invalidated_at IS NULL AND c.invalidated_at IS NULL)
+                               OR (r.expires_at <= ? AND r.invalidated_at >= r.expires_at))
                         """,
                         (rs, row) ->
                                 new Pending(
@@ -70,7 +73,8 @@ public class PasswordChangeStore {
                         id,
                         userId,
                         sessionId,
-                        authVersion)
+                        authVersion,
+                        ts(now))
                 .stream()
                 .findFirst();
     }
@@ -121,6 +125,37 @@ public class PasswordChangeStore {
                 "UPDATE password_change_requests SET invalidated_at=?,pending_password_hash=NULL WHERE user_id=? AND completed_at IS NULL AND invalidated_at IS NULL",
                 ts(now),
                 userId);
+    }
+
+    public List<UUID> lockUsersWithExpiredRequests(Instant now, int batchSize) {
+        return jdbc.queryForList(
+                """
+                SELECT u.id FROM password_change_requests r JOIN users u ON u.id = r.user_id
+                WHERE r.expires_at <= ? AND r.completed_at IS NULL AND r.invalidated_at IS NULL
+                ORDER BY r.expires_at, r.id LIMIT ?
+                FOR UPDATE OF u SKIP LOCKED
+                """,
+                UUID.class,
+                ts(now),
+                batchSize);
+    }
+
+    public void expireOpenForUser(UUID userId, Instant now) {
+        jdbc.update(
+                """
+                WITH expired AS (
+                    UPDATE password_change_requests SET invalidated_at = ?, pending_password_hash = NULL
+                    WHERE user_id = ? AND expires_at <= ? AND completed_at IS NULL AND invalidated_at IS NULL
+                    RETURNING otp_challenge_id
+                )
+                UPDATE otp_challenges SET invalidated_at = ?, otp_hmac = NULL
+                WHERE id IN (SELECT otp_challenge_id FROM expired)
+                  AND consumed_at IS NULL AND invalidated_at IS NULL
+                """,
+                ts(now),
+                userId,
+                ts(now),
+                ts(now));
     }
 
     private static Timestamp ts(Instant value) {

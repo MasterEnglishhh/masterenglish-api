@@ -65,6 +65,7 @@ class IdentityDatabaseTests {
             v5.migrate();
             UUID user = UUID.randomUUID();
             UUID session = UUID.randomUUID();
+            UUID bucket = UUID.randomUUID();
             String tokenHash = "e".repeat(64);
             jdbc.update(
                     """
@@ -93,8 +94,27 @@ class IdentityDatabaseTests {
                     session,
                     tokenHash);
 
-            assertThat(v7.migrate().migrationsExecuted).isEqualTo(2);
+            jdbc.update(
+                    """
+                    INSERT INTO identity_upgrade.auth_rate_limits(id,scope,subject_hash)
+                    VALUES (?,'LOGIN_FAILURE_EMAIL',repeat('a',64))
+                    """,
+                    bucket);
+            jdbc.update(
+                    "INSERT INTO identity_upgrade.auth_rate_limit_events(rate_limit_id) VALUES (?)",
+                    bucket);
+
+            assertThat(v7.migrate().migrationsExecuted).isEqualTo(3);
             v7.validate();
+            assertThat(
+                            jdbc.queryForObject(
+                                    """
+                    SELECT count(*) FROM identity_upgrade.auth_rate_limit_events
+                    WHERE rate_limit_id=? AND reserved_until IS NULL
+                    """,
+                                    Integer.class,
+                                    bucket))
+                    .isEqualTo(1);
             assertThat(
                             jdbc.queryForObject(
                                     """
