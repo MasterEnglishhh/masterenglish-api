@@ -6,7 +6,6 @@ import com.masterenglish.api.modules.identity.dto.LoginResult;
 import com.masterenglish.api.modules.identity.dto.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
-import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.security.JwtClaims;
@@ -14,6 +13,7 @@ import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
 import com.masterenglish.api.modules.identity.service.AuthenticationService;
 import com.masterenglish.api.modules.identity.service.RateLimiterService;
+import java.text.Normalizer;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,43 +60,36 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     public LoginResult authenticate(
             String email, String password, String userAgent, String clientIp) {
-        rateLimiterService.checkLoginRateLimit(email, clientIp);
+        User user =
+                rateLimiterService
+                        .verify(email, clientIp, true, () -> verifyPassword(email, password))
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.UNAUTHENTICATED,
+                                                "Email hoặc mật khẩu không chính xác"));
+        return authSessionService.createSession(user, userAgent, clientIp);
+    }
 
+    private Optional<User> verifyPassword(String email, String password) {
         Optional<User> userOpt =
                 (email != null && !email.isBlank())
                         ? userRepository.findForAuthenticationByEmail(email.strip())
                         : Optional.empty();
 
-        boolean valid = false;
-        User user = null;
-
-        if (userOpt.isPresent()) {
-            user = userOpt.get();
-            boolean passwordMatches =
-                    password != null
-                            && user.getPasswordHash() != null
-                            && !password.isBlank()
-                            && passwordEncoder.matches(
-                                    java.text.Normalizer.normalize(
-                                            password, java.text.Normalizer.Form.NFC),
-                                    user.getPasswordHash());
-            boolean active = user.isActive();
-            boolean emailVerified = user.getEmailVerifiedAt() != null;
-            boolean notLocked = user.getStatus() != UserStatus.LOCKED;
-
-            valid = passwordMatches && active && emailVerified && notLocked;
-        } else {
+        if (userOpt.isEmpty()) {
             passwordEncoder.matches(password != null ? password : "", DUMMY_BCRYPT_HASH);
+            return Optional.empty();
         }
-
-        if (!valid) {
-            rateLimiterService.recordLoginFailure(email, clientIp);
-            throw new BusinessException(
-                    ErrorCode.UNAUTHENTICATED, "Email hoặc mật khẩu không chính xác");
-        }
-
-        rateLimiterService.resetLoginFailure(email);
-        return authSessionService.createSession(user, userAgent, clientIp);
+        User user = userOpt.orElseThrow();
+        boolean matches =
+                password != null
+                        && user.getPasswordHash() != null
+                        && !password.isBlank()
+                        && passwordEncoder.matches(
+                                Normalizer.normalize(password, Normalizer.Form.NFC),
+                                user.getPasswordHash());
+        return matches && user.isActive() ? userOpt : Optional.empty();
     }
 
     @Override
