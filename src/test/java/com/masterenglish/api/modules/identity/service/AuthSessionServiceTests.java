@@ -21,6 +21,7 @@ import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -99,11 +100,11 @@ class AuthSessionServiceTests {
             Thread.sleep(10);
         }
 
-        List<AuthSession> activeSessionsBefore =
-                authSessionRepository.findActiveSessionsOldestFirst(
+        List<UUID> activeSessionsBefore =
+                authSessionRepository.findActiveSessionIdsOldestFirst(
                         testUser.getId(), Instant.now());
         assertThat(activeSessionsBefore).hasSize(5);
-        UUID oldestSessionId = activeSessionsBefore.get(0).getId();
+        UUID oldestSessionId = activeSessionsBefore.getFirst();
 
         // Create 6th session
         LoginResult sixthResult = authSessionService.createSession(testUser, "Agent 6", "10.0.0.6");
@@ -161,18 +162,21 @@ class AuthSessionServiceTests {
         AuthSession session = sessions.get(0);
 
         // Set session expiry to 5 minutes from now (created 6 days ago)
-        Instant sixDaysAgo = Instant.now().minus(Duration.ofDays(6));
-        Instant fiveMinutesFromNow = Instant.now().plus(Duration.ofMinutes(5));
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        Instant sixDaysAgo = now.minus(Duration.ofDays(6));
+        Instant fiveMinutesFromNow = now.plus(Duration.ofMinutes(5));
         entityManager
                 .createQuery(
-                        "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired WHERE s.id = :id")
+                        "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired"
+                                + " WHERE s.id = :id")
                 .setParameter("created", sixDaysAgo)
                 .setParameter("expired", fiveMinutesFromNow)
                 .setParameter("id", session.getId())
                 .executeUpdate();
         entityManager
                 .createQuery(
-                        "UPDATE RefreshToken r SET r.issuedAt = :issued, r.expiresAt = :expired WHERE r.session.id = :id")
+                        "UPDATE RefreshToken r SET r.issuedAt = :issued, r.expiresAt = :expired"
+                                + " WHERE r.session.id = :id")
                 .setParameter("issued", sixDaysAgo)
                 .setParameter("expired", fiveMinutesFromNow)
                 .setParameter("id", session.getId())
@@ -193,7 +197,8 @@ class AuthSessionServiceTests {
 
     @Test
     @DisplayName(
-            "rotateRefreshToken with token revoked within grace period throws UNAUTHENTICATED but keeps session active")
+            "rotateRefreshToken with token revoked within grace period throws UNAUTHENTICATED but"
+                    + " keeps session active")
     void rotateRefreshToken_revokedTokenWithinGracePeriod_doesNotRevokeSession() {
         LoginResult loginResult =
                 authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
@@ -230,7 +235,8 @@ class AuthSessionServiceTests {
 
     @Test
     @DisplayName(
-            "rotateRefreshToken with token revoked outside grace period revokes session and replacement token")
+            "rotateRefreshToken with token revoked outside grace period revokes session and"
+                    + " replacement token")
     void rotateRefreshToken_revokedTokenOutsideGracePeriod_revokesSessionAndTokens() {
         LoginResult loginResult =
                 authSessionService.createSession(testUser, "Mozilla/5.0", "127.0.0.1");
@@ -244,7 +250,8 @@ class AuthSessionServiceTests {
         // Simulate token was revoked 30 seconds ago (outside 15s grace period)
         entityManager
                 .createQuery(
-                        "UPDATE RefreshToken r SET r.revokedAt = :revokedAt WHERE r.tokenHash = :tokenHash")
+                        "UPDATE RefreshToken r SET r.revokedAt = :revokedAt WHERE r.tokenHash ="
+                                + " :tokenHash")
                 .setParameter("revokedAt", Instant.now().minus(Duration.ofSeconds(30)))
                 .setParameter("tokenHash", oldTokenHash)
                 .executeUpdate();
@@ -340,14 +347,16 @@ class AuthSessionServiceTests {
         Instant oneDayAgo = eightDaysAgo.plus(Duration.ofDays(7));
         entityManager
                 .createQuery(
-                        "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired WHERE s.id = :id")
+                        "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired"
+                                + " WHERE s.id = :id")
                 .setParameter("created", eightDaysAgo)
                 .setParameter("expired", oneDayAgo)
                 .setParameter("id", session.getId())
                 .executeUpdate();
         entityManager
                 .createQuery(
-                        "UPDATE RefreshToken r SET r.issuedAt = :issued, r.expiresAt = :expired WHERE r.session.id = :id")
+                        "UPDATE RefreshToken r SET r.issuedAt = :issued, r.expiresAt = :expired"
+                                + " WHERE r.session.id = :id")
                 .setParameter("issued", eightDaysAgo)
                 .setParameter("expired", oneDayAgo)
                 .setParameter("id", session.getId())

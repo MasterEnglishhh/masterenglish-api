@@ -8,7 +8,9 @@ import com.masterenglish.api.modules.identity.dto.request.LoginRequest;
 import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
+import com.masterenglish.api.modules.identity.security.ClientIpResolver;
 import com.masterenglish.api.modules.identity.service.AuthenticationService;
+import com.masterenglish.api.modules.identity.service.RefreshTokenRejectedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -27,20 +29,24 @@ public class AuthController {
 
     private final AuthenticationService authenticationService;
     private final AuthCookieHelper authCookieHelper;
+    private final ClientIpResolver clientIpResolver;
 
     public AuthController(
-            AuthenticationService authenticationService, AuthCookieHelper authCookieHelper) {
+            AuthenticationService authenticationService,
+            AuthCookieHelper authCookieHelper,
+            ClientIpResolver clientIpResolver) {
         this.authenticationService =
                 Objects.requireNonNull(
                         authenticationService, "authenticationService must not be null");
         this.authCookieHelper =
                 Objects.requireNonNull(authCookieHelper, "authCookieHelper must not be null");
+        this.clientIpResolver = Objects.requireNonNull(clientIpResolver);
     }
 
     @PostMapping("/login")
     public ResponseEntity<UserProfileResponse> login(
             @Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        String clientIp = extractClientIp(httpRequest);
+        String clientIp = clientIpResolver.resolve(httpRequest);
         String userAgent = httpRequest.getHeader(HttpHeaders.USER_AGENT);
 
         LoginResult result =
@@ -76,10 +82,15 @@ public class AuthController {
         try {
             result = authenticationService.refresh(rawRefreshToken);
         } catch (BusinessException e) {
-            httpResponse.addHeader(
-                    HttpHeaders.SET_COOKIE, authCookieHelper.clearAccessTokenCookie().toString());
-            httpResponse.addHeader(
-                    HttpHeaders.SET_COOKIE, authCookieHelper.clearRefreshTokenCookie().toString());
+            if (!(e instanceof RefreshTokenRejectedException rejection
+                    && rejection.alreadyRotated())) {
+                httpResponse.addHeader(
+                        HttpHeaders.SET_COOKIE,
+                        authCookieHelper.clearAccessTokenCookie().toString());
+                httpResponse.addHeader(
+                        HttpHeaders.SET_COOKIE,
+                        authCookieHelper.clearRefreshTokenCookie().toString());
+            }
             throw e;
         }
 
@@ -110,15 +121,5 @@ public class AuthController {
                 .header(HttpHeaders.SET_COOKIE, clearAccessCookie.toString())
                 .header(HttpHeaders.SET_COOKIE, clearRefreshCookie.toString())
                 .build();
-    }
-
-    private String extractClientIp(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-            int commaIndex = xForwardedFor.indexOf(',');
-            return (commaIndex != -1 ? xForwardedFor.substring(0, commaIndex) : xForwardedFor)
-                    .strip();
-        }
-        return request.getRemoteAddr();
     }
 }

@@ -8,6 +8,7 @@ import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.dto.LoginResult;
 import com.masterenglish.api.modules.identity.dto.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
+import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
@@ -153,5 +154,46 @@ class AuthSessionConcurrencyTests {
                                                 && rt.getRevokedAt() == null)
                         .count();
         assertThat(unrevokedCount).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentLogins_enforceLimitAndRevokeEvictedRefreshTokens() throws Exception {
+        int logins = 8;
+        CountDownLatch ready = new CountDownLatch(logins);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(logins)) {
+            List<Future<LoginResult>> results = new ArrayList<>();
+            for (int i = 0; i < logins; i++) {
+                results.add(
+                        executor.submit(
+                                () -> {
+                                    ready.countDown();
+                                    start.await(5, TimeUnit.SECONDS);
+                                    return authSessionService.createSession(
+                                            testUser, null, "127.0.0.1");
+                                }));
+            }
+            boolean allReady = ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+            assertThat(allReady).isTrue();
+            for (Future<LoginResult> result : results) {
+                assertThat(result.get(15, TimeUnit.SECONDS).rawRefreshToken()).isNotBlank();
+            }
+        }
+        var sessions = authSessionRepository.findByUserId(testUser.getId());
+        assertThat(sessions).hasSize(logins);
+        assertThat(sessions.stream().filter(session -> session.getRevokedAt() == null)).hasSize(5);
+        assertThat(sessions.stream().filter(session -> session.getRevokedAt() != null))
+                .hasSize(3)
+                .allSatisfy(
+                        session -> {
+                            assertThat(session.getRevokeReason())
+                                    .isEqualTo(RevokeReason.SESSION_LIMIT);
+                            assertThat(
+                                            refreshTokenRepository
+                                                    .findBySessionIdAndRevokedAtIsNull(
+                                                            session.getId()))
+                                    .isEmpty();
+                        });
     }
 }

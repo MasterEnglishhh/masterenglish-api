@@ -7,6 +7,7 @@ import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
 import com.masterenglish.api.modules.identity.dto.response.PasswordResetChallengeResponse;
 import com.masterenglish.api.modules.identity.dto.response.PasswordResetGrantResponse;
 import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
+import com.masterenglish.api.modules.identity.security.ClientIpResolver;
 import com.masterenglish.api.modules.identity.service.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -23,10 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PasswordResetController {
     private final PasswordResetService service;
     private final AuthCookieHelper cookies;
+    private final ClientIpResolver clientIpResolver;
 
-    public PasswordResetController(PasswordResetService service, AuthCookieHelper cookies) {
+    public PasswordResetController(
+            PasswordResetService service,
+            AuthCookieHelper cookies,
+            ClientIpResolver clientIpResolver) {
         this.service = service;
         this.cookies = cookies;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/forgot")
@@ -34,7 +40,7 @@ public class PasswordResetController {
             @Valid @RequestBody ForgotPasswordRequest input, HttpServletRequest request) {
         return ResponseEntity.accepted()
                 .cacheControl(CacheControl.noStore())
-                .body(service.request(input.email(), request.getRemoteAddr()));
+                .body(service.request(input.email(), clientIpResolver.resolve(request)));
     }
 
     @PostMapping("/verify")
@@ -42,7 +48,7 @@ public class PasswordResetController {
             @Valid @RequestBody PasswordResetOtpRequest input, HttpServletRequest request) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(service.verify(input, request.getRemoteAddr()));
+                .body(service.verify(input, clientIpResolver.resolve(request)));
     }
 
     @PostMapping("/reset")
