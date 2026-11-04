@@ -736,12 +736,16 @@ class AuthControllerIntegrationTests {
                 .andExpect(status().isUnauthorized());
 
         for (int attempt = 0; attempt < 2; attempt++) {
-            mockMvc.perform(
-                            delete("/api/v1/auth/sessions/{id}", mobileId)
-                                    .cookie(access, csrf.cookie())
-                                    .header(csrf.headerName(), csrf.token()))
-                    .andExpect(status().isNoContent())
-                    .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+            var revoked =
+                    mockMvc.perform(
+                                    delete("/api/v1/auth/sessions/{id}", mobileId)
+                                            .cookie(access, csrf.cookie())
+                                            .header(csrf.headerName(), csrf.token()))
+                            .andExpect(status().isNoContent())
+                            .andReturn()
+                            .getResponse();
+            assertThat(findSetCookieHeader(revoked, "access_token")).isNull();
+            assertThat(findSetCookieHeader(revoked, "refresh_token")).isNull();
         }
         mockMvc.perform(get("/api/v1/users/me").cookie(mobile.getCookie("access_token")))
                 .andExpect(status().isUnauthorized());
