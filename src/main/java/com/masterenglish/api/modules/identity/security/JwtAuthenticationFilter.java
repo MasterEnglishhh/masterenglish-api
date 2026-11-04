@@ -58,7 +58,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
                         if (user.isActive() && user.getAuthVersion() == claims.authVersion()) {
-                            UserPrincipal principal = UserPrincipal.create(user);
+                            UserPrincipal principal =
+                                    UserPrincipal.create(user, claims.sessionId());
                             UsernamePasswordAuthenticationToken authentication =
                                     new UsernamePasswordAuthenticationToken(
                                             principal, null, principal.getAuthorities());

@@ -202,6 +202,16 @@ public class AuthSessionServiceImpl implements AuthSessionService {
     }
 
     @Override
+    @Transactional
+    public void revokeAllSessions(UUID userId, RevokeReason reason) {
+        // Keep the same account -> sessions -> tokens order as login and password reset.
+        userRepository.findByIdForUpdate(userId).orElseThrow();
+        Instant now = clock.instant();
+        authSessionRepository.revokeAllForUser(userId, reason, now);
+        refreshTokenRepository.revokeAllForUser(userId, now);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public boolean isSessionActive(UUID sessionId, int userAuthVersion) {
         if (sessionId == null) {

@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.identity.repository;
 
 import com.masterenglish.api.modules.identity.entity.AuthSession;
+import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -36,4 +38,12 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
             @Param("id") UUID id, @Param("now") Instant now);
 
     List<AuthSession> findByUserId(UUID userId);
+
+    @Modifying(flushAutomatically = true)
+    @Query(
+            "UPDATE AuthSession s SET s.revokedAt = :now, s.revokeReason = :reason WHERE s.user.id = :userId AND s.revokedAt IS NULL")
+    void revokeAllForUser(
+            @Param("userId") UUID userId,
+            @Param("reason") RevokeReason reason,
+            @Param("now") Instant now);
 }
