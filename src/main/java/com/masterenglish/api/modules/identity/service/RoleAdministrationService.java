@@ -7,6 +7,7 @@ import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
+import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.PasswordChangeStore;
 import com.masterenglish.api.modules.identity.repository.RoleAuditStore;
 import com.masterenglish.api.modules.identity.repository.RoleRepository;
@@ -27,6 +28,7 @@ public class RoleAdministrationService {
     private static final RoleCode SYSTEM_ADMIN = RoleCode.SYSTEM_ADMIN;
     private final RoleRepository roles;
     private final UserRepository users;
+    private final AuthSessionRepository sessionRepository;
     private final AuthSessionService sessions;
     private final PasswordChangeStore passwordChanges;
     private final RoleAuditStore audit;
@@ -35,12 +37,14 @@ public class RoleAdministrationService {
     public RoleAdministrationService(
             RoleRepository roles,
             UserRepository users,
+            AuthSessionRepository sessionRepository,
             AuthSessionService sessions,
             PasswordChangeStore passwordChanges,
             RoleAuditStore audit,
             Clock clock) {
         this.roles = roles;
         this.users = users;
+        this.sessionRepository = sessionRepository;
         this.sessions = sessions;
         this.passwordChanges = passwordChanges;
         this.audit = audit;
@@ -78,6 +82,8 @@ public class RoleAdministrationService {
             throw new BusinessException(
                     ErrorCode.CONFLICT, "Tài khoản cần hoạt động và đã xác minh email.");
         }
+        // Recheck after waiting for account locks. Hold the session lock through the role write.
+        requireActiveSession(principal);
 
         Set<String> before = target.getRoleNames();
         Set<String> after = requested.stream().map(RoleCode::name).collect(Collectors.toSet());
@@ -102,5 +108,20 @@ public class RoleAdministrationService {
         sessions.revokeAllSessions(targetId, RevokeReason.ROLE_CHANGE);
         audit.recordChange(actor.getId(), targetId, before, after, requestId, ip, now);
         return UserProfileResponse.from(target);
+    }
+
+    private void requireActiveSession(UserPrincipal principal) {
+        boolean active =
+                sessionRepository
+                        .findOwnedSessionForUpdate(principal.getSessionId(), principal.getId())
+                        .filter(
+                                session ->
+                                        session.getRevokedAt() == null
+                                                && session.getExpiresAt().isAfter(clock.instant()))
+                        .isPresent();
+        if (!active) {
+            throw new BusinessException(
+                    ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");
+        }
     }
 }

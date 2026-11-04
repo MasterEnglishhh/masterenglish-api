@@ -26,7 +26,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -63,6 +65,7 @@ class UserControllerIntegrationTests {
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private DataSource dataSource;
     @Autowired private JwtTokenService jwt;
 
     private MockMvc mockMvc;
@@ -363,6 +366,64 @@ class UserControllerIntegrationTests {
         mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", newToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roles.length()").value(2));
+    }
+
+    @Test
+    void queuedRoleChangeRejectsTheSessionRevokedWhileWaiting() throws Exception {
+        User admin = createVerifiedUser("revoked-admin@example.test", PASSWORD, (short) 3);
+        User learner = createVerifiedUser("role-target@example.test", PASSWORD);
+        String token = loginAndGetAccessToken(admin.getEmail(), PASSWORD);
+        CsrfBootstrap csrf = bootstrapCsrf();
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            Future<Integer> result;
+            try (var blocker = dataSource.getConnection()) {
+                blocker.setAutoCommit(false);
+                try (var statement = blocker.createStatement();
+                        var row =
+                                statement.executeQuery(
+                                        "SELECT id FROM roles WHERE code = 'SYSTEM_ADMIN' FOR UPDATE")) {
+                    assertThat(row.next()).isTrue();
+                }
+                result =
+                        executor.submit(
+                                () ->
+                                        putRoles(
+                                                        learner.getId(),
+                                                        token,
+                                                        Set.of("LEARNER", "SYSTEM_ADMIN"))
+                                                .andReturn()
+                                                .getResponse()
+                                                .getStatus());
+
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                boolean waiting;
+                do {
+                    waiting =
+                            Boolean.TRUE.equals(
+                                    jdbc.queryForObject(
+                                            """
+                            SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                            WHERE wait_event_type = 'Lock' AND query ILIKE '%from roles%'
+                              AND pid <> pg_backend_pid())
+                            """,
+                                            Boolean.class));
+                    if (!waiting) Thread.sleep(20);
+                } while (!waiting && System.nanoTime() < deadline);
+                assertThat(waiting).isTrue();
+
+                mockMvc.perform(
+                                post("/api/v1/auth/logout")
+                                        .cookie(new Cookie("access_token", token), csrf.cookie())
+                                        .header(csrf.headerName(), csrf.token()))
+                        .andExpect(status().isNoContent());
+                blocker.commit();
+            }
+            assertThat(result.get(15, TimeUnit.SECONDS)).isEqualTo(401);
+        }
+        assertThat(userRepository.findById(learner.getId()).orElseThrow().getRoleNames())
+                .containsExactly("LEARNER");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_logs", Integer.class)).isZero();
     }
 
     @Test
