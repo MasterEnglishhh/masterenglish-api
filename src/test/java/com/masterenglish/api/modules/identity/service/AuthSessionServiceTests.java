@@ -21,6 +21,7 @@ import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -161,8 +162,9 @@ class AuthSessionServiceTests {
         AuthSession session = sessions.get(0);
 
         // Set session expiry to 5 minutes from now (created 6 days ago)
-        Instant sixDaysAgo = Instant.now().minus(Duration.ofDays(6));
-        Instant fiveMinutesFromNow = Instant.now().plus(Duration.ofMinutes(5));
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        Instant sixDaysAgo = now.minus(Duration.ofDays(6));
+        Instant fiveMinutesFromNow = now.plus(Duration.ofMinutes(5));
         entityManager
                 .createQuery(
                         "UPDATE AuthSession s SET s.createdAt = :created, s.expiresAt = :expired"

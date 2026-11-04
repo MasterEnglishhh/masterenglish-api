@@ -13,6 +13,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -106,15 +107,15 @@ public class RateLimiterServiceImpl implements RateLimiterService {
         if (clientIp != null && !clientIp.isBlank()) {
             buckets.add(lockBucket(SCOPE_LOGIN_IP, normalizeIp(clientIp)));
         }
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        Instant windowStart = now.minus(WINDOW_DURATION);
         long retryAfter = 0;
         for (AuthRateLimit bucket : buckets) {
             if (bucket.isBlocked(now)) {
                 Duration remaining = Duration.between(now, bucket.getBlockedUntil());
                 long seconds = remaining.getSeconds() + (remaining.getNano() == 0 ? 0 : 1);
                 retryAfter = Math.max(retryAfter, seconds);
-            } else if (eventRepository.countOccupiedSlots(
-                            bucket.getId(), now, now.minus(WINDOW_DURATION))
+            } else if (eventRepository.countOccupiedSlots(bucket.getId(), now, windowStart)
                     >= threshold(bucket)) {
                 retryAfter = Math.max(retryAfter, 1);
             }
@@ -126,7 +127,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
         Instant expiresAt = now.plus(RESERVATION_DURATION);
         List<Slot> slots = new ArrayList<>(buckets.size());
         for (AuthRateLimit bucket : buckets) {
-            eventRepository.deleteExpiredReservations(bucket.getId(), now);
+            eventRepository.deleteExpiredReservations(bucket.getId(), now, windowStart);
             var event = eventRepository.save(AuthRateLimitEvent.reserve(bucket, now, expiresAt));
             slots.add(new Slot(bucket.getId(), event.getId()));
         }
@@ -142,7 +143,7 @@ public class RateLimiterServiceImpl implements RateLimiterService {
                                                 .findBucketForUpdate(slot.bucketId())
                                                 .orElseThrow())
                         .toList();
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         boolean active = attempt.expiresAt().isAfter(now);
         for (int i = 0; i < buckets.size(); i++) {
             AuthRateLimit bucket = buckets.get(i);

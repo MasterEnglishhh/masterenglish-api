@@ -18,7 +18,8 @@ public interface AuthRateLimitEventRepository extends JpaRepository<AuthRateLimi
     @Query(
             """
             SELECT count(e) FROM AuthRateLimitEvent e WHERE e.rateLimit.id = :bucketId
-              AND (e.reservedUntil > :now OR (e.reservedUntil IS NULL AND e.occurredAt >= :windowStart))
+              AND e.occurredAt >= :windowStart
+              AND (e.reservedUntil IS NULL OR e.reservedUntil > :now)
             """)
     long countOccupiedSlots(
             @Param("bucketId") UUID bucketId,
@@ -32,6 +33,12 @@ public interface AuthRateLimitEventRepository extends JpaRepository<AuthRateLimi
 
     @Modifying
     @Query(
-            "DELETE FROM AuthRateLimitEvent e WHERE e.rateLimit.id = :bucketId AND e.reservedUntil <= :now")
-    void deleteExpiredReservations(@Param("bucketId") UUID bucketId, @Param("now") Instant now);
+            """
+            DELETE FROM AuthRateLimitEvent e WHERE e.rateLimit.id = :bucketId
+              AND e.occurredAt >= :windowStart AND e.reservedUntil <= :now
+            """)
+    void deleteExpiredReservations(
+            @Param("bucketId") UUID bucketId,
+            @Param("now") Instant now,
+            @Param("windowStart") Instant windowStart);
 }
