@@ -149,7 +149,7 @@ public class PasswordChangeService {
                         status -> {
                             reserveSend(emailKeys.emailKey(principal.getEmail()), ip);
                             var context = lockContext(principal);
-                            var pending = findPending(principal, id);
+                            var pending = findPending(principal, id, context.now());
                             if (pending == null) throw invalidCode();
                             if (!pending.expiresAt().isAfter(context.now())) throw expired();
                             store.resend(id, hmac, context.now());
@@ -170,10 +170,13 @@ public class PasswordChangeService {
                             if (limit != null) return limit;
                             var context = lockContext(principal);
                             UUID id = input.challengeId();
-                            var pending = findPending(principal, id);
                             Instant now = context.now();
+                            var pending = findPending(principal, id, now);
                             if (pending == null) return invalidCode();
-                            if (!pending.expiresAt().isAfter(now)) return expired();
+                            if (!pending.expiresAt().isAfter(now)) {
+                                store.expireOpenForUser(principal.getId(), now);
+                                return expired();
+                            }
                             if (!codec.matches(pending.otpHmac(), PURPOSE, id, input.otp())) {
                                 store.wrongCode(id);
                                 var blocked = otpLimiter.wrongCode(email, PURPOSE, now);
@@ -200,9 +203,13 @@ public class PasswordChangeService {
                         });
     }
 
-    private PasswordChangeStore.Pending findPending(UserPrincipal principal, UUID id) {
+    private PasswordChangeStore.Pending findPending(UserPrincipal principal, UUID id, Instant now) {
         return store.find(
-                        id, principal.getId(), principal.getSessionId(), principal.getAuthVersion())
+                        id,
+                        principal.getId(),
+                        principal.getSessionId(),
+                        principal.getAuthVersion(),
+                        now)
                 .orElse(null);
     }
 

@@ -16,6 +16,7 @@ import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.service.OtpCodec;
+import com.masterenglish.api.modules.identity.service.PasswordChangeExpiration;
 import com.masterenglish.api.modules.identity.service.RegistrationMailer;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
@@ -69,6 +70,7 @@ class PasswordResetControllerIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired JsonMapper mapper;
     @Autowired PasswordEncoder encoder;
+    @Autowired PasswordChangeExpiration passwordChangeExpiration;
     @Autowired MutableClock clock;
     @MockitoBean RegistrationMailer mailer;
     private MockMvc mvc;
@@ -471,7 +473,49 @@ class PasswordResetControllerIntegrationTests {
                         access)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+        assertExpiredSecretsCleared(UUID.fromString(challenge.get("challengeId").toString()));
         login(OLD);
+    }
+
+    @Test
+    void cleanupClearsExpiredAbandonedRequestsAndRetainsTheExpiredResponse() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        var issued =
+                json(CHANGE, changePayload(OLD), access)
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse();
+        UUID id =
+                UUID.fromString(data(issued.getContentAsByteArray()).get("challengeId").toString());
+
+        passwordChangeExpiration.expireRequests();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT pending_password_hash IS NOT NULL FROM password_change_requests WHERE id=?",
+                                Boolean.class,
+                                id))
+                .isTrue();
+
+        clock.advance(301);
+        passwordChangeExpiration.expireRequests();
+        assertExpiredSecretsCleared(id);
+        json(CHANGE + "/verify", Map.of("challengeId", id, "otp", code.get()), access)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+    }
+
+    private void assertExpiredSecretsCleared(UUID id) {
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM password_change_requests r
+                JOIN otp_challenges c ON c.id = r.otp_challenge_id
+                WHERE r.id = ? AND r.pending_password_hash IS NULL AND c.otp_hmac IS NULL
+                  AND r.invalidated_at IS NOT NULL AND c.invalidated_at IS NOT NULL
+                """,
+                                Integer.class,
+                                id))
+                .isEqualTo(1);
     }
 
     @Test
