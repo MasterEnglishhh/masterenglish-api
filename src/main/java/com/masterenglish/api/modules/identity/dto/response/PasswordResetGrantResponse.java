@@ -1,4 +1,4 @@
-package com.masterenglish.api.modules.identity.dto;
+package com.masterenglish.api.modules.identity.dto.response;
 
 import java.time.Instant;
 

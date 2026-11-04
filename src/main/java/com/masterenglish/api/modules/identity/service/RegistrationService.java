@@ -3,10 +3,10 @@ package com.masterenglish.api.modules.identity.service;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.config.RegistrationProperties;
-import com.masterenglish.api.modules.identity.dto.RegisterRequest;
-import com.masterenglish.api.modules.identity.dto.RegistrationChallengeResponse;
-import com.masterenglish.api.modules.identity.dto.RegistrationOtpRequest;
-import com.masterenglish.api.modules.identity.dto.ResendRegistrationOtpRequest;
+import com.masterenglish.api.modules.identity.dto.request.RegisterRequest;
+import com.masterenglish.api.modules.identity.dto.request.RegistrationOtpRequest;
+import com.masterenglish.api.modules.identity.dto.request.ResendRegistrationOtpRequest;
+import com.masterenglish.api.modules.identity.dto.response.RegistrationChallengeResponse;
 import com.masterenglish.api.modules.identity.repository.RegistrationStore;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -73,39 +73,38 @@ public class RegistrationService {
         String email = store.emailKey(input.email());
         String ip = ip(clientIp);
         // Commit quota reservations independently of SMTP/network failures.
-        BusinessException blocked =
-                tx.execute(status -> limiter.reserveSend(email, ip, clock.instant()));
-        if (blocked != null) throw blocked;
+        BusinessException blocked = tx.execute(status -> limiter.reserveSend(email, ip, clock.instant()));
+        if (blocked != null)
+            throw blocked;
         breachChecker.rejectIfBreached(normalized);
         String encoded = encoder.encode(normalized);
-        Issued issued =
-                tx.execute(
-                        status -> {
-                            Instant now = clock.instant();
-                            var user = store.createAndLockUser(email, now);
-                            if (!user.status().equals("PENDING_VERIFICATION"))
-                                return generic(UUID.randomUUID(), now);
-                            if (!user.createdAt().plus(CYCLE).isAfter(now))
-                                user = store.restartExpiredPendingCycle(user, now);
-                            store.invalidateOpen(user.id(), now);
-                            UUID id = UUID.randomUUID();
-                            UUID challengeId = UUID.randomUUID();
-                            String otp = generateCode();
-                            Instant cycleEnd = user.createdAt().plus(CYCLE);
-                            Instant expires = min(now.plusSeconds(300), cycleEnd);
-                            store.insertChallenge(
-                                    challengeId, user.id(), hmac(challengeId, otp), now, expires);
-                            store.insertRequest(
-                                    id,
-                                    user.id(),
-                                    challengeId,
-                                    input.firstName(),
-                                    input.lastName(),
-                                    encoded,
-                                    now,
-                                    cycleEnd);
-                            return new Issued(id, challengeId, expires, email, otp);
-                        });
+        Issued issued = tx.execute(
+                status -> {
+                    Instant now = clock.instant();
+                    var user = store.createAndLockUser(email, now);
+                    if (!user.status().equals("PENDING_VERIFICATION"))
+                        return generic(UUID.randomUUID(), now);
+                    if (!user.createdAt().plus(CYCLE).isAfter(now))
+                        user = store.restartExpiredPendingCycle(user, now);
+                    store.invalidateOpen(user.id(), now);
+                    UUID id = UUID.randomUUID();
+                    UUID challengeId = UUID.randomUUID();
+                    String otp = generateCode();
+                    Instant cycleEnd = user.createdAt().plus(CYCLE);
+                    Instant expires = min(now.plusSeconds(300), cycleEnd);
+                    store.insertChallenge(
+                            challengeId, user.id(), hmac(challengeId, otp), now, expires);
+                    store.insertRequest(
+                            id,
+                            user.id(),
+                            challengeId,
+                            input.firstName(),
+                            input.lastName(),
+                            encoded,
+                            now,
+                            cycleEnd);
+                    return new Issued(id, challengeId, expires, email, otp);
+                });
         return deliver(issued);
     }
 
@@ -113,77 +112,74 @@ public class RegistrationService {
             ResendRegistrationOtpRequest input, String clientIp) {
         mailer.ensureReady();
         String email = store.emailKey(input.email());
-        BusinessException blocked =
-                tx.execute(status -> limiter.reserveSend(email, ip(clientIp), clock.instant()));
-        if (blocked != null) throw blocked;
-        Issued issued =
-                tx.execute(
-                        status -> {
-                            Instant now = clock.instant();
-                            var user = store.lockUser(email).orElse(null);
-                            if (user == null || !user.status().equals("PENDING_VERIFICATION"))
-                                return generic(input.registrationId(), now);
-                            var request =
-                                    store.find(input.registrationId(), user.id()).orElse(null);
-                            if (request == null
-                                    || request.closed()
-                                    || !request.requestExpiresAt().isAfter(now))
-                                return generic(input.registrationId(), now);
-                            UUID challengeId = UUID.randomUUID();
-                            String otp = generateCode();
-                            Instant expires = min(now.plusSeconds(300), request.requestExpiresAt());
-                            store.replaceChallenge(
-                                    request, challengeId, hmac(challengeId, otp), now, expires);
-                            return new Issued(request.id(), challengeId, expires, email, otp);
-                        });
+        BusinessException blocked = tx.execute(status -> limiter.reserveSend(email, ip(clientIp), clock.instant()));
+        if (blocked != null)
+            throw blocked;
+        Issued issued = tx.execute(
+                status -> {
+                    Instant now = clock.instant();
+                    var user = store.lockUser(email).orElse(null);
+                    if (user == null || !user.status().equals("PENDING_VERIFICATION"))
+                        return generic(input.registrationId(), now);
+                    var request = store.find(input.registrationId(), user.id()).orElse(null);
+                    if (request == null
+                            || request.closed()
+                            || !request.requestExpiresAt().isAfter(now))
+                        return generic(input.registrationId(), now);
+                    UUID challengeId = UUID.randomUUID();
+                    String otp = generateCode();
+                    Instant expires = min(now.plusSeconds(300), request.requestExpiresAt());
+                    store.replaceChallenge(
+                            request, challengeId, hmac(challengeId, otp), now, expires);
+                    return new Issued(request.id(), challengeId, expires, email, otp);
+                });
         return deliver(issued);
     }
 
     public void verify(RegistrationOtpRequest input, String clientIp) {
         String email = store.emailKey(input.email());
-        BusinessException error =
-                tx.execute(
-                        status -> {
-                            Instant now = clock.instant();
-                            BusinessException blocked =
-                                    limiter.reserveVerification(email, ip(clientIp), now);
-                            if (blocked != null) return blocked;
-                            var user = store.lockUser(email).orElse(null);
-                            var request =
-                                    user == null
-                                            ? null
-                                            : store.find(input.registrationId(), user.id())
-                                                    .orElse(null);
-                            if (user == null
-                                    || !user.status().equals("PENDING_VERIFICATION")
-                                    || request == null
-                                    || request.closed()) {
-                                BusinessException limit = limiter.wrongCode(email, now);
-                                return limit != null ? limit : invalid();
-                            }
-                            if (!request.requestExpiresAt().isAfter(now))
-                                return new BusinessException(
-                                        ErrorCode.REGISTRATION_EXPIRED,
-                                        "Lượt đăng ký đã hết hạn. Vui lòng đăng ký lại.");
-                            if (!request.otpExpiresAt().isAfter(now))
-                                return new BusinessException(
-                                        ErrorCode.OTP_EXPIRED,
-                                        "Mã xác minh đã hết hạn. Vui lòng yêu cầu mã mới.");
-                            String expected = request.otpHmac();
-                            if (expected == null
-                                    || !MessageDigest.isEqual(
-                                            expected.getBytes(StandardCharsets.US_ASCII),
-                                            hmac(request.challengeId(), input.otp())
-                                                    .getBytes(StandardCharsets.US_ASCII))) {
-                                store.recordWrongCode(request.challengeId());
-                                BusinessException limit = limiter.wrongCode(email, now);
-                                return limit != null ? limit : invalid();
-                            }
-                            store.complete(request, now);
-                            return null;
-                        });
+        BusinessException error = tx.execute(
+                status -> {
+                    Instant now = clock.instant();
+                    BusinessException blocked = limiter.reserveVerification(email, ip(clientIp), now);
+                    if (blocked != null)
+                        return blocked;
+                    var user = store.lockUser(email).orElse(null);
+                    var request = user == null
+                            ? null
+                            : store.find(input.registrationId(), user.id())
+                                    .orElse(null);
+                    if (user == null
+                            || !user.status().equals("PENDING_VERIFICATION")
+                            || request == null
+                            || request.closed()) {
+                        BusinessException limit = limiter.wrongCode(email, now);
+                        return limit != null ? limit : invalid();
+                    }
+                    if (!request.requestExpiresAt().isAfter(now))
+                        return new BusinessException(
+                                ErrorCode.REGISTRATION_EXPIRED,
+                                "Lượt đăng ký đã hết hạn. Vui lòng đăng ký lại.");
+                    if (!request.otpExpiresAt().isAfter(now))
+                        return new BusinessException(
+                                ErrorCode.OTP_EXPIRED,
+                                "Mã xác minh đã hết hạn. Vui lòng yêu cầu mã mới.");
+                    String expected = request.otpHmac();
+                    if (expected == null
+                            || !MessageDigest.isEqual(
+                                    expected.getBytes(StandardCharsets.US_ASCII),
+                                    hmac(request.challengeId(), input.otp())
+                                            .getBytes(StandardCharsets.US_ASCII))) {
+                        store.recordWrongCode(request.challengeId());
+                        BusinessException limit = limiter.wrongCode(email, now);
+                        return limit != null ? limit : invalid();
+                    }
+                    store.complete(request, now);
+                    return null;
+                });
         // Throw only AFTER commit, so invalid attempts and blocks cannot roll back.
-        if (error != null) throw error;
+        if (error != null)
+            throw error;
     }
 
     private RegistrationChallengeResponse deliver(Issued issued) {
@@ -195,8 +191,7 @@ public class RegistrationService {
                         status -> {
                             var user = store.lockUser(issued.email()).orElse(null);
                             if (user != null) {
-                                var current =
-                                        store.find(issued.registrationId(), user.id()).orElse(null);
+                                var current = store.find(issued.registrationId(), user.id()).orElse(null);
                                 if (current != null
                                         && !current.closed()
                                         && current.challengeId().equals(issued.challengeId()))

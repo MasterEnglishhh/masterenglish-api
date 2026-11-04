@@ -1,7 +1,7 @@
 package com.masterenglish.api.modules.identity.controller;
 
 import com.masterenglish.api.common.security.CurrentUser;
-import com.masterenglish.api.modules.identity.dto.UserProfileResponse;
+import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.service.UserService;
 import java.util.Objects;

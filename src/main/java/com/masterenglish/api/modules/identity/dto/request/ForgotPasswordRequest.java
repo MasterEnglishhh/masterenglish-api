@@ -1,4 +1,4 @@
-package com.masterenglish.api.modules.identity.dto;
+package com.masterenglish.api.modules.identity.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

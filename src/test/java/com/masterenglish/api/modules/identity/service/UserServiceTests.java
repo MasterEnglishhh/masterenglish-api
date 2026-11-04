@@ -7,7 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
-import com.masterenglish.api.modules.identity.dto.UserProfileResponse;
+import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.service.impl.UserServiceImpl;

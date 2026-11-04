@@ -1,7 +1,8 @@
 package com.masterenglish.api.modules.identity.service;
 
-import com.masterenglish.api.modules.identity.dto.UserProfileResponse;
 import java.util.UUID;
+
+import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 
 public interface UserService {
 
