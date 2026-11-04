@@ -13,17 +13,19 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class RateLimiterServiceImpl implements RateLimiterService {
@@ -37,23 +39,26 @@ public class RateLimiterServiceImpl implements RateLimiterService {
     public static final Duration WINDOW_DURATION = Duration.ofMinutes(15);
     public static final Duration BLOCK_DURATION = Duration.ofMinutes(15);
 
+    private static final Duration RESERVATION_DURATION = Duration.ofSeconds(30);
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
     private final AuthRateLimitRepository rateLimitRepository;
     private final AuthRateLimitEventRepository eventRepository;
     private final Clock clock;
+    private final TransactionTemplate transactions;
     private final SecretKeySpec secretKeySpec;
 
-    @Autowired
     public RateLimiterServiceImpl(
             AuthRateLimitRepository rateLimitRepository,
             AuthRateLimitEventRepository eventRepository,
             JwtProperties jwtProperties,
             @Value("${app.security.rate-limit.secret:}") String rateLimitSecret,
-            Clock clock) {
+            Clock clock,
+            TransactionTemplate transactions) {
         this.rateLimitRepository = Objects.requireNonNull(rateLimitRepository);
         this.eventRepository = Objects.requireNonNull(eventRepository);
         this.clock = Objects.requireNonNull(clock);
+        this.transactions = Objects.requireNonNull(transactions);
         String secret =
                 (rateLimitSecret != null && !rateLimitSecret.isBlank())
                         ? rateLimitSecret
@@ -62,122 +67,129 @@ public class RateLimiterServiceImpl implements RateLimiterService {
                 new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
     }
 
-    public RateLimiterServiceImpl(
-            AuthRateLimitRepository rateLimitRepository,
-            AuthRateLimitEventRepository eventRepository,
-            JwtProperties jwtProperties,
-            Clock clock) {
-        this(rateLimitRepository, eventRepository, jwtProperties, null, clock);
+    @Override
+    public <T> Optional<T> verify(
+            String email,
+            String clientIp,
+            boolean resetEmailOnSuccess,
+            Supplier<Optional<T>> verification) {
+        Attempt attempt = transactions.execute(status -> reserve(email, clientIp));
+        Optional<T> result;
+        try {
+            result = Objects.requireNonNull(verification.get());
+        } catch (RuntimeException | Error failure) {
+            try {
+                transactions.executeWithoutResult(status -> settle(attempt, Outcome.CANCELLED));
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
+        Outcome outcome = Outcome.FAILURE;
+        if (result.isPresent()) {
+            outcome = resetEmailOnSuccess ? Outcome.LOGIN : Outcome.VERIFIED;
+        }
+        Outcome verifiedOutcome = outcome;
+        if (!Boolean.TRUE.equals(
+                transactions.execute(status -> settle(attempt, verifiedOutcome)))) {
+            throw new RateLimitExceededException(1);
+        }
+        return result;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public void checkLoginRateLimit(String email, String clientIp) {
-        Instant now = clock.instant();
-        long maxRetryAfterSeconds = 0;
-
+    private Attempt reserve(String email, String clientIp) {
+        // Lock email before IP in both transactions. BCrypt runs between transactions.
+        List<AuthRateLimit> buckets = new ArrayList<>(2);
         if (email != null && !email.isBlank()) {
-            String emailHash = computeHmacSha256(normalizeEmail(email));
-            Optional<AuthRateLimit> emailLimit =
-                    rateLimitRepository.findByScopeAndSubjectHash(SCOPE_LOGIN_EMAIL, emailHash);
-            if (emailLimit.isPresent() && emailLimit.get().isBlocked(now)) {
-                long retryAfter =
-                        Duration.between(now, emailLimit.get().getBlockedUntil()).toSeconds();
-                maxRetryAfterSeconds = Math.max(maxRetryAfterSeconds, Math.max(1, retryAfter));
+            buckets.add(lockBucket(SCOPE_LOGIN_EMAIL, normalizeEmail(email)));
+        }
+        if (clientIp != null && !clientIp.isBlank()) {
+            buckets.add(lockBucket(SCOPE_LOGIN_IP, normalizeIp(clientIp)));
+        }
+        Instant now = clock.instant();
+        long retryAfter = 0;
+        for (AuthRateLimit bucket : buckets) {
+            if (bucket.isBlocked(now)) {
+                Duration remaining = Duration.between(now, bucket.getBlockedUntil());
+                long seconds = remaining.getSeconds() + (remaining.getNano() == 0 ? 0 : 1);
+                retryAfter = Math.max(retryAfter, seconds);
+            } else if (eventRepository.countOccupiedSlots(
+                            bucket.getId(), now, now.minus(WINDOW_DURATION))
+                    >= threshold(bucket)) {
+                retryAfter = Math.max(retryAfter, 1);
             }
         }
+        if (retryAfter > 0) {
+            throw new RateLimitExceededException(retryAfter);
+        }
 
-        if (clientIp != null && !clientIp.isBlank()) {
-            String ipHash = computeHmacSha256(normalizeIp(clientIp));
-            Optional<AuthRateLimit> ipLimit =
-                    rateLimitRepository.findByScopeAndSubjectHash(SCOPE_LOGIN_IP, ipHash);
-            if (ipLimit.isPresent() && ipLimit.get().isBlocked(now)) {
-                long retryAfter =
-                        Duration.between(now, ipLimit.get().getBlockedUntil()).toSeconds();
-                maxRetryAfterSeconds = Math.max(maxRetryAfterSeconds, Math.max(1, retryAfter));
+        Instant expiresAt = now.plus(RESERVATION_DURATION);
+        List<Slot> slots = new ArrayList<>(buckets.size());
+        for (AuthRateLimit bucket : buckets) {
+            eventRepository.deleteExpiredReservations(bucket.getId(), now);
+            var event = eventRepository.save(AuthRateLimitEvent.reserve(bucket, now, expiresAt));
+            slots.add(new Slot(bucket.getId(), event.getId()));
+        }
+        return new Attempt(slots, expiresAt);
+    }
+
+    private boolean settle(Attempt attempt, Outcome outcome) {
+        List<AuthRateLimit> buckets =
+                attempt.slots().stream()
+                        .map(
+                                slot ->
+                                        rateLimitRepository
+                                                .findBucketForUpdate(slot.bucketId())
+                                                .orElseThrow())
+                        .toList();
+        Instant now = clock.instant();
+        boolean active = attempt.expiresAt().isAfter(now);
+        for (int i = 0; i < buckets.size(); i++) {
+            AuthRateLimit bucket = buckets.get(i);
+            long eventId = attempt.slots().get(i).eventId();
+            if (active && outcome == Outcome.FAILURE) {
+                eventRepository.findById(eventId).orElseThrow().recordFailure(now);
+                long failures =
+                        eventRepository.countByRateLimitIdAndOccurredAtAfter(
+                                bucket.getId(), now.minus(WINDOW_DURATION));
+                if (failures >= threshold(bucket) && !bucket.isBlocked(now)) {
+                    bucket.blockUntil(now.plus(BLOCK_DURATION));
+                }
+            } else {
+                eventRepository.deleteById(eventId);
+                if (active
+                        && outcome == Outcome.LOGIN
+                        && SCOPE_LOGIN_EMAIL.equals(bucket.getScope())) {
+                    eventRepository.deleteFailures(bucket.getId());
+                    bucket.blockUntil(null);
+                    bucket.resetAt(now);
+                }
             }
         }
-
-        if (maxRetryAfterSeconds > 0) {
-            throw new RateLimitExceededException(
-                    maxRetryAfterSeconds, "Too many login attempts. Please try again later.");
-        }
+        return active;
     }
 
-    @Override
-    @Transactional
-    public void recordLoginFailure(String email, String clientIp) {
-        Instant now = clock.instant();
-
-        if (email != null && !email.isBlank()) {
-            recordFailureForSubject(
-                    SCOPE_LOGIN_EMAIL,
-                    computeHmacSha256(normalizeEmail(email)),
-                    EMAIL_FAILURE_THRESHOLD,
-                    now);
-        }
-
-        if (clientIp != null && !clientIp.isBlank()) {
-            recordFailureForSubject(
-                    SCOPE_LOGIN_IP,
-                    computeHmacSha256(normalizeIp(clientIp)),
-                    IP_FAILURE_THRESHOLD,
-                    now);
-        }
+    private AuthRateLimit lockBucket(String scope, String subject) {
+        String hash = computeHmacSha256(subject);
+        rateLimitRepository.insertIfNotExists(UUID.randomUUID(), scope, hash, clock.instant());
+        return rateLimitRepository.findBucketForUpdate(scope, hash).orElseThrow();
     }
 
-    @Override
-    @Transactional
-    public void resetLoginFailure(String email) {
-        if (email == null || email.isBlank()) {
-            return;
-        }
-
-        Instant now = clock.instant();
-        String emailHash = computeHmacSha256(normalizeEmail(email));
-
-        rateLimitRepository
-                .findByScopeAndSubjectHash(SCOPE_LOGIN_EMAIL, emailHash)
-                .ifPresent(
-                        rateLimit -> {
-                            rateLimit.blockUntil(null);
-                            rateLimit.resetAt(now);
-                            rateLimitRepository.save(rateLimit);
-                            eventRepository.deleteByRateLimitId(rateLimit.getId());
-                        });
+    private static long threshold(AuthRateLimit bucket) {
+        return SCOPE_LOGIN_EMAIL.equals(bucket.getScope())
+                ? EMAIL_FAILURE_THRESHOLD
+                : IP_FAILURE_THRESHOLD;
     }
 
-    private void recordFailureForSubject(
-            String scope, String subjectHash, long threshold, Instant now) {
-        AuthRateLimit rateLimit = getOrCreateRateLimit(scope, subjectHash);
+    private record Slot(UUID bucketId, long eventId) {}
 
-        eventRepository.save(new AuthRateLimitEvent(rateLimit, now));
+    private record Attempt(List<Slot> slots, Instant expiresAt) {}
 
-        Instant windowStart = now.minus(WINDOW_DURATION);
-        long recentFailures =
-                eventRepository.countByRateLimitIdAndOccurredAtAfter(
-                        rateLimit.getId(), windowStart);
-
-        if (recentFailures >= threshold) {
-            rateLimit.blockUntil(now.plus(BLOCK_DURATION));
-            rateLimitRepository.save(rateLimit);
-        }
-    }
-
-    private AuthRateLimit getOrCreateRateLimit(String scope, String subjectHash) {
-        return rateLimitRepository
-                .findByScopeAndSubjectHash(scope, subjectHash)
-                .orElseGet(
-                        () -> {
-                            rateLimitRepository.insertIfNotExists(
-                                    UUID.randomUUID(), scope, subjectHash, clock.instant());
-                            return rateLimitRepository
-                                    .findByScopeAndSubjectHash(scope, subjectHash)
-                                    .orElseThrow(
-                                            () ->
-                                                    new IllegalStateException(
-                                                            "Failed to get or create rate limit"));
-                        });
+    private enum Outcome {
+        FAILURE,
+        LOGIN,
+        VERIFIED,
+        CANCELLED
     }
 
     private String computeHmacSha256(String data) {

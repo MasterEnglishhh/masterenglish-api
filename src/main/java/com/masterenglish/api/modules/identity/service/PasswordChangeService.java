@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,18 +80,14 @@ public class PasswordChangeService {
     public PasswordChangeChallengeResponse request(
             UserPrincipal principal, ChangePasswordRequest request, String ip) {
         String email = emailKeys.emailKey(principal.getEmail());
-        passwordLimiter.checkLoginRateLimit(email, ip);
-        User snapshot =
-                users.findById(principal.getId())
-                        .orElseThrow(PasswordChangeService::unauthenticated);
-        requireAccount(snapshot, principal);
         String current = Normalizer.normalize(request.currentPassword(), Normalizer.Form.NFC);
-        if (current.getBytes(StandardCharsets.UTF_8).length > 72
-                || !encoder.matches(current, snapshot.getPasswordHash())) {
-            passwordLimiter.recordLoginFailure(email, ip);
-            throw new BusinessException(
-                    ErrorCode.PASSWORD_REJECTED, "Mật khẩu hiện tại không chính xác.");
-        }
+        passwordLimiter
+                .verify(email, ip, false, () -> verifyCurrentPassword(principal, current))
+                .orElseThrow(
+                        () ->
+                                new BusinessException(
+                                        ErrorCode.PASSWORD_REJECTED,
+                                        "Mật khẩu hiện tại không chính xác."));
         String next = policy.normalizeAndValidate(request.newPassword());
         if (!next.equals(Normalizer.normalize(request.confirmPassword(), Normalizer.Form.NFC))) {
             throw new BusinessException(
@@ -130,6 +127,17 @@ public class PasswordChangeService {
                         });
         deliver(principal, id, code, hmac);
         return new PasswordChangeChallengeResponse(id, expiresAt, 60);
+    }
+
+    private Optional<User> verifyCurrentPassword(UserPrincipal principal, String password) {
+        User snapshot =
+                users.findById(principal.getId())
+                        .orElseThrow(PasswordChangeService::unauthenticated);
+        requireAccount(snapshot, principal);
+        return password.getBytes(StandardCharsets.UTF_8).length <= 72
+                        && encoder.matches(password, snapshot.getPasswordHash())
+                ? Optional.of(snapshot)
+                : Optional.empty();
     }
 
     public PasswordChangeChallengeResponse resend(UserPrincipal principal, UUID id, String ip) {

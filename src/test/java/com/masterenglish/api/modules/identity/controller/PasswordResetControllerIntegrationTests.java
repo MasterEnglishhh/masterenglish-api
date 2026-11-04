@@ -24,10 +24,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -403,6 +407,44 @@ class PasswordResetControllerIntegrationTests {
         json("/api/v1/auth/login", Map.of("email", EMAIL, "password", OLD))
                 .andExpect(status().isUnauthorized());
         login(NEW);
+    }
+
+    @Test
+    void concurrentPasswordChangesShareTheCurrentPasswordAttemptBudget() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        int attempts = 8;
+        var ready = new CountDownLatch(attempts);
+        var start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        try (var executor = Executors.newFixedThreadPool(attempts)) {
+            for (int i = 0; i < attempts; i++) {
+                results.add(
+                        executor.submit(
+                                () -> {
+                                    ready.countDown();
+                                    start.await();
+                                    return json(
+                                                    CHANGE,
+                                                    changePayload("incorrect current password"),
+                                                    access)
+                                            .andReturn()
+                                            .getResponse()
+                                            .getStatus();
+                                }));
+            }
+            boolean started = ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+            assertThat(started).isTrue();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) {
+                statuses.add(result.get(25, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsOnly(400, 429);
+            assertThat(statuses.stream().filter(status -> status == 400)).hasSize(5);
+        }
+        json("/api/v1/auth/login", Map.of("email", EMAIL, "password", OLD))
+                .andExpect(status().isTooManyRequests());
+        verify(mailer, never()).sendPasswordChange(anyString(), anyString());
     }
 
     @Test

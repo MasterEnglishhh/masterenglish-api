@@ -1,22 +1,17 @@
 package com.masterenglish.api.modules.identity.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.error.RateLimitExceededException;
-import com.masterenglish.api.modules.identity.repository.AuthRateLimitEventRepository;
-import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository;
-import jakarta.persistence.EntityManager;
-import java.time.Duration;
-import java.time.Instant;
-import org.junit.jupiter.api.DisplayName;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 @Import(TestcontainersConfiguration.class)
@@ -24,143 +19,110 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class RateLimiterServiceTests {
 
-    @Autowired private RateLimiterService rateLimiterService;
-    @Autowired private AuthRateLimitRepository rateLimitRepository;
-    @Autowired private AuthRateLimitEventRepository rateLimitEventRepository;
-    @Autowired private EntityManager entityManager;
+    @Autowired private RateLimiterService rateLimiter;
+    @Autowired private JdbcTemplate jdbc;
 
     @Test
-    @DisplayName("checkLoginRateLimit passes without exception when there are no failed attempts")
-    void checkLoginRateLimit_noFailures_passes() {
-        assertThatCode(
-                        () ->
-                                rateLimiterService.checkLoginRateLimit(
-                                        "fresh.user@example.com", "192.168.1.100"))
-                .doesNotThrowAnyException();
+    void fiveFailuresBlockFurtherVerificationForTheNormalizedEmail() {
+        failFiveTimes("  Target.User@Example.COM  ", "10.0.0.1");
+        assertBlocked("target.user@example.com", "10.0.0.2");
     }
 
     @Test
-    @DisplayName("Recording 5 failures within 15 minutes blocks the email on next check")
-    void recordLoginFailure_fiveFailuresWithinWindow_blocksEmail() {
-        String email = "failed.user@example.com";
-        String ip = "10.0.0.1";
-
+    void successfulLoginClearsEmailFailuresWhilePasswordCheckDoesNot() {
+        String email = "login-reset@example.com";
+        String ip = "10.0.0.3";
         for (int i = 0; i < 4; i++) {
-            rateLimiterService.recordLoginFailure(email, ip);
-            assertThatCode(() -> rateLimiterService.checkLoginRateLimit(email, ip))
-                    .doesNotThrowAnyException();
+            fail(email, ip);
         }
+        assertThat(rateLimiter.verify(email, ip, false, () -> Optional.of(true))).contains(true);
+        fail(email, ip);
+        assertBlocked(email, ip);
 
-        // 5th failure reaches the threshold
-        rateLimiterService.recordLoginFailure(email, ip);
-
-        // Next check should be blocked
-        assertThatThrownBy(() -> rateLimiterService.checkLoginRateLimit(email, ip))
-                .isInstanceOf(RateLimitExceededException.class)
-                .satisfies(
-                        ex -> {
-                            RateLimitExceededException rateLimitEx =
-                                    (RateLimitExceededException) ex;
-                            assertThat(rateLimitEx.getErrorCode())
-                                    .isEqualTo(ErrorCode.RATE_LIMITED);
-                            assertThat(rateLimitEx.getRetryAfterSeconds()).isBetween(1L, 900L);
-                        });
+        String other = "other-login-reset@example.com";
+        for (int i = 0; i < 4; i++) {
+            fail(other, ip);
+        }
+        assertThat(rateLimiter.verify(other, ip, true, () -> Optional.of(true))).contains(true);
+        failFiveTimes(other, ip);
+        assertBlocked(other, ip);
     }
 
     @Test
-    @DisplayName("resetLoginFailure clears failed events and unblocks the email")
-    void resetLoginFailure_unblocksEmail() {
-        String email = "blocked.user@example.com";
-        String ip = "10.0.0.2";
-
-        for (int i = 0; i < 5; i++) {
-            rateLimiterService.recordLoginFailure(email, ip);
-        }
-
-        assertThatThrownBy(() -> rateLimiterService.checkLoginRateLimit(email, ip))
-                .isInstanceOf(RateLimitExceededException.class);
-
-        // Reset after successful login
-        rateLimiterService.resetLoginFailure(email);
-        entityManager.flush();
-        entityManager.clear();
-
-        // Email should now be unblocked (testing with a different IP so IP block doesn't interfere)
-        assertThatCode(() -> rateLimiterService.checkLoginRateLimit(email, "10.0.0.3"))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("Email normalization trims whitespace and ignores case for rate limits")
-    void checkLoginRateLimit_normalizesEmail() {
-        String upperEmailWithSpaces = "  Target.User@Example.COM  ";
-        String normalizedEmail = "target.user@example.com";
+    void oldFailuresAndExpiredReservationsDoNotOccupySlots() {
+        String email = "window-test@example.com";
         String ip = "10.0.0.4";
-
-        for (int i = 0; i < 5; i++) {
-            rateLimiterService.recordLoginFailure(upperEmailWithSpaces, ip);
-        }
-
-        assertThatThrownBy(() -> rateLimiterService.checkLoginRateLimit(normalizedEmail, ip))
-                .isInstanceOf(RateLimitExceededException.class);
+        fail(email, ip);
+        jdbc.update(
+                """
+                UPDATE auth_rate_limit_events SET occurred_at = now() - interval '20 minutes'
+                WHERE rate_limit_id IN (SELECT id FROM auth_rate_limits WHERE scope = 'LOGIN_FAILURE_EMAIL')
+                """);
+        jdbc.update(
+                """
+                INSERT INTO auth_rate_limit_events(rate_limit_id, reserved_until)
+                SELECT id, now() - interval '1 minute' FROM auth_rate_limits WHERE scope = 'LOGIN_FAILURE_EMAIL'
+                """);
+        failFiveTimes(email, ip);
+        assertBlocked(email, ip);
     }
 
     @Test
-    @DisplayName("Failures outside the 15-minute window do not trigger a block")
-    void slidingWindow_failuresOutsideWindow_doNotTriggerBlock() {
-        String email = "window.test@example.com";
+    void verifierExceptionReleasesReservationWithoutRecordingFailure() {
+        String email = "cancelled-verification@example.com";
         String ip = "10.0.0.5";
-
-        // Record 4 failures manually with an occurredAt of 20 minutes ago
-        rateLimiterService.recordLoginFailure(email, ip);
-        entityManager.flush();
-
-        // Update existing events to 20 minutes ago
-        Instant twentyMinutesAgo = Instant.now().minus(Duration.ofMinutes(20));
-        entityManager
-                .createQuery(
-                        "UPDATE AuthRateLimitEvent e SET e.occurredAt = :twentyMinutesAgo WHERE e.occurredAt >= :recent")
-                .setParameter("twentyMinutesAgo", twentyMinutesAgo)
-                .setParameter("recent", Instant.now().minus(Duration.ofMinutes(5)))
-                .executeUpdate();
-
-        // Clear block if any was set
-        entityManager
-                .createQuery("UPDATE AuthRateLimit r SET r.blockedUntil = null")
-                .executeUpdate();
-        entityManager.flush();
-        entityManager.clear();
-
-        // Record 1 new failure now (total in window = 1, total overall = 2)
-        rateLimiterService.recordLoginFailure(email, ip);
-
-        // Should not be blocked because only 1 failure is inside the 15-minute window
-        assertThatCode(() -> rateLimiterService.checkLoginRateLimit(email, ip))
-                .doesNotThrowAnyException();
+        for (int i = 0; i < 6; i++) {
+            assertThatThrownBy(
+                            () ->
+                                    rateLimiter.verify(
+                                            email,
+                                            ip,
+                                            true,
+                                            () -> {
+                                                throw new IllegalStateException(
+                                                        "test verification error");
+                                            }))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        failFiveTimes(email, ip);
+        assertBlocked(email, ip);
     }
 
     @Test
-    @DisplayName("IP threshold: 300 failures on same IP blocks subsequent requests from that IP")
-    void recordLoginFailure_ipThreshold_blocksWhen300FailuresReached() {
+    void threeHundredFailuresFromSameIpBlockAnUnseenEmail() {
         String ip = "192.168.100.50";
-
         for (int i = 0; i < 300; i++) {
-            rateLimiterService.recordLoginFailure("random" + i + "@example.com", ip);
+            fail("random" + i + "@example.com", ip);
         }
+        assertBlocked("fresh.unseen@example.com", ip);
+    }
 
-        // Even an unseen email should be blocked if originating from this IP
+    private void failFiveTimes(String email, String ip) {
+        for (int i = 0; i < 5; i++) {
+            fail(email, ip);
+        }
+    }
+
+    private void fail(String email, String ip) {
+        assertThat(rateLimiter.verify(email, ip, true, Optional::<Boolean>empty)).isEmpty();
+    }
+
+    private void assertBlocked(String email, String ip) {
         assertThatThrownBy(
                         () ->
-                                rateLimiterService.checkLoginRateLimit(
-                                        "fresh.unseen@example.com", ip))
-                .isInstanceOf(RateLimitExceededException.class)
-                .satisfies(
-                        ex -> {
-                            RateLimitExceededException rateLimitEx =
-                                    (RateLimitExceededException) ex;
-                            assertThat(rateLimitEx.getErrorCode())
-                                    .isEqualTo(ErrorCode.RATE_LIMITED);
-                            assertThat(rateLimitEx.getRetryAfterSeconds()).isBetween(1L, 900L);
+                                rateLimiter.verify(
+                                        email,
+                                        ip,
+                                        true,
+                                        () -> {
+                                            throw new AssertionError(
+                                                    "A blocked request reached the password verifier");
+                                        }))
+                .isInstanceOfSatisfying(
+                        RateLimitExceededException.class,
+                        error -> {
+                            assertThat(error.getErrorCode()).isEqualTo(ErrorCode.RATE_LIMITED);
+                            assertThat(error.getRetryAfterSeconds()).isBetween(1L, 900L);
                         });
     }
 }
