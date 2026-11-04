@@ -1,10 +1,12 @@
 package com.masterenglish.api.modules.identity.repository;
 
 import com.masterenglish.api.modules.identity.entity.AuthRateLimit;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +14,15 @@ import org.springframework.data.repository.query.Param;
 public interface AuthRateLimitRepository extends JpaRepository<AuthRateLimit, UUID> {
 
     Optional<AuthRateLimit> findByScopeAndSubjectHash(String scope, String subjectHash);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM AuthRateLimit r WHERE r.scope = :scope AND r.subjectHash = :subjectHash")
+    Optional<AuthRateLimit> findBucketForUpdate(
+            @Param("scope") String scope, @Param("subjectHash") String subjectHash);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM AuthRateLimit r WHERE r.id = :id")
+    Optional<AuthRateLimit> findBucketForUpdate(@Param("id") UUID id);
 
     @Modifying
     @Query(

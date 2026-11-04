@@ -16,6 +16,7 @@ import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.service.OtpCodec;
+import com.masterenglish.api.modules.identity.service.PasswordChangeExpiration;
 import com.masterenglish.api.modules.identity.service.RegistrationMailer;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
@@ -24,10 +25,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +70,7 @@ class PasswordResetControllerIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired JsonMapper mapper;
     @Autowired PasswordEncoder encoder;
+    @Autowired PasswordChangeExpiration passwordChangeExpiration;
     @Autowired MutableClock clock;
     @MockitoBean RegistrationMailer mailer;
     private MockMvc mvc;
@@ -406,6 +412,44 @@ class PasswordResetControllerIntegrationTests {
     }
 
     @Test
+    void concurrentPasswordChangesShareTheCurrentPasswordAttemptBudget() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        int attempts = 8;
+        var ready = new CountDownLatch(attempts);
+        var start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        try (var executor = Executors.newFixedThreadPool(attempts)) {
+            for (int i = 0; i < attempts; i++) {
+                results.add(
+                        executor.submit(
+                                () -> {
+                                    ready.countDown();
+                                    start.await();
+                                    return json(
+                                                    CHANGE,
+                                                    changePayload("incorrect current password"),
+                                                    access)
+                                            .andReturn()
+                                            .getResponse()
+                                            .getStatus();
+                                }));
+            }
+            boolean started = ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+            assertThat(started).isTrue();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) {
+                statuses.add(result.get(25, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsOnly(400, 429);
+            assertThat(statuses.stream().filter(status -> status == 400)).hasSize(5);
+        }
+        json("/api/v1/auth/login", Map.of("email", EMAIL, "password", OLD))
+                .andExpect(status().isTooManyRequests());
+        verify(mailer, never()).sendPasswordChange(anyString(), anyString());
+    }
+
+    @Test
     void passwordChangeResendKeepsOriginalDeadlineAndSharesOtpSendLimit() throws Exception {
         Cookie access = login(OLD).getCookie("access_token");
         var initial =
@@ -429,7 +473,49 @@ class PasswordResetControllerIntegrationTests {
                         access)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+        assertExpiredSecretsCleared(UUID.fromString(challenge.get("challengeId").toString()));
         login(OLD);
+    }
+
+    @Test
+    void cleanupClearsExpiredAbandonedRequestsAndRetainsTheExpiredResponse() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        var issued =
+                json(CHANGE, changePayload(OLD), access)
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse();
+        UUID id =
+                UUID.fromString(data(issued.getContentAsByteArray()).get("challengeId").toString());
+
+        passwordChangeExpiration.expireRequests();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT pending_password_hash IS NOT NULL FROM password_change_requests WHERE id=?",
+                                Boolean.class,
+                                id))
+                .isTrue();
+
+        clock.advance(301);
+        passwordChangeExpiration.expireRequests();
+        assertExpiredSecretsCleared(id);
+        json(CHANGE + "/verify", Map.of("challengeId", id, "otp", code.get()), access)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+    }
+
+    private void assertExpiredSecretsCleared(UUID id) {
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM password_change_requests r
+                JOIN otp_challenges c ON c.id = r.otp_challenge_id
+                WHERE r.id = ? AND r.pending_password_hash IS NULL AND c.otp_hmac IS NULL
+                  AND r.invalidated_at IS NOT NULL AND c.invalidated_at IS NOT NULL
+                """,
+                                Integer.class,
+                                id))
+                .isEqualTo(1);
     }
 
     @Test
