@@ -21,12 +21,15 @@ import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Import(TestcontainersConfiguration.class)
@@ -35,11 +38,120 @@ import org.springframework.transaction.annotation.Transactional;
 class IdentityDatabaseTests {
 
     @Autowired JdbcTemplate jdbc;
+    @Autowired DataSource dataSource;
     @Autowired EntityManager entityManager;
     @Autowired UserRepository users;
     @Autowired AuthSessionRepository authSessions;
     @Autowired AuthRateLimitRepository rateLimits;
     @Autowired AuthRateLimitEventRepository rateLimitEvents;
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void upgradesV5WithoutChangingExistingProfilesRolesOrCredentials() {
+        var v5 =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas("identity_upgrade")
+                        .target("5")
+                        .cleanDisabled(false)
+                        .load();
+        var v7 =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .schemas("identity_upgrade")
+                        .target("7")
+                        .load();
+        try {
+            v5.migrate();
+            UUID user = UUID.randomUUID();
+            UUID session = UUID.randomUUID();
+            UUID bucket = UUID.randomUUID();
+            String tokenHash = "e".repeat(64);
+            jdbc.update(
+                    """
+                    INSERT INTO identity_upgrade.users(id,email,password_hash,first_name,last_name,
+                        phone,status,email_verified_at,auth_version)
+                    VALUES (?,'migration@example.test','test-hash','An','Nguyễn','+84900000000','ACTIVE',now(),9)
+                    """,
+                    user);
+            jdbc.update(
+                    "INSERT INTO identity_upgrade.user_roles(user_id,role_id) VALUES (?,1),(?,2)",
+                    user,
+                    user);
+            jdbc.update(
+                    """
+                    INSERT INTO identity_upgrade.auth_sessions(id,user_id,expires_at,ip_address)
+                    VALUES (?,?,now()+interval '1 day','2001:db8::1')
+                    """,
+                    session,
+                    user);
+            jdbc.update(
+                    """
+                    INSERT INTO identity_upgrade.refresh_tokens(id,session_id,token_hash,expires_at)
+                    VALUES (?,?,?,now()+interval '1 day')
+                    """,
+                    UUID.randomUUID(),
+                    session,
+                    tokenHash);
+
+            jdbc.update(
+                    """
+                    INSERT INTO identity_upgrade.auth_rate_limits(id,scope,subject_hash)
+                    VALUES (?,'LOGIN_FAILURE_EMAIL',repeat('a',64))
+                    """,
+                    bucket);
+            jdbc.update(
+                    "INSERT INTO identity_upgrade.auth_rate_limit_events(rate_limit_id) VALUES (?)",
+                    bucket);
+
+            assertThat(v7.migrate().migrationsExecuted).isEqualTo(3);
+            v7.validate();
+            assertThat(
+                            jdbc.queryForObject(
+                                    """
+                    SELECT count(*) FROM identity_upgrade.auth_rate_limit_events
+                    WHERE rate_limit_id=? AND reserved_until IS NULL
+                    """,
+                                    Integer.class,
+                                    bucket))
+                    .isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    """
+                    SELECT phone FROM identity_upgrade.users
+                    WHERE id=? AND auth_version=9 AND status='ACTIVE' AND password_hash='test-hash'
+                    """,
+                                    String.class,
+                                    user))
+                    .isEqualTo("+84900000000");
+            assertThat(
+                            jdbc.queryForList(
+                                    """
+                    SELECT role_id FROM identity_upgrade.user_roles WHERE user_id=? AND assigned_by IS NULL
+                    """,
+                                    Short.class,
+                                    user))
+                    .containsExactlyInAnyOrder((short) 1, (short) 2);
+            assertThat(
+                            jdbc.queryForObject(
+                                    """
+                    SELECT host(ip_address) FROM identity_upgrade.auth_sessions WHERE id=? AND revoked_at IS NULL
+                    """,
+                                    String.class,
+                                    session))
+                    .isEqualTo("2001:db8::1");
+            assertThat(
+                            jdbc.queryForObject(
+                                    """
+                    SELECT token_hash FROM identity_upgrade.refresh_tokens WHERE session_id=? AND revoked_at IS NULL
+                    """,
+                                    String.class,
+                                    session))
+                    .isEqualTo(tokenHash);
+        } finally {
+            v5.clean();
+        }
+    }
 
     @Test
     void mapsMultipleRolesAndLoadsThemForAuthentication() {
