@@ -15,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 public final class UserPrincipal implements UserDetails, AuthenticatedUser {
 
     private final UUID id;
+    private final UUID sessionId;
     private final String email;
     private final String firstName;
     private final String lastName;
@@ -26,8 +27,9 @@ public final class UserPrincipal implements UserDetails, AuthenticatedUser {
     private final Instant lockedUntil;
     private final List<GrantedAuthority> authorities;
 
-    private UserPrincipal(User user) {
+    private UserPrincipal(User user, UUID sessionId) {
         this.id = user.getId();
+        this.sessionId = sessionId;
         this.email = user.getEmail();
         this.firstName = user.getFirstName();
         this.lastName = user.getLastName();
@@ -45,7 +47,15 @@ public final class UserPrincipal implements UserDetails, AuthenticatedUser {
     }
 
     public static UserPrincipal create(User user) {
-        return new UserPrincipal(user);
+        return create(user, null);
+    }
+
+    public static UserPrincipal create(User user, UUID sessionId) {
+        return new UserPrincipal(user, sessionId);
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
     }
 
     @Override

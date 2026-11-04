@@ -38,6 +38,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -68,11 +69,13 @@ class PasswordResetControllerIntegrationTests {
     @MockitoBean RegistrationMailer mailer;
     private MockMvc mvc;
     private final AtomicReference<String> code = new AtomicReference<>();
+    private static final String CHANGE = "/api/v1/auth/password/change";
 
     @BeforeEach
     void setup() {
         for (String table :
                 List.of(
+                        "password_change_requests",
                         "password_reset_grants",
                         "registration_requests",
                         "otp_challenges",
@@ -90,6 +93,13 @@ class PasswordResetControllerIntegrationTests {
                         })
                 .when(mailer)
                 .sendPasswordReset(anyString(), anyString());
+        doAnswer(
+                        call -> {
+                            code.set(call.getArgument(1));
+                            return null;
+                        })
+                .when(mailer)
+                .sendPasswordChange(anyString(), anyString());
         UUID id = UUID.randomUUID();
         jdbc.update(
                 "INSERT INTO users(id,email,password_hash,first_name,last_name,status,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,?,'ACTIVE',?,?,?)",
@@ -328,6 +338,130 @@ class PasswordResetControllerIntegrationTests {
         reset(EMAIL, token, NEW).andExpect(status().isOk());
     }
 
+    @Test
+    void changeRequiresCurrentPasswordAndIssuingSessionThenRevokesAllCredentials()
+            throws Exception {
+        var primary = login(OLD);
+        var other = login(OLD);
+        Cookie access = primary.getCookie("access_token");
+        Cookie otherAccess = other.getCookie("access_token");
+        json(CHANGE, changePayload(OLD)).andExpect(status().isUnauthorized());
+        json(CHANGE, changePayload("wrong password"), access)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_REJECTED"));
+        verify(mailer, never()).sendPasswordChange(anyString(), anyString());
+
+        var challenge =
+                json(CHANGE, changePayload(OLD), access)
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.otp").doesNotExist())
+                        .andReturn()
+                        .getResponse();
+        var id = data(challenge.getContentAsByteArray()).get("challengeId");
+        assertThat(code.get()).matches("[0-9]{6}");
+        assertThat(jdbc.queryForObject("SELECT otp_hmac FROM otp_challenges", String.class))
+                .isNotEqualTo(code.get())
+                .hasSize(64);
+        assertThat(jdbc.queryForObject("SELECT auth_version FROM users", Integer.class)).isZero();
+        var verification = Map.of("challengeId", id, "otp", code.get());
+        json(CHANGE + "/verify", verification, otherAccess).andExpect(status().isBadRequest());
+        json(CHANGE + "/verify", Map.of("challengeId", id, "otp", wrong(code.get())), access)
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT attempt_count FROM otp_challenges", Integer.class))
+                .isEqualTo(1);
+
+        var result =
+                json(CHANGE + "/verify", verification, access)
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse();
+        assertThat(result.getHeaders("Set-Cookie"))
+                .anyMatch(
+                        value -> value.startsWith("access_token=") && value.contains("Max-Age=0"));
+        assertThat(jdbc.queryForObject("SELECT auth_version FROM users", Integer.class))
+                .isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT pending_password_hash FROM password_change_requests",
+                                String.class))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM auth_sessions WHERE revoke_reason='PASSWORD_CHANGE'",
+                                Integer.class))
+                .isEqualTo(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL",
+                                Integer.class))
+                .isZero();
+        json(CHANGE + "/verify", verification, access).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/users/me").cookie(otherAccess))
+                .andExpect(status().isUnauthorized());
+        json("/api/v1/auth/refresh", Map.of(), other.getCookie("refresh_token"))
+                .andExpect(status().isUnauthorized());
+        json("/api/v1/auth/login", Map.of("email", EMAIL, "password", OLD))
+                .andExpect(status().isUnauthorized());
+        login(NEW);
+    }
+
+    @Test
+    void passwordChangeResendKeepsOriginalDeadlineAndSharesOtpSendLimit() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        var initial =
+                json(CHANGE, changePayload(OLD), access)
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse();
+        var challenge = data(initial.getContentAsByteArray());
+        var resend = Map.of("challengeId", challenge.get("challengeId"));
+        json(CHANGE + "/resend", resend, access).andExpect(status().isTooManyRequests());
+        json("/api/v1/auth/password/forgot", Map.of("email", EMAIL))
+                .andExpect(status().isTooManyRequests());
+        clock.advance(61);
+        json(CHANGE + "/resend", resend, access)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.expiresAt").value(challenge.get("expiresAt")));
+        clock.advance(240);
+        json(
+                        CHANGE + "/verify",
+                        Map.of("challengeId", challenge.get("challengeId"), "otp", code.get()),
+                        access)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("OTP_EXPIRED"));
+        login(OLD);
+    }
+
+    @Test
+    void passwordResetInvalidatesPendingPasswordChangeAndClearsItsHash() throws Exception {
+        Cookie access = login(OLD).getCookie("access_token");
+        json(CHANGE, changePayload(OLD), access).andExpect(status().isAccepted());
+        clock.advance(61);
+        String grant = grant(request(EMAIL));
+        reset(EMAIL, grant, NEW).andExpect(status().isOk());
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT pending_password_hash FROM password_change_requests",
+                                String.class))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM password_change_requests WHERE invalidated_at IS NOT NULL",
+                                Integer.class))
+                .isEqualTo(1);
+    }
+
+    private MockHttpServletResponse login(String password) throws Exception {
+        return json("/api/v1/auth/login", Map.of("email", EMAIL, "password", password))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse();
+    }
+
+    private static Map<String, String> changePayload(String current) {
+        return Map.of("currentPassword", current, "newPassword", NEW, "confirmPassword", NEW);
+    }
+
     private record Flow(UUID id, String email, String code) {
         @Override
         public String toString() {
@@ -373,10 +507,11 @@ class PasswordResetControllerIntegrationTests {
         return mapper.readValue(bytes, Map.class);
     }
 
-    private ResultActions json(String path, Object payload) throws Exception {
+    private ResultActions json(String path, Object payload, Cookie... authCookies)
+            throws Exception {
         var csrf = mvc.perform(get("/api/v1/auth/csrf")).andReturn().getResponse();
         var token = data(csrf.getContentAsByteArray());
-        return mvc.perform(
+        var requestBuilder =
                 post(path)
                         .with(
                                 request -> {
@@ -386,7 +521,9 @@ class PasswordResetControllerIntegrationTests {
                         .cookie(csrf.getCookie("XSRF-TOKEN"))
                         .header((String) token.get("headerName"), token.get("token"))
                         .contentType("application/json")
-                        .content(mapper.writeValueAsString(payload)));
+                        .content(mapper.writeValueAsString(payload));
+        if (authCookies.length > 0) requestBuilder.cookie(authCookies);
+        return mvc.perform(requestBuilder);
     }
 
     private static String wrong(String code) {

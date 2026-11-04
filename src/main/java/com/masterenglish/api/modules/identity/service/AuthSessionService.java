@@ -14,5 +14,7 @@ public interface AuthSessionService {
 
     void revokeSession(UUID sessionId, RevokeReason reason);
 
+    void revokeAllSessions(UUID userId, RevokeReason reason);
+
     boolean isSessionActive(UUID sessionId, int userAuthVersion);
 }
