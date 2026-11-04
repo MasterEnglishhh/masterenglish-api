@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.identity.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,10 +17,16 @@ import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,13 +34,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.json.JsonMapper;
@@ -52,6 +62,8 @@ class UserControllerIntegrationTests {
     @Autowired private AuthRateLimitEventRepository rateLimitEventRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private EntityManager entityManager;
+    @Autowired private JdbcTemplate jdbc;
+    @Autowired private JwtTokenService jwt;
 
     private MockMvc mockMvc;
 
@@ -65,17 +77,23 @@ class UserControllerIntegrationTests {
     @BeforeEach
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM audit_logs");
         refreshTokenRepository.deleteAllInBatch();
         authSessionRepository.deleteAllInBatch();
         rateLimitEventRepository.deleteAllInBatch();
         rateLimitRepository.deleteAllInBatch();
+        jdbc.update("DELETE FROM user_roles");
         userRepository.deleteAllInBatch();
     }
 
     private User createVerifiedUser(String email, String rawPassword) {
-        Role learnerRole = entityManager.find(Role.class, (short) 1);
+        return createVerifiedUser(email, rawPassword, (short) 1);
+    }
+
+    private User createVerifiedUser(String email, String rawPassword, short roleId) {
+        Role role = entityManager.find(Role.class, roleId);
         User user = new User(email, passwordEncoder.encode(rawPassword), "Huy", "Trịnh Đăng");
-        user.addRole(learnerRole);
+        user.addRole(role);
         user.markEmailVerified(Instant.now());
         return userRepository.saveAndFlush(user);
     }
@@ -270,6 +288,162 @@ class UserControllerIntegrationTests {
         }
         assertThat(userRepository.findById(user.getId()).orElseThrow().getDisplayName())
                 .isEqualTo(user.getDisplayName());
+    }
+
+    @Test
+    void onlySystemAdminCanReplaceRolesAndChangesRevokeSessionsAndWriteAudit() throws Exception {
+        User learner = createVerifiedUser("learner@example.test", PASSWORD);
+        User content = createVerifiedUser("content@example.test", PASSWORD, (short) 2);
+        User admin = createVerifiedUser("admin@example.test", PASSWORD, (short) 3);
+        String learnerToken = loginAndGetAccessToken(learner.getEmail(), PASSWORD);
+        String contentToken = loginAndGetAccessToken(content.getEmail(), PASSWORD);
+        String adminToken = loginAndGetAccessToken(admin.getEmail(), PASSWORD);
+        Set<String> requested = Set.of("LEARNER", "CONTENT_ADMIN");
+
+        putRoles(learner.getId(), null, requested).andExpect(status().isUnauthorized());
+        putRoles(learner.getId(), learnerToken, requested).andExpect(status().isForbidden());
+        putRoles(learner.getId(), contentToken, requested).andExpect(status().isForbidden());
+        var learnerClaims = jwt.parseAndValidateToken(learnerToken);
+        String mismatchedRoles =
+                jwt.generateAccessToken(
+                        learner.getId(),
+                        learnerClaims.sessionId(),
+                        learnerClaims.authVersion(),
+                        Set.of("SYSTEM_ADMIN"));
+        putRoles(learner.getId(), mismatchedRoles, requested).andExpect(status().isForbidden());
+        putRoles(learner.getId(), adminToken, Set.of()).andExpect(status().isBadRequest());
+        putRoles(learner.getId(), adminToken, Set.of("UNKNOWN")).andExpect(status().isBadRequest());
+        putRoles(admin.getId(), adminToken, Set.of("LEARNER")).andExpect(status().isConflict());
+
+        putRoles(learner.getId(), adminToken, requested)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roles.length()").value(2));
+        var changed = userRepository.findById(learner.getId()).orElseThrow();
+        assertThat(changed.getRoleNames()).containsExactlyInAnyOrderElementsOf(requested);
+        assertThat(changed.getAuthVersion()).isEqualTo(learner.getAuthVersion() + 1);
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT ur.assigned_by FROM user_roles ur JOIN roles r ON r.id=ur.role_id
+                WHERE ur.user_id=? AND r.code='CONTENT_ADMIN'
+                """,
+                                UUID.class,
+                                learner.getId()))
+                .isEqualTo(admin.getId());
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM refresh_tokens r JOIN auth_sessions s ON s.id=r.session_id
+                WHERE s.user_id=? AND r.revoked_at IS NULL
+                """,
+                                Integer.class,
+                                learner.getId()))
+                .isZero();
+        mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", learnerToken)))
+                .andExpect(status().isUnauthorized());
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM audit_logs
+                WHERE actor_user_id=? AND entity_id=? AND action='ROLE_CHANGE'
+                  AND metadata->'before' = '["LEARNER"]'::jsonb
+                  AND metadata->'after' = '["CONTENT_ADMIN","LEARNER"]'::jsonb
+                """,
+                                Integer.class,
+                                admin.getId(),
+                                learner.getId()))
+                .isEqualTo(1);
+
+        putRoles(learner.getId(), adminToken, requested).andExpect(status().isOk());
+        assertThat(userRepository.findById(learner.getId()).orElseThrow().getAuthVersion())
+                .isEqualTo(changed.getAuthVersion());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_logs", Integer.class))
+                .isEqualTo(1);
+        String newToken = loginAndGetAccessToken(learner.getEmail(), PASSWORD);
+        mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", newToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roles.length()").value(2));
+    }
+
+    @Test
+    void concurrentSelfDemotionsCannotRemoveLastActiveSystemAdmin() throws Exception {
+        User first = createVerifiedUser("first-admin@example.test", PASSWORD, (short) 3);
+        User second = createVerifiedUser("second-admin@example.test", PASSWORD, (short) 3);
+        String firstToken = loginAndGetAccessToken(first.getEmail(), PASSWORD);
+        String secondToken = loginAndGetAccessToken(second.getEmail(), PASSWORD);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var firstResult =
+                    executor.submit(
+                            () -> {
+                                start.await();
+                                return putRoles(first.getId(), firstToken, Set.of("LEARNER"))
+                                        .andReturn()
+                                        .getResponse()
+                                        .getStatus();
+                            });
+            var secondResult =
+                    executor.submit(
+                            () -> {
+                                start.await();
+                                return putRoles(second.getId(), secondToken, Set.of("LEARNER"))
+                                        .andReturn()
+                                        .getResponse()
+                                        .getStatus();
+                            });
+            start.countDown();
+            assertThat(
+                            java.util.List.of(
+                                    firstResult.get(15, TimeUnit.SECONDS),
+                                    secondResult.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id
+                JOIN users u ON u.id=ur.user_id
+                WHERE r.code='SYSTEM_ADMIN' AND u.status='ACTIVE'
+                """,
+                                Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void databaseOwnerCanBootstrapOnlyTheFirstSystemAdmin() throws Exception {
+        User first = createVerifiedUser("bootstrap@example.test", PASSWORD);
+        User other = createVerifiedUser("other@example.test", PASSWORD);
+        String oldToken = loginAndGetAccessToken(first.getEmail(), PASSWORD);
+        jdbc.queryForList("SELECT bootstrap_system_admin(?)", first.getId());
+        assertThat(userRepository.findById(first.getId()).orElseThrow().getRoleNames())
+                .containsExactlyInAnyOrder("LEARNER", "SYSTEM_ADMIN");
+        assertThatThrownBy(
+                        () -> jdbc.queryForList("SELECT bootstrap_system_admin(?)", other.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        mockMvc.perform(get("/api/v1/users/me").cookie(new Cookie("access_token", oldToken)))
+                .andExpect(status().isUnauthorized());
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM audit_logs WHERE actor_type='SYSTEM'
+                AND action='ROLE_BOOTSTRAP' AND entity_id=?
+                """,
+                                Integer.class,
+                                first.getId()))
+                .isEqualTo(1);
+    }
+
+    private ResultActions putRoles(UUID target, String accessToken, Set<String> roles)
+            throws Exception {
+        CsrfBootstrap csrf = bootstrapCsrf();
+        var request =
+                put("/api/v1/admin/users/{id}/roles", target)
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(Map.of("roles", roles)));
+        if (accessToken != null) request.cookie(new Cookie("access_token", accessToken));
+        return mockMvc.perform(request);
     }
 
     private record CsrfBootstrap(Cookie cookie, String headerName, String token) {}

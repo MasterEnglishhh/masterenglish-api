@@ -1,6 +1,8 @@
 package com.masterenglish.api.modules.identity.repository;
 
+import com.masterenglish.api.common.security.RoleCode;
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.entity.UserStatus;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,4 +28,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     @Query("select (count(u) > 0) from User u where lower(u.email) = lower(:email)")
     boolean existsByEmailIgnoreCase(@Param("email") String email);
+
+    @Query(
+            """
+            SELECT count(u) FROM User u JOIN u.userRoles ur
+            WHERE ur.role.code = :role AND u.status = :status AND u.emailVerifiedAt IS NOT NULL
+            """)
+    long countVerifiedUsersByRoleAndStatus(
+            @Param("role") RoleCode role, @Param("status") UserStatus status);
 }

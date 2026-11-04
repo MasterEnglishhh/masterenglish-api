@@ -42,6 +42,9 @@ khóa riêng qua môi trường. CSRF token không phải access token.
 [PASSWORD_RESET_SETUP.md](docs/PASSWORD_RESET_SETUP.md) mô tả ba bước OTP → quyền reset
 ngắn hạn → mật khẩu mới, các hạn mức và việc thu hồi toàn bộ phiên sau reset.
 
+[IDENTITY_API.md](docs/IDENTITY_API.md) mô tả cập nhật hồ sơ, đổi mật khẩu, quản lý
+phiên, phân quyền tài khoản và cách cấp quyền quản trị đầu tiên.
+
 ## Kiểm thử và đóng gói
 
 ```powershell
