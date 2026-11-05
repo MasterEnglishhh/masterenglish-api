@@ -12,6 +12,9 @@ class ArchitectureTests {
         ApplicationModules modules = ApplicationModules.of(MasterenglishApiApplication.class);
         assertThat(modules.getModuleByName("identity")).isPresent();
         assertThat(modules.getModuleByName("common")).isPresent();
+        assertThat(modules.getModuleByName("content")).isPresent();
+        assertThat(modules.getModuleByName("vocabulary")).isPresent();
+        assertThat(modules.getModuleByName("learning")).isPresent();
         assertThat(modules.getModuleByName("modules")).isEmpty();
         modules.verify();
     }
