@@ -2,10 +2,8 @@ package com.masterenglish.api.modules.learning.service;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.modules.learning.dto.SavedWordDto;
-
-import org.springframework.data.domain.Pageable;
-
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 public interface SavedWordService {
 

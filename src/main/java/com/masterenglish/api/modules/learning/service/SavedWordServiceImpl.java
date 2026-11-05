@@ -8,17 +8,15 @@ import com.masterenglish.api.modules.learning.entity.UserSavedWord;
 import com.masterenglish.api.modules.learning.repository.UserSavedWordRepository;
 import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
 import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @Transactional

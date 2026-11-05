@@ -13,9 +13,9 @@ import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
 import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedServiceImpl;
-
 import jakarta.persistence.EntityManager;
-
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,9 +28,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
-
-import java.time.Instant;
-import java.util.UUID;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -142,7 +139,7 @@ class VocabularyApiIntegrationTests {
     @Test
     @DisplayName(
             "GET /api/v1/vocabulary/decks and decks/{deckId} return published decks with card"
-                + " counts")
+                    + " counts")
     void verifyDecks() throws Exception {
         mockMvc.perform(
                         get("/api/v1/vocabulary/decks")

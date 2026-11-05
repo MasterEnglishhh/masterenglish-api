@@ -10,7 +10,7 @@ import com.masterenglish.api.modules.learning.service.DueQueueService;
 import com.masterenglish.api.modules.learning.service.LearningDeckCardService;
 import com.masterenglish.api.modules.learning.service.SavedWordService;
 import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
-
+import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,8 +21,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/vocabulary")

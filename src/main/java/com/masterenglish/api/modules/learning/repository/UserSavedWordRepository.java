@@ -1,18 +1,16 @@
 package com.masterenglish.api.modules.learning.repository;
 
 import com.masterenglish.api.modules.learning.entity.UserSavedWord;
-
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 public interface UserSavedWordRepository
         extends JpaRepository<UserSavedWord, UserSavedWord.UserSavedWordId> {
@@ -44,7 +42,7 @@ public interface UserSavedWordRepository
     @Query(
             value =
                     "INSERT INTO user_saved_words(user_id,word_sense_id) VALUES (:userId,:senseId)"
-                        + " ON CONFLICT DO NOTHING",
+                            + " ON CONFLICT DO NOTHING",
             nativeQuery = true)
     void insertIfAbsent(@Param("userId") UUID userId, @Param("senseId") UUID senseId);
 
@@ -56,14 +54,14 @@ public interface UserSavedWordRepository
 
     @Query(
             "SELECT sw FROM UserSavedWord sw WHERE sw.id.userId = :userId AND sw.id.wordSenseId IN"
-                + " :senseIds")
+                    + " :senseIds")
     List<UserSavedWord> findByUserIdAndSenseIdIn(
             @Param("userId") UUID userId, @Param("senseIds") Collection<UUID> senseIds);
 
     @Modifying
     @Query(
             "DELETE FROM UserSavedWord sw WHERE sw.id.userId = :userId AND sw.id.wordSenseId ="
-                + " :wordSenseId")
+                    + " :wordSenseId")
     void deleteByUserIdAndWordSenseId(
             @Param("userId") UUID userId, @Param("wordSenseId") UUID wordSenseId);
 }
