@@ -2,7 +2,7 @@
   {
     "key": "travel",
     "title": "Travel & Transport — Du lịch và di chuyển",
-    "description": "Từ vựng thực hành khi đặt chỗ, làm thủ tục và di chuyển bằng máy bay. Nội dung mẫu tự biên soạn để kiểm tra local.",
+    "description": "Từ vựng thực hành khi đặt chỗ, làm thủ tục và di chuyển bằng máy bay.",
     "level": "A2",
     "words": [
       {"lemma":"airport","ipa":"/ˈeəpɔːt/","pos":"NOUN","vi":"sân bay","definition":"a place where planes arrive and leave","exampleEn":"We arrived at the airport two hours before our flight.","exampleVi":"Chúng tôi đến sân bay hai giờ trước chuyến bay."},
@@ -20,7 +20,7 @@
   {
     "key": "food",
     "title": "Food & Dining — Ăn uống và nhà hàng",
-    "description": "Luyện cách gọi món, mô tả đồ ăn và nói về nấu nướng. Nội dung mẫu tự biên soạn để kiểm tra local.",
+    "description": "Luyện cách gọi món, mô tả đồ ăn và nói về nấu nướng.",
     "level": "A2",
     "words": [
       {"lemma":"menu","ipa":"/ˈmenjuː/","pos":"NOUN","vi":"thực đơn","definition":"a list of food and drinks available at a restaurant","exampleEn":"Could we see the menu, please?","exampleVi":"Cho chúng tôi xem thực đơn được không?"},
@@ -38,7 +38,7 @@
   {
     "key": "technology",
     "title": "Technology & Internet — Công nghệ và Internet",
-    "description": "Các từ thường gặp khi sử dụng máy tính, phần mềm và dịch vụ trực tuyến. Nội dung mẫu tự biên soạn để kiểm tra local.",
+    "description": "Các từ thường gặp khi sử dụng máy tính, phần mềm và dịch vụ trực tuyến.",
     "level": "B1",
     "words": [
       {"lemma":"device","ipa":"/dɪˈvaɪs/","pos":"NOUN","vi":"thiết bị","definition":"a piece of equipment made for a particular purpose","exampleEn":"You can use this app on any mobile device.","exampleVi":"Bạn có thể sử dụng ứng dụng này trên bất kỳ thiết bị di động nào."},
@@ -56,7 +56,7 @@
   {
     "key": "health",
     "title": "Health & Wellbeing — Sức khỏe và sinh hoạt",
-    "description": "Luyện từ vựng để mô tả sức khỏe, đặt lịch khám và nói về thói quen sinh hoạt. Nội dung mẫu dùng để học ngôn ngữ và kiểm tra local.",
+    "description": "Luyện từ vựng để mô tả sức khỏe, đặt lịch khám và nói về thói quen sinh hoạt.",
     "level": "B1",
     "words": [
       {"lemma":"symptom","ipa":"/ˈsɪmptəm/","pos":"NOUN","vi":"triệu chứng","definition":"a change in the body that may indicate an illness","exampleEn":"Please describe your symptoms to the doctor.","exampleVi":"Vui lòng mô tả các triệu chứng của bạn với bác sĩ."},

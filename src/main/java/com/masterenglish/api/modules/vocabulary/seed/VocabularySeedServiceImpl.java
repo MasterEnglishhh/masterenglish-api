@@ -124,6 +124,38 @@ public class VocabularySeedServiceImpl implements VocabularySeedService {
                 ("masterenglish-local-topics-v1:" + key).getBytes(StandardCharsets.UTF_8));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, String> starterWords() {
+        Map<UUID, String> words = new java.util.LinkedHashMap<>();
+        for (var word : createWordDefinitions()) words.put(word.id(), word.lemma());
+        for (var topic : starterTopics()) {
+            for (var word : topic.path("words")) {
+                String lemma = word.path("lemma").asText();
+                words.put(topicId("word:" + lemma), lemma);
+            }
+        }
+        return Map.copyOf(words);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Set<UUID> starterDeckIds() {
+        var decks = new java.util.HashSet<>(java.util.Set.of(DECK_1_ID, DECK_2_ID));
+        for (var topic : starterTopics()) decks.add(topicId("deck:" + topic.path("key").asText()));
+        return java.util.Set.copyOf(decks);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode starterTopics() {
+        try (var input = getClass().getResourceAsStream("/vocabulary/local-topics.json")) {
+            if (input == null)
+                throw new IllegalStateException("Missing starter vocabulary topics.");
+            return objectMapper.readTree(input);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot read starter vocabulary topics.", exception);
+        }
+    }
+
     private void ensureSourceExists(UUID adminUserId) {
         if (!authoringService.hasSource(DEFAULT_SOURCE_ID)) {
             authoringService.createSource(

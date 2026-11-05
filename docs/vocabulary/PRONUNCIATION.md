@@ -80,7 +80,9 @@ English. The current slice pronounces headwords, not full example sentences.
 - Generated word pronunciations need listening review before adopting them
   as final teaching content, especially words with different noun/verb stress.
 
-Production deployment/import is separate from this local operation. Audio
+Production deployment/import is separate from this local operation. Use the
+explicit [production import guide](PRODUCTION_IMPORT.md) for the one-shot
+`--content-import` command; do not enable the local profile on EC2. Audio
 objects may be in the existing media R2 bucket, but this import writes only the
 local database. EC2 accounts, schema and content are not changed by this runner.
 

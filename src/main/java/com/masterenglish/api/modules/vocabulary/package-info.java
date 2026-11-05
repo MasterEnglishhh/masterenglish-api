@@ -4,6 +4,7 @@
         allowedDependencies = {
             "content::authoring",
             "content::pronunciation",
+            "identity::user-lock",
             "common::api",
             "common::entity",
             "common::error",
