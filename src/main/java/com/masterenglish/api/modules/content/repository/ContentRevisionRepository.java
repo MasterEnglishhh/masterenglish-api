@@ -21,4 +21,6 @@ public interface ContentRevisionRepository extends JpaRepository<ContentRevision
     int findMaxVersionNoByContentItemId(@Param("contentItemId") UUID contentItemId);
 
     List<ContentRevision> findByContentItemIdOrderByVersionNoDesc(UUID contentItemId);
+
+    long countByStatus(String status);
 }

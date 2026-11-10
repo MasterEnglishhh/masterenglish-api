@@ -33,7 +33,11 @@ public interface ContentAuthoringService {
 
     ContentRevision approve(UUID revisionId, UUID reviewerId, String reviewNote);
 
+    ContentRevision reject(UUID revisionId, UUID reviewerId, String reviewNote);
+
     ContentRevision publish(UUID revisionId, UUID publisherId);
+
+    void archiveItem(UUID itemId, String reason, UUID actorId);
 
     boolean hasSource(UUID sourceId);
 

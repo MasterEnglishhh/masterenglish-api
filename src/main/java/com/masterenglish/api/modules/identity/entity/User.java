@@ -221,7 +221,7 @@ public class User extends BaseEntity {
         invalidateAuthentication();
     }
 
-    private void invalidateAuthentication() {
+    public void invalidateAuthentication() {
         authVersion = Math.incrementExact(authVersion);
     }
 

@@ -3,6 +3,7 @@
         displayName = "Content & Revisions",
         allowedDependencies = {
             "identity::user-lock",
+            "common::api",
             "common::entity",
             "common::storage",
             "common::error",

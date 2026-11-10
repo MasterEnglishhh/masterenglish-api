@@ -210,6 +210,54 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
     }
 
     @Override
+    public ContentRevision reject(UUID revisionId, UUID reviewerId, String reviewNote) {
+        userLock.verifyContentAdmin(reviewerId);
+        ContentRevision revision =
+                revisionRepository
+                        .findByIdForUpdate(revisionId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Revision not found: " + revisionId));
+        revision.reject(reviewerId, reviewNote);
+        auditLogRepository.save(
+                new AuditLog(
+                        "USER",
+                        reviewerId,
+                        "CONTENT_REJECTED",
+                        "CONTENT_REVISION",
+                        revisionId,
+                        "{}",
+                        reviewNote));
+        return revisionRepository.save(revision);
+    }
+
+    @Override
+    public void archiveItem(UUID itemId, String reason, UUID actorId) {
+        userLock.verifyContentAdmin(actorId);
+        ContentItem item =
+                itemRepository
+                        .findByIdForUpdate(itemId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Content item not found: " + itemId));
+        item.archive(reason);
+        itemRepository.save(item);
+        auditLogRepository.save(
+                new AuditLog(
+                        "USER",
+                        actorId,
+                        "CONTENT_ARCHIVED",
+                        item.getContentType(),
+                        itemId,
+                        "{}",
+                        reason));
+    }
+
+    @Override
     public ContentRevision publish(UUID revisionId, UUID publisherId) {
         userLock.verifyContentAdmin(publisherId);
         ContentRevision revision =

@@ -46,3 +46,6 @@ out/
 ### Scratch & Superpowers ###
 .superpowers/
 
+# codegraph
+.codegraph/
+

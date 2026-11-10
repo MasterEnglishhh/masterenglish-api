@@ -80,6 +80,20 @@ public class ContentItem {
         this.publishedRevisionId = publishedRevisionId;
     }
 
+    public void archive(String reason) {
+        this.archived = true;
+        this.archivedAt = Instant.now();
+        this.accessRevokedAt = Instant.now();
+        this.accessRevokeReason = reason;
+    }
+
+    public void unarchive() {
+        this.archived = false;
+        this.archivedAt = null;
+        this.accessRevokedAt = null;
+        this.accessRevokeReason = null;
+    }
+
     @PrePersist
     void onPersist() {
         if (id == null) {

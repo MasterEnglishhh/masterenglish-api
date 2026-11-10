@@ -4,4 +4,8 @@ import java.util.UUID;
 
 public interface ContentQueryService {
     boolean isItemActive(UUID itemId);
+
+    long countTotalContentItems();
+
+    long countPendingReviewRevisions();
 }

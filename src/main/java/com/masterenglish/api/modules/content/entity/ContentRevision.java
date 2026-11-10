@@ -103,6 +103,19 @@ public class ContentRevision {
         this.reviewedAt = Instant.now();
     }
 
+    public void reject(UUID reviewerId, String note) {
+        requireStatus("IN_REVIEW");
+        if (note == null || note.isBlank()) {
+            throw new com.masterenglish.api.common.error.BusinessException(
+                    com.masterenglish.api.common.error.ErrorCode.VALIDATION_ERROR,
+                    "Review note is required when rejecting.");
+        }
+        this.status = "REJECTED";
+        this.reviewedBy = reviewerId;
+        this.reviewNote = note.strip();
+        this.reviewedAt = Instant.now();
+    }
+
     public void publish(UUID publisherId) {
         requireStatus("APPROVED");
         this.status = "PUBLISHED";

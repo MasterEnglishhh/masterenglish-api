@@ -32,4 +32,17 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
             @Param("id") UUID id, @Param("now") Instant now);
 
     List<AuthSession> findByUserId(UUID userId);
+
+    @Query(
+            "SELECT s.user.id, count(s) FROM AuthSession s WHERE s.user.id IN :userIds AND s.revokedAt IS NULL AND s.expiresAt > :now GROUP BY s.user.id")
+    List<Object[]> countActiveSessionsForUsers(
+            @Param("userIds") java.util.Collection<UUID> userIds, @Param("now") Instant now);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(
+            "UPDATE AuthSession s SET s.revokedAt = :now, s.revokeReason = :reason WHERE s.user.id = :userId AND s.revokedAt IS NULL")
+    int revokeAllActiveSessions(
+            @Param("userId") UUID userId,
+            @Param("reason") com.masterenglish.api.modules.identity.entity.RevokeReason reason,
+            @Param("now") Instant now);
 }
