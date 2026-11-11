@@ -454,7 +454,7 @@ CREATE TABLE notification_deliveries (
 CREATE INDEX idx_deliveries_retry ON notification_deliveries(status, next_retry_at)
     WHERE status IN ('PENDING','FAILED');
 
--- System administration (M09): 2 tables.
+-- System administration (M09): audit_logs is provided by the Identity migration V7.
 CREATE TABLE system_settings (
     key VARCHAR(100) PRIMARY KEY,
     value_json JSONB NOT NULL,
@@ -462,16 +462,3 @@ CREATE TABLE system_settings (
     updated_by UUID REFERENCES users(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY,
-    actor_user_id UUID REFERENCES users(id),
-    action VARCHAR(80) NOT NULL,
-    entity_type VARCHAR(50) NOT NULL,
-    entity_id UUID,
-    metadata JSONB,
-    ip_address INET,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_audit_logs_actor_created ON audit_logs(actor_user_id, created_at DESC);
-CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
