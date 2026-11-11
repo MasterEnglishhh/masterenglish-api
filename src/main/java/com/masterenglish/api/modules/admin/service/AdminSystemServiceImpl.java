@@ -26,15 +26,15 @@ public class AdminSystemServiceImpl implements AdminSystemService {
 
     private final FeatureFlagRepository flagRepository;
     private final ContentAdminService contentAdminService;
-    private final R2Properties r2Properties;
+    private final org.springframework.beans.factory.ObjectProvider<R2Properties> r2PropertiesProvider;
 
     public AdminSystemServiceImpl(
             FeatureFlagRepository flagRepository,
             ContentAdminService contentAdminService,
-            R2Properties r2Properties) {
+            org.springframework.beans.factory.ObjectProvider<R2Properties> r2PropertiesProvider) {
         this.flagRepository = Objects.requireNonNull(flagRepository, "flagRepository must not be null");
         this.contentAdminService = Objects.requireNonNull(contentAdminService, "contentAdminService must not be null");
-        this.r2Properties = r2Properties;
+        this.r2PropertiesProvider = r2PropertiesProvider;
     }
 
     @Override
@@ -79,8 +79,9 @@ public class AdminSystemServiceImpl implements AdminSystemService {
         double percent = maxBytes > 0 ? (double) usedBytes / maxBytes * 100.0 : 0.0;
         String usedFormatted = formatBytes(usedBytes);
         String limitFormatted = formatBytes(maxBytes);
-        String bucket = r2Properties != null && r2Properties.bucket() != null
-                ? r2Properties.bucket()
+        R2Properties r2Props = r2PropertiesProvider.getIfAvailable();
+        String bucket = r2Props != null && r2Props.bucket() != null
+                ? r2Props.bucket()
                 : "masterenglish-media-r2";
 
         return new StorageQuotaDto(

@@ -53,7 +53,7 @@ public class SecurityConfiguration {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 // spa() installs Spring's plain-header/XOR handling; override its default
                 // repository afterwards.
-                .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").spa().csrfTokenRepository(csrfTokenRepository))
                 .exceptionHandling(
                         errors ->
                                 errors.authenticationEntryPoint(problemHandler)
@@ -65,7 +65,11 @@ public class SecurityConfiguration {
                                         .requestMatchers(
                                                 HttpMethod.GET,
                                                 "/api/actuator/health",
-                                                "/api/actuator/health/**")
+                                                "/api/actuator/health/**",
+                                                "/v3/api-docs",
+                                                "/v3/api-docs/**",
+                                                "/swagger-ui/**",
+                                                "/swagger-ui.html")
                                         .permitAll()
                                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf")
                                         .permitAll()
