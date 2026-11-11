@@ -51,7 +51,8 @@ public class UserAdminServiceImpl implements UserAdminService {
             } catch (IllegalArgumentException ignored) {
             }
         }
-        Page<User> usersPage = userRepository.findAdminUsers(cleanSearch, role, statusEnum, pageable);
+        String searchPattern = cleanSearch != null ? "%" + cleanSearch.toLowerCase() + "%" : null;
+        Page<User> usersPage = userRepository.findAdminUsers(searchPattern, role, statusEnum, pageable);
 
         Instant now = Instant.now();
         List<UUID> userIds = usersPage.getContent().stream().map(User::getId).toList();

@@ -114,8 +114,9 @@ class AdminServiceUnitTests {
     void adminSystemService_featureFlagsAndQuotas() {
         FeatureFlagRepository flagRepoMock = mock(FeatureFlagRepository.class);
         ContentAdminService contentAdminMock = mock(ContentAdminService.class);
-        R2Properties r2PropsMock = new R2Properties(false, null, null, "test-bucket", null, null);
-        AdminSystemService systemService = new AdminSystemServiceImpl(flagRepoMock, contentAdminMock, r2PropsMock);
+        org.springframework.beans.factory.ObjectProvider<R2Properties> r2ProviderMock = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(r2ProviderMock.getIfAvailable()).thenReturn(new R2Properties(false, null, null, "test-bucket", null, null));
+        AdminSystemService systemService = new AdminSystemServiceImpl(flagRepoMock, contentAdminMock, r2ProviderMock);
 
         UUID actorId = UUID.randomUUID();
         FeatureFlag flag = new FeatureFlag("ai_tutor_chat", "AI Tutor", "AI chat", true, "AI", actorId);

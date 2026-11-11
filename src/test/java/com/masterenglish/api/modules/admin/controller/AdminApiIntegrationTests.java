@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.admin.controller;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -125,6 +126,7 @@ class AdminApiIntegrationTests {
         mockMvc.perform(put("/api/v1/admin/users/" + learnerUser.getId() + "/roles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(rolesRequest))
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roles").isArray());
@@ -134,12 +136,14 @@ class AdminApiIntegrationTests {
         mockMvc.perform(post("/api/v1/admin/users/" + learnerUser.getId() + "/lock")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(lockRequest))
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("LOCKED"));
 
         // Unlock user
         mockMvc.perform(post("/api/v1/admin/users/" + learnerUser.getId() + "/unlock")
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
@@ -156,6 +160,7 @@ class AdminApiIntegrationTests {
         mockMvc.perform(post("/api/v1/admin/content/sources")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(sourceReq))
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNotEmpty())
@@ -172,6 +177,7 @@ class AdminApiIntegrationTests {
         mockMvc.perform(post("/api/v1/admin/content/words")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(wordReq))
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("resilience"))
@@ -198,6 +204,7 @@ class AdminApiIntegrationTests {
         mockMvc.perform(put("/api/v1/admin/system/feature-flags/ai_tutor_chat")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(flagReq))
+                        .with(csrf())
                         .with(SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(false));

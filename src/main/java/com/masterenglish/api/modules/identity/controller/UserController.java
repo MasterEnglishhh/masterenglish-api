@@ -1,12 +1,17 @@
 package com.masterenglish.api.modules.identity.controller;
 
 import com.masterenglish.api.common.security.CurrentUser;
+import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
+import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.service.UserService;
+import jakarta.validation.Valid;
 import java.util.Objects;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,5 +29,18 @@ public class UserController {
     public ResponseEntity<UserProfileResponse> getCurrentUser(
             @CurrentUser UserPrincipal principal) {
         return ResponseEntity.ok(userService.findProfileById(principal.getId()));
+    }
+
+    @GetMapping("/me/goal")
+    public ResponseEntity<LearningGoalResponse> getMyGoal(
+            @CurrentUser UserPrincipal principal) {
+        return ResponseEntity.ok(userService.findGoalByUserId(principal.getId()));
+    }
+
+    @PutMapping("/me/goal")
+    public ResponseEntity<LearningGoalResponse> updateMyGoal(
+            @CurrentUser UserPrincipal principal,
+            @Valid @RequestBody UpdateLearningGoalRequest request) {
+        return ResponseEntity.ok(userService.updateGoal(principal.getId(), request));
     }
 }

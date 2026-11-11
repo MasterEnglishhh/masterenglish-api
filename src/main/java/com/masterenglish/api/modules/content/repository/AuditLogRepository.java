@@ -10,17 +10,17 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
             value = """
             SELECT a FROM AuditLog a
             WHERE (:entityType IS NULL OR a.entityType = :entityType)
-              AND (:search IS NULL OR LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(COALESCE(a.reason, '')) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:searchPattern IS NULL OR LOWER(a.action) LIKE :searchPattern
+                   OR LOWER(COALESCE(a.reason, '')) LIKE :searchPattern)
             """,
             countQuery = """
             SELECT count(a) FROM AuditLog a
             WHERE (:entityType IS NULL OR a.entityType = :entityType)
-              AND (:search IS NULL OR LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(COALESCE(a.reason, '')) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:searchPattern IS NULL OR LOWER(a.action) LIKE :searchPattern
+                   OR LOWER(COALESCE(a.reason, '')) LIKE :searchPattern)
             """)
     org.springframework.data.domain.Page<AuditLog> findAuditLogs(
-            @org.springframework.data.repository.query.Param("search") String search,
+            @org.springframework.data.repository.query.Param("searchPattern") String searchPattern,
             @org.springframework.data.repository.query.Param("entityType") String entityType,
             org.springframework.data.domain.Pageable pageable);
 }

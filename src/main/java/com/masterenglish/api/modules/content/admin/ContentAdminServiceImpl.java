@@ -314,7 +314,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 ? null
                 : entityType.trim();
 
-        Page<AuditLog> page = auditLogRepository.findAuditLogs(cleanSearch, cleanEntity, pageable);
+        String searchPattern = cleanSearch != null ? "%" + cleanSearch.toLowerCase() + "%" : null;
+        Page<AuditLog> page = auditLogRepository.findAuditLogs(searchPattern, cleanEntity, pageable);
         return PageResponse.from(page, log -> AuditLogEntryDto.from(log, null));
     }
 

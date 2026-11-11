@@ -37,8 +37,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                     SELECT 1 FROM UserRole ur2
                     WHERE ur2.user = u AND ur2.role.code = :roleCode
               ))
-              AND (:search IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:searchPattern IS NULL OR LOWER(u.email) LIKE :searchPattern
+                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE :searchPattern)
             """,
             countQuery = """
             SELECT count(DISTINCT u) FROM User u
@@ -47,11 +47,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                     SELECT 1 FROM UserRole ur2
                     WHERE ur2.user = u AND ur2.role.code = :roleCode
               ))
-              AND (:search IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:searchPattern IS NULL OR LOWER(u.email) LIKE :searchPattern
+                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE :searchPattern)
             """)
     org.springframework.data.domain.Page<User> findAdminUsers(
-            @Param("search") String search,
+            @Param("searchPattern") String searchPattern,
             @Param("roleCode") com.masterenglish.api.common.security.RoleCode roleCode,
             @Param("status") com.masterenglish.api.modules.identity.entity.UserStatus status,
             org.springframework.data.domain.Pageable pageable);
