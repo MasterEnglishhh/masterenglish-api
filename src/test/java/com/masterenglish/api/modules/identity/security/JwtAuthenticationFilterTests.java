@@ -252,7 +252,7 @@ class JwtAuthenticationFilterTests {
                             Instant.now().minusSeconds(60),
                             Instant.now().plusSeconds(840));
             when(jwtTokenService.parseAndValidateToken(tokenString)).thenReturn(claims);
-            when(authSessionService.isSessionActive(sessionId, user.getAuthVersion()))
+            when(authSessionService.isSessionActive(sessionId, userId, user.getAuthVersion()))
                     .thenReturn(true);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -292,7 +292,7 @@ class JwtAuthenticationFilterTests {
                             Instant.now().minusSeconds(60),
                             Instant.now().plusSeconds(840));
             when(jwtTokenService.parseAndValidateToken(tokenString)).thenReturn(claims);
-            when(authSessionService.isSessionActive(sessionId, user.getAuthVersion()))
+            when(authSessionService.isSessionActive(sessionId, userId, user.getAuthVersion()))
                     .thenReturn(true);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -342,7 +342,7 @@ class JwtAuthenticationFilterTests {
                             Instant.now().minusSeconds(60),
                             Instant.now().plusSeconds(840));
             when(jwtTokenService.parseAndValidateToken(tokenString)).thenReturn(claims);
-            when(authSessionService.isSessionActive(sessionId, user.getAuthVersion()))
+            when(authSessionService.isSessionActive(sessionId, userId, user.getAuthVersion()))
                     .thenReturn(false);
 
             filter.doFilter(request, response, filterChain);
@@ -390,7 +390,8 @@ class JwtAuthenticationFilterTests {
                             Instant.now().minusSeconds(60),
                             Instant.now().plusSeconds(840));
             when(jwtTokenService.parseAndValidateToken(tokenString)).thenReturn(claims);
-            when(authSessionService.isSessionActive(sessionId, oldAuthVersion)).thenReturn(true);
+            when(authSessionService.isSessionActive(sessionId, userId, oldAuthVersion))
+                    .thenReturn(true);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
             filter.doFilter(request, response, filterChain);
@@ -420,7 +421,7 @@ class JwtAuthenticationFilterTests {
                             Instant.now().minusSeconds(60),
                             Instant.now().plusSeconds(840));
             when(jwtTokenService.parseAndValidateToken(tokenString)).thenReturn(claims);
-            when(authSessionService.isSessionActive(sessionId, user.getAuthVersion()))
+            when(authSessionService.isSessionActive(sessionId, userId, user.getAuthVersion()))
                     .thenReturn(true);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 

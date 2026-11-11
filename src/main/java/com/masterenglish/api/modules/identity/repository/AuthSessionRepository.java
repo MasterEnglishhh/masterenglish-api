@@ -19,6 +19,20 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
     @Query("SELECT s FROM AuthSession s WHERE s.id = :id")
     Optional<AuthSession> findByIdForUpdate(@Param("id") UUID id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM AuthSession s WHERE s.id = :id AND s.user.id = :userId")
+    Optional<AuthSession> findOwnedSessionForUpdate(
+            @Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Query(
+            """
+            SELECT s FROM AuthSession s
+            WHERE s.user.id = :userId AND s.revokedAt IS NULL AND s.expiresAt > :now
+            ORDER BY s.createdAt DESC, s.id
+            """)
+    List<AuthSession> findActiveSessionsNewestFirst(
+            @Param("userId") UUID userId, @Param("now") Instant now);
+
     @Query(
             "SELECT count(s) FROM AuthSession s WHERE s.user.id = :userId AND s.revokedAt IS NULL"
                     + " AND s.expiresAt > :now")
@@ -32,10 +46,10 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
 
     @Query(
             "SELECT s FROM AuthSession s JOIN FETCH s.user u LEFT JOIN FETCH u.userRoles ur LEFT"
-                    + " JOIN FETCH ur.role WHERE s.id = :id AND s.revokedAt IS NULL AND s.expiresAt >"
+                    + " JOIN FETCH ur.role WHERE s.id = :id AND u.id = :userId AND s.revokedAt IS NULL AND s.expiresAt >"
                     + " :now")
     Optional<AuthSession> findActiveSessionWithUser(
-            @Param("id") UUID id, @Param("now") Instant now);
+            @Param("id") UUID id, @Param("userId") UUID userId, @Param("now") Instant now);
 
     List<AuthSession> findByUserId(UUID userId);
 

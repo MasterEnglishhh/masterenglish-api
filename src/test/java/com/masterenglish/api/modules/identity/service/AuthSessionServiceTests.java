@@ -402,20 +402,28 @@ class AuthSessionServiceTests {
         UUID sessionId = sessions.get(0).getId();
 
         // Valid session & correct authVersion
-        assertThat(authSessionService.isSessionActive(sessionId, testUser.getAuthVersion()))
+        assertThat(
+                        authSessionService.isSessionActive(
+                                sessionId, testUser.getId(), testUser.getAuthVersion()))
                 .isTrue();
 
         // Mismatched authVersion
-        assertThat(authSessionService.isSessionActive(sessionId, testUser.getAuthVersion() + 1))
+        assertThat(
+                        authSessionService.isSessionActive(
+                                sessionId, testUser.getId(), testUser.getAuthVersion() + 1))
                 .isFalse();
 
         // Nonexistent session
-        assertThat(authSessionService.isSessionActive(UUID.randomUUID(), testUser.getAuthVersion()))
+        assertThat(
+                        authSessionService.isSessionActive(
+                                UUID.randomUUID(), testUser.getId(), testUser.getAuthVersion()))
                 .isFalse();
 
         // After revoke
         authSessionService.revokeSession(sessionId, RevokeReason.LOGOUT);
-        assertThat(authSessionService.isSessionActive(sessionId, testUser.getAuthVersion()))
+        assertThat(
+                        authSessionService.isSessionActive(
+                                sessionId, testUser.getId(), testUser.getAuthVersion()))
                 .isFalse();
     }
 }
