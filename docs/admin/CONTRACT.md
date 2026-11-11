@@ -204,7 +204,8 @@
       "author": "Admin",
       "reviewer": null,
       "updatedAt": "2026-11-05T10:00:00Z",
-      "level": "B2"
+      "level": "B2",
+      "latestRevisionId": "28000000-0000-0000-0000-000000000001"
     }
   ],
   "page": 0,

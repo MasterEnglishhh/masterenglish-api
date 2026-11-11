@@ -15,4 +15,5 @@ public record AdminContentItemDto(
         String author,
         String reviewer,
         Instant updatedAt,
-        String level) {}
+        String level,
+        UUID latestRevisionId) {}

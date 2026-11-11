@@ -184,7 +184,7 @@ class AdminControllerUnitTests {
         UUID revId = UUID.randomUUID();
 
         AdminContentItemDto mockItem = new AdminContentItemDto(
-                itemId, "word", "WORD-word", "VOCABULARY", "WORD", "DRAFT", 1, "sum", "Admin", null, Instant.now(), "B1");
+                itemId, "word", "WORD-word", "VOCABULARY", "WORD", "DRAFT", 1, "sum", "Admin", null, Instant.now(), "B1", revId);
         AdminRevisionDto mockRev = new AdminRevisionDto(revId, itemId, "APPROVED", 1, null, null, Instant.now());
         ContentSourceDto mockSource = new ContentSourceDto(
                 UUID.randomUUID(), "Source", "EXTERNAL", "https://s.com", "A", "CC", "ACTIVE", Instant.now());

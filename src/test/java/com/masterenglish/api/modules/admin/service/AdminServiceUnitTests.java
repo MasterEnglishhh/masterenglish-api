@@ -90,7 +90,7 @@ class AdminServiceUnitTests {
         UUID actorId = UUID.randomUUID();
 
         AdminContentItemDto mockItem = new AdminContentItemDto(
-                itemId, "test", "WORD-test", "VOCABULARY", "WORD", "DRAFT", 1, "test meaning", "Admin", null, Instant.now(), "B1");
+                itemId, "test", "WORD-test", "VOCABULARY", "WORD", "DRAFT", 1, "test meaning", "Admin", null, Instant.now(), "B1", revisionId);
         AdminRevisionDto mockRev = new AdminRevisionDto(
                 revisionId, itemId, "IN_REVIEW", 1, null, null, Instant.now());
 

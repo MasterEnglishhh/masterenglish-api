@@ -115,7 +115,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                     "Admin",
                     latest != null && latest.getReviewedBy() != null ? latest.getReviewedBy().toString() : null,
                     latest != null ? latest.getUpdatedAt() : item.getUpdatedAt(),
-                    level));
+                    level,
+                    latest != null ? latest.getId() : null));
         }
 
         return new PageResponse<>(
@@ -185,6 +186,9 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 request.changeSummary() != null ? request.changeSummary() : "Tạo mới từ vựng",
                 request.sourceId());
 
+        List<ContentRevision> revisions = revisionRepository.findByContentItemIdOrderByVersionNoDesc(item.getId());
+        UUID revId = revisions.isEmpty() ? null : revisions.get(0).getId();
+
         return new AdminContentItemDto(
                 item.getId(),
                 request.lemma().trim(),
@@ -197,7 +201,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 "Admin",
                 null,
                 item.getCreatedAt(),
-                request.cefrLevel().trim().toUpperCase());
+                request.cefrLevel().trim().toUpperCase(),
+                revId);
     }
 
     @Override
@@ -231,6 +236,9 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 request.changeSummary() != null ? request.changeSummary() : "Tạo mới bộ Flashcard",
                 request.sourceId());
 
+        List<ContentRevision> revisions = revisionRepository.findByContentItemIdOrderByVersionNoDesc(item.getId());
+        UUID revId = revisions.isEmpty() ? null : revisions.get(0).getId();
+
         return new AdminContentItemDto(
                 item.getId(),
                 request.title().trim(),
@@ -243,7 +251,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 "Admin",
                 null,
                 item.getCreatedAt(),
-                request.level() != null ? request.level().trim().toUpperCase() : "B1");
+                request.level() != null ? request.level().trim().toUpperCase() : "B1",
+                revId);
     }
 
     @Override
