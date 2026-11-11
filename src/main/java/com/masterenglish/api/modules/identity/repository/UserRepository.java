@@ -14,6 +14,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.id = :id")
+    Optional<User> findByIdForUpdate(@Param("id") UUID id);
+
     @Override
     @EntityGraph(attributePaths = {"userRoles", "userRoles.role"})
     Optional<User> findById(UUID id);

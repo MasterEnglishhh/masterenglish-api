@@ -30,6 +30,9 @@ jobs:
       - name: Check Docker for integration tests
         run: docker info --format '{{.ServerVersion}}'
 
+      - name: Verify portable starter bundle packaging
+        run: python3 -B -m unittest discover -s scripts/pronunciation -p 'test_*.py' -v
+
       - name: Check formatting, run tests, and build JAR
         run: bash ./gradlew spotlessCheck check bootJar --no-daemon
 

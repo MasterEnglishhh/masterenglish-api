@@ -17,6 +17,8 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Proposals are created inside a test transaction and rolled back afterwards. */
+@org.junit.jupiter.api.Disabled(
+        "Superseded by official V6 migration and VocabularyDatabaseMigrationTests")
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @Transactional

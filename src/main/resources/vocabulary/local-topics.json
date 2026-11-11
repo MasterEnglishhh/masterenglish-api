@@ -1,0 +1,74 @@
+[
+  {
+    "key": "travel",
+    "title": "Travel & Transport — Du lịch và di chuyển",
+    "description": "Từ vựng thực hành khi đặt chỗ, làm thủ tục và di chuyển bằng máy bay.",
+    "level": "A2",
+    "words": [
+      {"lemma":"airport","ipa":"/ˈeəpɔːt/","pos":"NOUN","vi":"sân bay","definition":"a place where planes arrive and leave","exampleEn":"We arrived at the airport two hours before our flight.","exampleVi":"Chúng tôi đến sân bay hai giờ trước chuyến bay."},
+      {"lemma":"passport","ipa":"/ˈpɑːspɔːt/","pos":"NOUN","vi":"hộ chiếu","definition":"an official document used when travelling to another country","exampleEn":"Keep your passport in a safe place.","exampleVi":"Hãy giữ hộ chiếu của bạn ở nơi an toàn."},
+      {"lemma":"luggage","ipa":"/ˈlʌɡɪdʒ/","pos":"NOUN","vi":"hành lý","definition":"the bags and cases you take on a journey","exampleEn":"My luggage is waiting near the hotel reception.","exampleVi":"Hành lý của tôi đang ở gần quầy lễ tân khách sạn."},
+      {"lemma":"reservation","ipa":"/ˌrezəˈveɪʃən/","pos":"NOUN","vi":"việc đặt chỗ; chỗ đã đặt","definition":"an arrangement to keep a room, seat or table for someone","exampleEn":"I have a reservation for two nights.","exampleVi":"Tôi đã đặt phòng cho hai đêm."},
+      {"lemma":"boarding","ipa":"/ˈbɔːdɪŋ/","pos":"NOUN","vi":"việc lên máy bay, tàu hoặc xe","definition":"the process of getting onto a plane, ship or other vehicle","exampleEn":"Boarding begins at gate twelve in ten minutes.","exampleVi":"Việc lên máy bay bắt đầu tại cửa số mười hai sau mười phút nữa."},
+      {"lemma":"departure","ipa":"/dɪˈpɑːtʃə/","pos":"NOUN","vi":"sự khởi hành","definition":"the act or time of leaving a place","exampleEn":"Please check the departure time on your ticket.","exampleVi":"Vui lòng kiểm tra giờ khởi hành trên vé."},
+      {"lemma":"arrival","ipa":"/əˈraɪvəl/","pos":"NOUN","vi":"sự đến nơi; giờ đến","definition":"the act or time of reaching a place","exampleEn":"Call me after your arrival in Da Nang.","exampleVi":"Hãy gọi cho tôi sau khi bạn đến Đà Nẵng."},
+      {"lemma":"passenger","ipa":"/ˈpæsɪndʒə/","pos":"NOUN","vi":"hành khách","definition":"a person travelling in a vehicle who is not driving it","exampleEn":"Each passenger may bring one small bag.","exampleVi":"Mỗi hành khách có thể mang theo một túi nhỏ."},
+      {"lemma":"destination","ipa":"/ˌdestɪˈneɪʃən/","pos":"NOUN","vi":"điểm đến","definition":"the place you are travelling to","exampleEn":"Our final destination is a quiet village by the sea.","exampleVi":"Điểm đến cuối cùng của chúng tôi là một ngôi làng yên tĩnh bên biển."},
+      {"lemma":"delay","ipa":"/dɪˈleɪ/","pos":"NOUN","vi":"sự chậm trễ","definition":"a period of waiting because something happens later than planned","exampleEn":"There is a short delay because of heavy rain.","exampleVi":"Có một chút chậm trễ do mưa lớn."}
+    ]
+  },
+  {
+    "key": "food",
+    "title": "Food & Dining — Ăn uống và nhà hàng",
+    "description": "Luyện cách gọi món, mô tả đồ ăn và nói về nấu nướng.",
+    "level": "A2",
+    "words": [
+      {"lemma":"menu","ipa":"/ˈmenjuː/","pos":"NOUN","vi":"thực đơn","definition":"a list of food and drinks available at a restaurant","exampleEn":"Could we see the menu, please?","exampleVi":"Cho chúng tôi xem thực đơn được không?"},
+      {"lemma":"starter","ipa":"/ˈstɑːtə/","pos":"NOUN","vi":"món khai vị","definition":"a small dish served before the main part of a meal","exampleEn":"We shared a salad as a starter.","exampleVi":"Chúng tôi cùng ăn một phần salad làm món khai vị."},
+      {"lemma":"dessert","ipa":"/dɪˈzɜːt/","pos":"NOUN","vi":"món tráng miệng","definition":"sweet food eaten at the end of a meal","exampleEn":"Would you like fresh fruit for dessert?","exampleVi":"Bạn có muốn ăn trái cây tươi để tráng miệng không?"},
+      {"lemma":"ingredient","ipa":"/ɪnˈɡriːdiənt/","pos":"NOUN","vi":"nguyên liệu","definition":"one of the foods used to make a dish","exampleEn":"Rice is the main ingredient in this dish.","exampleVi":"Gạo là nguyên liệu chính trong món ăn này."},
+      {"lemma":"recipe","ipa":"/ˈresəpi/","pos":"NOUN","vi":"công thức nấu ăn","definition":"instructions explaining how to prepare and cook a dish","exampleEn":"This recipe makes enough soup for four people.","exampleVi":"Công thức này làm được lượng súp đủ cho bốn người."},
+      {"lemma":"spicy","ipa":"/ˈspaɪsi/","pos":"ADJECTIVE","vi":"cay; có nhiều gia vị","definition":"having a strong flavour from spices, often with heat","exampleEn":"The sauce is too spicy for me.","exampleVi":"Nước sốt quá cay đối với tôi."},
+      {"lemma":"portion","ipa":"/ˈpɔːʃən/","pos":"NOUN","vi":"khẩu phần; suất ăn","definition":"an amount of food served to one person","exampleEn":"One portion of noodles is enough for lunch.","exampleVi":"Một suất mì là đủ cho bữa trưa."},
+      {"lemma":"takeaway","ipa":"/ˈteɪkəweɪ/","pos":"NOUN","vi":"đồ ăn mua mang về","definition":"a meal bought from a restaurant to eat somewhere else","exampleEn":"We ordered a takeaway after work.","exampleVi":"Chúng tôi đặt đồ ăn mang về sau giờ làm."},
+      {"lemma":"bill","ipa":"/bɪl/","pos":"NOUN","vi":"hóa đơn thanh toán","definition":"a statement showing how much you need to pay","exampleEn":"Could you bring us the bill, please?","exampleVi":"Bạn mang hóa đơn cho chúng tôi được không?"},
+      {"lemma":"vegetarian","ipa":"/ˌvedʒəˈteəriən/","pos":"ADJECTIVE","vi":"chay; không có thịt hoặc cá","definition":"containing no meat or fish","exampleEn":"Does this restaurant serve vegetarian meals?","exampleVi":"Nhà hàng này có phục vụ các món chay không?"}
+    ]
+  },
+  {
+    "key": "technology",
+    "title": "Technology & Internet — Công nghệ và Internet",
+    "description": "Các từ thường gặp khi sử dụng máy tính, phần mềm và dịch vụ trực tuyến.",
+    "level": "B1",
+    "words": [
+      {"lemma":"device","ipa":"/dɪˈvaɪs/","pos":"NOUN","vi":"thiết bị","definition":"a piece of equipment made for a particular purpose","exampleEn":"You can use this app on any mobile device.","exampleVi":"Bạn có thể sử dụng ứng dụng này trên bất kỳ thiết bị di động nào."},
+      {"lemma":"browser","ipa":"/ˈbraʊzə/","pos":"NOUN","vi":"trình duyệt web","definition":"a program used to open and view websites","exampleEn":"Open the link in a new browser tab.","exampleVi":"Hãy mở liên kết trong một thẻ trình duyệt mới."},
+      {"lemma":"keyboard","ipa":"/ˈkiːbɔːd/","pos":"NOUN","vi":"bàn phím","definition":"a set of keys used to type into a computer","exampleEn":"My keyboard has both English and Vietnamese letters.","exampleVi":"Bàn phím của tôi có cả chữ tiếng Anh và tiếng Việt."},
+      {"lemma":"software","ipa":"/ˈsɒftweə/","pos":"NOUN","vi":"phần mềm","definition":"programs and instructions that make a computer perform tasks","exampleEn":"The new software helps us organise our lessons.","exampleVi":"Phần mềm mới giúp chúng tôi sắp xếp các bài học."},
+      {"lemma":"password","ipa":"/ˈpɑːswɜːd/","pos":"NOUN","vi":"mật khẩu","definition":"a secret set of characters used to access an account","exampleEn":"Choose a different password for each account.","exampleVi":"Hãy chọn một mật khẩu khác nhau cho mỗi tài khoản."},
+      {"lemma":"network","ipa":"/ˈnetwɜːk/","pos":"NOUN","vi":"mạng máy tính","definition":"a group of connected computers or devices","exampleEn":"The office network is working again.","exampleVi":"Mạng máy tính của văn phòng đã hoạt động trở lại."},
+      {"lemma":"download","ipa":"/ˌdaʊnˈləʊd/","pos":"VERB","vi":"tải xuống","definition":"to copy data from another computer or the internet to your device","exampleEn":"You can download the worksheet before the lesson.","exampleVi":"Bạn có thể tải phiếu bài tập xuống trước buổi học."},
+      {"lemma":"upload","ipa":"/ˌʌpˈləʊd/","pos":"VERB","vi":"tải lên","definition":"to send data from your device to another computer or an online service","exampleEn":"Please upload your homework before Friday.","exampleVi":"Vui lòng tải bài tập về nhà của bạn lên trước thứ Sáu."},
+      {"lemma":"storage","ipa":"/ˈstɔːrɪdʒ/","pos":"NOUN","vi":"bộ nhớ; nơi lưu trữ dữ liệu","definition":"space used to keep files and other digital information","exampleEn":"This phone has enough storage for my photos.","exampleVi":"Điện thoại này có đủ bộ nhớ để lưu ảnh của tôi."},
+      {"lemma":"update","ipa":"/ʌpˈdeɪt/","pos":"VERB","vi":"cập nhật","definition":"to change software or information to a newer version","exampleEn":"Remember to update the app this evening.","exampleVi":"Hãy nhớ cập nhật ứng dụng vào tối nay."}
+    ]
+  },
+  {
+    "key": "health",
+    "title": "Health & Wellbeing — Sức khỏe và sinh hoạt",
+    "description": "Luyện từ vựng để mô tả sức khỏe, đặt lịch khám và nói về thói quen sinh hoạt.",
+    "level": "B1",
+    "words": [
+      {"lemma":"symptom","ipa":"/ˈsɪmptəm/","pos":"NOUN","vi":"triệu chứng","definition":"a change in the body that may indicate an illness","exampleEn":"Please describe your symptoms to the doctor.","exampleVi":"Vui lòng mô tả các triệu chứng của bạn với bác sĩ."},
+      {"lemma":"appointment","ipa":"/əˈpɔɪntmənt/","pos":"NOUN","vi":"cuộc hẹn; lịch hẹn","definition":"an arrangement to meet someone at a particular time","exampleEn":"I have a dental appointment on Monday.","exampleVi":"Tôi có lịch hẹn khám răng vào thứ Hai."},
+      {"lemma":"prescription","ipa":"/prɪˈskrɪpʃən/","pos":"NOUN","vi":"đơn thuốc","definition":"a doctor's written instructions for obtaining medicine","exampleEn":"The pharmacist checked the prescription carefully.","exampleVi":"Dược sĩ kiểm tra đơn thuốc cẩn thận."},
+      {"lemma":"pharmacy","ipa":"/ˈfɑːməsi/","pos":"NOUN","vi":"nhà thuốc","definition":"a shop where medicines are prepared and sold","exampleEn":"There is a pharmacy next to the hospital.","exampleVi":"Có một nhà thuốc bên cạnh bệnh viện."},
+      {"lemma":"treatment","ipa":"/ˈtriːtmənt/","pos":"NOUN","vi":"sự điều trị; phương pháp điều trị","definition":"care given to help someone recover from illness or injury","exampleEn":"The doctor explained the treatment to the patient.","exampleVi":"Bác sĩ giải thích phương pháp điều trị cho bệnh nhân."},
+      {"lemma":"recovery","ipa":"/rɪˈkʌvəri/","pos":"NOUN","vi":"sự hồi phục","definition":"the process of becoming well again after illness or injury","exampleEn":"Her recovery took several weeks.","exampleVi":"Quá trình hồi phục của cô ấy mất vài tuần."},
+      {"lemma":"exercise","ipa":"/ˈeksəsaɪz/","pos":"NOUN","vi":"hoạt động tập luyện thể chất","definition":"physical activity done to keep the body fit","exampleEn":"Walking is my favourite form of exercise.","exampleVi":"Đi bộ là hình thức tập luyện tôi yêu thích nhất."},
+      {"lemma":"nutrition","ipa":"/njuːˈtrɪʃən/","pos":"NOUN","vi":"dinh dưỡng","definition":"the way food provides what the body needs to grow and function","exampleEn":"We learned about nutrition in our science lesson.","exampleVi":"Chúng tôi học về dinh dưỡng trong tiết khoa học."},
+      {"lemma":"fever","ipa":"/ˈfiːvə/","pos":"NOUN","vi":"cơn sốt; tình trạng sốt","definition":"a body temperature that is higher than normal","exampleEn":"He missed school because he had a fever.","exampleVi":"Cậu ấy nghỉ học vì bị sốt."},
+      {"lemma":"allergy","ipa":"/ˈælədʒi/","pos":"NOUN","vi":"tình trạng dị ứng","definition":"a reaction of the body to a substance that is usually harmless","exampleEn":"She told the waiter about her peanut allergy.","exampleVi":"Cô ấy nói với người phục vụ về việc mình bị dị ứng đậu phộng."}
+    ]
+  }
+]
