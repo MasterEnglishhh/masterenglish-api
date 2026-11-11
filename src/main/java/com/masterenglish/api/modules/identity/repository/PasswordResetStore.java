@@ -141,6 +141,10 @@ public class PasswordResetStore {
 
     public void complete(Account account, Grant grant, String passwordHash, Instant now) {
         jdbc.update(
+                "UPDATE password_change_requests SET invalidated_at=?,pending_password_hash=NULL WHERE user_id=? AND completed_at IS NULL AND invalidated_at IS NULL",
+                ts(now),
+                account.id());
+        jdbc.update(
                 "UPDATE password_reset_grants SET used_at=?,grant_hash=NULL WHERE id=?",
                 ts(now),
                 grant.id());

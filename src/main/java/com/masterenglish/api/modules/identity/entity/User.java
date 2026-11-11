@@ -169,6 +169,25 @@ public class User extends BaseEntity {
         invalidateAuthentication();
     }
 
+    public void replaceRoles(Set<Role> roles, UUID actorId) {
+        if (roles.isEmpty()) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Tài khoản phải giữ ít nhất một vai trò.");
+        }
+        Set<String> previous = getRoleNames();
+        Set<String> requested =
+                roles.stream().map(role -> role.getCode().name()).collect(Collectors.toSet());
+        if (requested.equals(previous)) {
+            return;
+        }
+        userRoles.removeIf(link -> !requested.contains(link.getRole().getCode().name()));
+        roles.stream()
+                .filter(role -> !previous.contains(role.getCode().name()))
+                .map(role -> new UserRole(this, role, actorId))
+                .forEach(userRoles::add);
+        invalidateAuthentication();
+    }
+
     public void markEmailVerified(Instant verifiedAt) {
         this.emailVerifiedAt = Objects.requireNonNull(verifiedAt);
         this.status = UserStatus.ACTIVE;

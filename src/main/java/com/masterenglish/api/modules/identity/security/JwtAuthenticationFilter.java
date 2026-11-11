@@ -53,12 +53,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = tokenOpt.get();
             try {
                 JwtClaims claims = jwtTokenService.parseAndValidateToken(token);
-                if (authSessionService.isSessionActive(claims.sessionId(), claims.authVersion())) {
+                if (authSessionService.isSessionActive(
+                        claims.sessionId(), claims.userId(), claims.authVersion())) {
                     Optional<User> userOpt = userRepository.findById(claims.userId());
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
                         if (user.isActive() && user.getAuthVersion() == claims.authVersion()) {
-                            UserPrincipal principal = UserPrincipal.create(user);
+                            UserPrincipal principal =
+                                    UserPrincipal.create(user, claims.sessionId());
                             UsernamePasswordAuthenticationToken authentication =
                                     new UsernamePasswordAuthenticationToken(
                                             principal, null, principal.getAuthorities());

@@ -62,6 +62,30 @@ public class RegistrationMailer {
         deliver(message);
     }
 
+    public void sendPasswordChange(String email, String otp) {
+        ensureReady();
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(properties.from());
+        message.setTo(email);
+        message.setSubject("Mã đổi mật khẩu MasterEnglish");
+        message.setText(
+                "Mã xác nhận đổi mật khẩu của bạn là: "
+                        + otp
+                        + "\n\nChỉ nhập mã vào yêu cầu đổi mật khẩu bạn vừa bắt đầu. Mã chỉ dùng một lần.");
+        deliver(message);
+    }
+
+    public void sendPasswordChangeNotice(String email) {
+        ensureReady();
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(properties.from());
+        message.setTo(email);
+        message.setSubject("Mật khẩu MasterEnglish đã được thay đổi");
+        message.setText(
+                "Mật khẩu tài khoản MasterEnglish của bạn vừa được thay đổi. Các phiên đăng nhập cũ đã được thu hồi.");
+        deliver(message);
+    }
+
     private void deliver(SimpleMailMessage message) {
         try {
             sender.getObject().send(message);
