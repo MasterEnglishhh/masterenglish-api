@@ -23,6 +23,8 @@
 | `POST` | `/api/v1/auth/password/verify` | Public | Xác thực OTP quên mật khẩu (nhận grant token) | Sẵn sàng |
 | `POST` | `/api/v1/auth/password/reset` | Public | Đặt lại mật khẩu mới bằng grant token | Sẵn sàng |
 | `GET` | `/api/v1/users/me` | Authenticated (Cần đăng nhập) | Xem thông tin tài khoản hiện tại | Sẵn sàng |
+| `PUT` | `/api/v1/users/me` | Authenticated | Sửa hồ sơ: body `{firstName, lastName, phone?}` (tối đa 30 ký tự mỗi trường); trả `UserProfileResponse`. Không đổi avatar. | Sẵn sàng |
+| `POST` | `/api/v1/users/me/password` | Authenticated | Đổi mật khẩu: body `{currentPassword, newPassword}`. Sai mật khẩu hiện tại hoặc mật khẩu mới yếu/trùng/bị lộ → `400 PASSWORD_REJECTED`. Sai mật khẩu hiện tại được cộng vào cùng bộ đếm với `/auth/login` theo email; vượt ngưỡng → `429 RATE_LIMITED`. Mật khẩu đổi đồng thời bởi request khác → `409 CONFLICT`. Thành công → `204`, thu hồi mọi phiên (`PASSWORD_CHANGE`), tăng `auth_version` và xóa cookie; client phải đăng nhập lại. | Sẵn sàng |
 | `GET` | `/api/v1/users/me/goal` | Authenticated | **M01.06: Xem mục tiêu học tập TOEIC** | **Mới hoàn thành** |
 | `PUT` | `/api/v1/users/me/goal` | Authenticated | **M01.06: Cập nhật mục tiêu học tập TOEIC** | **Mới hoàn thành** |
 

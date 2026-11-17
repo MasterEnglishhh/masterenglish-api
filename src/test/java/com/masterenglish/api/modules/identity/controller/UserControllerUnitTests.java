@@ -5,13 +5,20 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.security.CurrentUser;
+import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
+import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
+import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
+import org.springframework.http.ResponseCookie;
 import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.User;
@@ -69,7 +76,13 @@ class UserControllerUnitTests {
             }
         };
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userServiceMock))
+        AuthCookieHelper cookieHelper = mock(AuthCookieHelper.class);
+        when(cookieHelper.clearAccessTokenCookie())
+                .thenReturn(ResponseCookie.from("access_token", "").maxAge(0).build());
+        when(cookieHelper.clearRefreshTokenCookie())
+                .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
+
+        mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userServiceMock, cookieHelper))
                 .setCustomArgumentResolvers(currentUserResolver)
                 .build();
     }
@@ -110,6 +123,49 @@ class UserControllerUnitTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetScore").value(800))
                 .andExpect(jsonPath("$.dailyMinutes").value(60));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me updates profile")
+    void updateProfile_valid_returnsUpdated() throws Exception {
+        UpdateProfileRequest req = new UpdateProfileRequest("An", "Nguyen", "0901234567");
+        when(userServiceMock.updateProfile(eq(testUserId), any())).thenReturn(
+                new UserProfileResponse(testUserId, "learner@test.com", "An", "Nguyen", "Nguyen An", Set.of("LEARNER"), "0901234567", null));
+
+        mockMvc.perform(put("/api/v1/users/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("An"))
+                .andExpect(jsonPath("$.phone").value("0901234567"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me rejects blank name")
+    void updateProfile_blankName_returnsBadRequest() throws Exception {
+        UpdateProfileRequest req = new UpdateProfileRequest(" ", "Nguyen", null);
+
+        mockMvc.perform(put("/api/v1/users/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/password returns 204 and clears both cookies")
+    void changePassword_valid_clearsCookies() throws Exception {
+        ChangePasswordRequest req = new ChangePasswordRequest("old-password-123456", "new-password-1234567");
+
+        mockMvc.perform(post("/api/v1/users/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isNoContent())
+                .andExpect(header().stringValues(
+                        "Set-Cookie",
+                        "access_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT",
+                        "refresh_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT"));
+
+        verify(userServiceMock).changePassword(eq(testUserId), any());
     }
 
     @Test
