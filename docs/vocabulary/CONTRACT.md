@@ -61,7 +61,7 @@ Cung cấp luồng học từ vựng và thẻ ghi nhớ hoàn chỉnh trên cơ
 | M03.08 | M03-API-009 | `GET /api/v1/vocabulary/reviews/due` | Danh sách các thẻ đến hạn ôn | Hoàn thành |
 | M03.10 | M03-API-007 | `PUT /api/v1/vocabulary/saved-words/{senseId}` | Lưu nghĩa từ vào sổ tay cá nhân | Hoàn thành |
 | M03.11 | M03-API-008 | `DELETE /api/v1/vocabulary/saved-words/{senseId}` | Bỏ lưu nghĩa từ khỏi sổ tay | Hoàn thành |
-| M03.09 | M03-API-011, 012 | `/vocabulary/reviews/history`, `/vocabulary/progress` | Lịch sử chi tiết & dashboard tổng hợp | P1 (Giai đoạn sau) |
+| M03.09 | M03-API-011, 012 | `/vocabulary/reviews/history`, `/vocabulary/progress` | Lịch sử chi tiết & dashboard tổng hợp | Hoàn thành. `GET /reviews/history?page&size` trả `PageResponse` các lượt ôn mới nhất trước (`reviewId, wordSenseId, wordId, lemma, meaningVi, rating, reviewedAt, previousDueAt, nextDueAt`; `lemma`/`meaningVi` là `null` nếu nghĩa không còn được công bố). `GET /progress` trả `{studiedSenses, masteredSenses (interval ≥ 21 ngày), dueNow, savedSenses, totalReviews, reviewsLast7Days}`; `dueNow` dùng cùng điều kiện với `/reviews/due`. Chỉ role LEARNER. |
 
 ---
 

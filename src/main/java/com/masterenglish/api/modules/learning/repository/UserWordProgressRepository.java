@@ -46,6 +46,10 @@ public interface UserWordProgressRepository
 
     Optional<UserWordProgress> findByIdUserIdAndIdWordSenseId(UUID userId, UUID wordSenseId);
 
+    long countByIdUserId(UUID userId);
+
+    long countByIdUserIdAndIntervalDaysGreaterThanEqual(UUID userId, int intervalDays);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
             "SELECT p FROM UserWordProgress p WHERE p.id.userId = :userId AND p.id.wordSenseId = :wordSenseId")

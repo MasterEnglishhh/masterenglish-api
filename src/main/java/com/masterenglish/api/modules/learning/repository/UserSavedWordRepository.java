@@ -15,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 public interface UserSavedWordRepository
         extends JpaRepository<UserSavedWord, UserSavedWord.UserSavedWordId> {
 
+    long countByIdUserId(UUID userId);
+
     String ELIGIBLE =
             """
             FROM user_saved_words sw JOIN word_senses s ON s.id=sw.word_sense_id AND NOT s.is_archived
