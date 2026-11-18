@@ -1,5 +1,10 @@
 @org.springframework.modulith.ApplicationModule(
         id = "identity",
         displayName = "Identity and account",
-        allowedDependencies = {"common::entity", "common::error", "common::security"})
+        allowedDependencies = {
+            "common::entity",
+            "common::error",
+            "common::security",
+            "common::events"
+        })
 package com.masterenglish.api.modules.identity;

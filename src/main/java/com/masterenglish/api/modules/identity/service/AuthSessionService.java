@@ -1,7 +1,7 @@
 package com.masterenglish.api.modules.identity.service;
 
-import com.masterenglish.api.modules.identity.dto.LoginResult;
-import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.modules.identity.dto.response.LoginResult;
+import com.masterenglish.api.modules.identity.dto.response.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
 import java.util.UUID;

@@ -2,26 +2,29 @@ package com.masterenglish.api.modules.identity.service.impl;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
-import com.masterenglish.api.modules.identity.dto.LoginResult;
-import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.infrastructure.security.JwtClaims;
+import com.masterenglish.api.infrastructure.security.JwtTokenService;
+import com.masterenglish.api.modules.identity.dto.response.LoginResult;
+import com.masterenglish.api.modules.identity.dto.response.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.security.JwtClaims;
-import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
 import com.masterenglish.api.modules.identity.service.AuthenticationService;
 import com.masterenglish.api.modules.identity.service.RateLimiterService;
+import java.text.Normalizer;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class AuthenticationServiceImpl implements AuthenticationService {
 
@@ -77,8 +80,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                             && user.getPasswordHash() != null
                             && !password.isBlank()
                             && passwordEncoder.matches(
-                                    java.text.Normalizer.normalize(
-                                            password, java.text.Normalizer.Form.NFC),
+                                    Normalizer.normalize(password, Normalizer.Form.NFC),
                                     user.getPasswordHash());
             boolean active = user.isActive();
             boolean emailVerified = user.getEmailVerifiedAt() != null;
@@ -96,6 +98,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         rateLimiterService.resetLoginFailure(email);
+        log.debug("Login credentials accepted; opening session");
         return authSessionService.createSession(user, userAgent, clientIp);
     }
 

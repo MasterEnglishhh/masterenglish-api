@@ -31,7 +31,7 @@ public class R2Configuration {
                 AwsBasicCredentials.create(properties.accessKeyId(), properties.secretAccessKey()));
     }
 
-    static S3Client createClient(R2Properties properties) {
+    public static S3Client createClient(R2Properties properties) {
         return S3Client.builder()
                 .endpointOverride(URI.create(properties.endpoint()))
                 .region(Region.of(properties.region()))

@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.learning.service;
 
+import com.masterenglish.api.modules.learning.dto.response.Sm2Result;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;

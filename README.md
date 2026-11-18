@@ -140,7 +140,7 @@ EC2 qua cấu hình Infra, chạy từ `/srv/masterenglish`:
 ```bash
 docker compose --env-file .env.prod -f compose.production.yaml -f compose.https.yaml \
   run --rm --no-deps --entrypoint java api \
-  -Dloader.main=com.masterenglish.api.config.R2SmokeCheck \
+  -Dloader.main=com.masterenglish.api.infrastructure.runner.R2SmokeCheck \
   -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher
 ```
 

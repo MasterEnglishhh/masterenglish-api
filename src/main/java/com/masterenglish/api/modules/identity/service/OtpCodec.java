@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.identity.service;
 
 import com.masterenglish.api.config.RegistrationProperties;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -9,8 +10,10 @@ import java.util.Locale;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class OtpCodec {
     private final String secret;
@@ -36,7 +39,8 @@ public class OtpCodec {
                     .formatHex(
                             MessageDigest.getInstance("SHA-256")
                                     .digest(token.getBytes(StandardCharsets.US_ASCII)));
-        } catch (java.security.GeneralSecurityException e) {
+        } catch (GeneralSecurityException e) {
+            log.error("OTP cryptographic operation failed: {}", e.getClass().getSimpleName());
             throw new IllegalStateException(e);
         }
     }
@@ -50,7 +54,8 @@ public class OtpCodec {
                             mac.doFinal(
                                     (purpose + ":" + id + ":" + otp)
                                             .getBytes(StandardCharsets.UTF_8)));
-        } catch (java.security.GeneralSecurityException e) {
+        } catch (GeneralSecurityException e) {
+            log.error("OTP cryptographic operation failed: {}", e.getClass().getSimpleName());
             throw new IllegalStateException(e);
         }
     }

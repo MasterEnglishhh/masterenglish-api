@@ -1,7 +1,7 @@
 package com.masterenglish.api.config;
 
 import com.masterenglish.api.common.security.SecurityProblemHandler;
-import com.masterenglish.api.modules.identity.security.JwtAuthenticationFilter;
+import com.masterenglish.api.infrastructure.security.JwtAuthenticationFilter;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;

@@ -1,23 +1,31 @@
 package com.masterenglish.api.modules.learning.controller;
 
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.api.WordSenseCardDto;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
-import com.masterenglish.api.modules.learning.dto.DueQueueResponse;
-import com.masterenglish.api.modules.learning.dto.SavedWordDto;
+import com.masterenglish.api.modules.learning.dto.request.ReviewRequest;
+import com.masterenglish.api.modules.learning.dto.response.DueQueueResponse;
+import com.masterenglish.api.modules.learning.dto.response.ReviewResponse;
+import com.masterenglish.api.modules.learning.dto.response.SavedSenseIdsResponse;
+import com.masterenglish.api.modules.learning.dto.response.SavedWordDto;
 import com.masterenglish.api.modules.learning.service.DueQueueService;
 import com.masterenglish.api.modules.learning.service.LearningDeckCardService;
+import com.masterenglish.api.modules.learning.service.ReviewService;
 import com.masterenglish.api.modules.learning.service.SavedWordService;
-import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,13 +38,13 @@ public class LearningVocabularyController {
     private final LearningDeckCardService deckCardService;
     private final SavedWordService savedWordService;
     private final DueQueueService dueQueueService;
-    private final com.masterenglish.api.modules.learning.service.ReviewService reviewService;
+    private final ReviewService reviewService;
 
     public LearningVocabularyController(
             LearningDeckCardService deckCardService,
             SavedWordService savedWordService,
             DueQueueService dueQueueService,
-            com.masterenglish.api.modules.learning.service.ReviewService reviewService) {
+            ReviewService reviewService) {
         this.deckCardService = deckCardService;
         this.savedWordService = savedWordService;
         this.dueQueueService = dueQueueService;
@@ -67,9 +75,10 @@ public class LearningVocabularyController {
     }
 
     @GetMapping("/words/{wordId}/saved-senses")
-    public java.util.List<UUID> getSavedSenses(
+    public SavedSenseIdsResponse getSavedSenses(
             @CurrentUser AuthenticatedUser currentUser, @PathVariable UUID wordId) {
-        return savedWordService.getSavedSenseIdsForWord(currentUser.getId(), wordId);
+        return new SavedSenseIdsResponse(
+                savedWordService.getSavedSenseIdsForWord(currentUser.getId(), wordId));
     }
 
     @PutMapping("/saved-words/{senseId}")
@@ -94,13 +103,10 @@ public class LearningVocabularyController {
         return dueQueueService.getDueQueue(currentUser.getId(), deckId, limit);
     }
 
-    @org.springframework.web.bind.annotation.PostMapping("/reviews")
-    public ResponseEntity<com.masterenglish.api.modules.learning.dto.ReviewResponse> reviewCard(
-            @CurrentUser AuthenticatedUser currentUser,
-            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
-                    com.masterenglish.api.modules.learning.dto.ReviewRequest request) {
-        com.masterenglish.api.modules.learning.dto.ReviewResponse response =
-                reviewService.reviewCard(currentUser.getId(), request);
-        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED).body(response);
+    @PostMapping("/reviews")
+    public ResponseEntity<ReviewResponse> reviewCard(
+            @CurrentUser AuthenticatedUser currentUser, @Valid @RequestBody ReviewRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(reviewService.reviewCard(currentUser.getId(), request));
     }
 }

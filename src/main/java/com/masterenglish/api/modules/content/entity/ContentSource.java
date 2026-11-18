@@ -85,6 +85,12 @@ public class ContentSource {
         this.updatedAt = this.createdAt;
     }
 
+    public boolean availableForPublication() {
+        return "ACTIVE".equals(status)
+                && ((licenseCode != null && !licenseCode.isBlank())
+                        || (permissionNote != null && !permissionNote.isBlank()));
+    }
+
     @PrePersist
     void onPersist() {
         if (id == null) {

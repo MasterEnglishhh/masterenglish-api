@@ -2,8 +2,9 @@ package com.masterenglish.api.modules.identity.service.impl;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
-import com.masterenglish.api.modules.identity.dto.LoginResult;
-import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.infrastructure.security.JwtTokenService;
+import com.masterenglish.api.modules.identity.dto.response.LoginResult;
+import com.masterenglish.api.modules.identity.dto.response.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
 import com.masterenglish.api.modules.identity.entity.RefreshToken;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
@@ -11,17 +12,19 @@ import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
-import com.masterenglish.api.modules.identity.security.JwtTokenService;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
+import com.masterenglish.api.modules.identity.service.UserProfileMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class AuthSessionServiceImpl implements AuthSessionService {
 
@@ -92,12 +95,17 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
         Duration refreshTokenDuration = Duration.between(now, session.getExpiresAt());
         return new LoginResult(
-                user, accessToken, rawRefreshToken, accessTokenDuration, refreshTokenDuration);
+                UserProfileMapper.from(user),
+                accessToken,
+                rawRefreshToken,
+                accessTokenDuration,
+                refreshTokenDuration);
     }
 
     @Override
     @Transactional
     public RefreshResult rotateRefreshToken(String rawRefreshToken) {
+        log.debug("Rotating authentication session token");
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             throw new BusinessException(
                     ErrorCode.UNAUTHENTICATED, "Phiên làm việc không hợp lệ hoặc đã hết hạn.");

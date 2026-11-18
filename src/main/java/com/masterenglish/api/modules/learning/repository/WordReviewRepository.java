@@ -4,7 +4,9 @@ import com.masterenglish.api.modules.learning.entity.WordReview;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
+@Repository
 public interface WordReviewRepository extends JpaRepository<WordReview, UUID> {
     Optional<WordReview> findByUserIdAndRequestId(UUID userId, UUID requestId);
 

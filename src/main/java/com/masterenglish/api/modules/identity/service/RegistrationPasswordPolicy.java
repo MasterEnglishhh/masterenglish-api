@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Locale;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class RegistrationPasswordPolicy {
     private static final Set<String> COMMON =
@@ -29,6 +31,7 @@ public class RegistrationPasswordPolicy {
                     "Mật khẩu cần ít nhất 15 ký tự và tối đa 72 byte UTF-8; dấu cách được giữ nguyên.");
         }
         if (COMMON.contains(normalized.toLowerCase(Locale.ROOT))) {
+            log.debug("Registration password rejected by the common password policy");
             throw new BusinessException(
                     ErrorCode.PASSWORD_REJECTED,
                     "Mật khẩu này quá phổ biến. Vui lòng chọn mật khẩu khác.");

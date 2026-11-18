@@ -3,12 +3,14 @@ package com.masterenglish.api.modules.identity.service;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.config.RegistrationProperties;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class RegistrationMailer {
     private final ObjectProvider<JavaMailSender> sender;
@@ -66,6 +68,7 @@ public class RegistrationMailer {
         try {
             sender.getObject().send(message);
         } catch (MailException e) {
+            log.warn("Account email delivery failed: {}", e.getClass().getSimpleName());
             throw unavailable();
         }
     }

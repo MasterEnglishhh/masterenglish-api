@@ -12,18 +12,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.storage.PronunciationStorage;
-import com.masterenglish.api.modules.content.authoring.ContentAuthoringService;
-import com.masterenglish.api.modules.content.authoring.PublishedContentReader;
-import com.masterenglish.api.modules.content.pronunciation.LocalPronunciationImporter;
-import com.masterenglish.api.modules.content.pronunciation.PronunciationQuery;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
+import com.masterenglish.api.modules.content.repository.ContentRevisionRepository;
+import com.masterenglish.api.modules.content.service.PronunciationImportService;
+import com.masterenglish.api.modules.content.service.PronunciationService;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
-import com.masterenglish.api.modules.identity.user.UserLockService;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedServiceImpl;
+import com.masterenglish.api.modules.vocabulary.service.VocabularyQueryService;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.impl.VocabularySeedServiceImpl;
 import jakarta.persistence.EntityManager;
 import java.net.URI;
 import java.nio.file.Files;
@@ -35,10 +33,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -46,21 +44,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
+@ActiveProfiles("content-import")
 @Import(TestcontainersConfiguration.class)
 @Transactional
 class PronunciationIntegrationTests {
     @Autowired WebApplicationContext web;
-    @Autowired ApplicationContext context;
     @Autowired UserRepository users;
     @Autowired EntityManager em;
     @Autowired VocabularySeedService seed;
     @Autowired VocabularyQueryService vocabulary;
-    @Autowired PronunciationQuery pronunciation;
+    @Autowired PronunciationService pronunciation;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper mapper;
-    @Autowired UserLockService lock;
-    @Autowired PublishedContentReader reader;
-    @Autowired ContentAuthoringService authoring;
+    @Autowired ContentRevisionRepository reader;
+    @Autowired PronunciationImportService importer;
     @MockitoBean PronunciationStorage storage;
     private MockMvc mvc;
     private User admin;
@@ -179,7 +176,29 @@ class PronunciationIntegrationTests {
     void invalidChecksumNeverUploads(@TempDir Path directory) throws Exception {
         jdbc.update("DELETE FROM word_pronunciations WHERE word_revision_id=?", revisionId);
         Path manifest = prepareManifest(directory, "b".repeat(64));
-        assertThatThrownBy(() -> importer().importManifest(manifest, admin.getId()))
+        assertThatThrownBy(() -> importer.importManifest(manifest, admin.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("checksum");
+        org.mockito.Mockito.verify(storage, org.mockito.Mockito.never())
+                .put(anyString(), org.mockito.ArgumentMatchers.any(), anyString());
+    }
+
+    @Test
+    void importRejectsAudioThatChangesAfterManifestValidation(@TempDir Path directory)
+            throws Exception {
+        jdbc.update("DELETE FROM word_pronunciations WHERE word_revision_id=?", revisionId);
+        Path manifest = prepareManifest(directory, null);
+        Path audio = directory.resolve("sample.mp3");
+        when(storage.bucket())
+                .thenAnswer(
+                        invocation -> {
+                            byte[] bytes = Files.readAllBytes(audio);
+                            bytes[3] = 1;
+                            Files.write(audio, bytes);
+                            return "media-fixture";
+                        });
+
+        assertThatThrownBy(() -> importer.importManifest(manifest, admin.getId()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("checksum");
         org.mockito.Mockito.verify(storage, org.mockito.Mockito.never())
@@ -192,8 +211,8 @@ class PronunciationIntegrationTests {
         jdbc.update("DELETE FROM word_pronunciations WHERE word_revision_id=?", revisionId);
         Path manifest = prepareManifest(directory, null);
         String before = reader.snapshot(wordId, revisionId, "WORD", false).orElseThrow();
-        assertThat(importer().importManifest(manifest, admin.getId())).isEqualTo(1);
-        assertThat(importer().importManifest(manifest, admin.getId())).isZero();
+        assertThat(importer.importManifest(manifest, admin.getId())).isEqualTo(1);
+        assertThat(importer.importManifest(manifest, admin.getId())).isZero();
         assertThat(reader.snapshot(wordId, revisionId, "WORD", false)).contains(before);
         assertThat(pronunciation.audioUrl(wordId, revisionId)).isNotNull();
         org.mockito.Mockito.verify(storage, org.mockito.Mockito.times(1))
@@ -231,16 +250,5 @@ class PronunciationIntegrationTests {
         Path manifest = directory.resolve("manifest.json");
         Files.writeString(manifest, root.toString());
         return manifest;
-    }
-
-    private LocalPronunciationImporter importer() {
-        return new LocalPronunciationImporter(
-                context.getBeanProvider(PronunciationStorage.class),
-                jdbc,
-                mapper,
-                lock,
-                reader,
-                authoring,
-                em);
     }
 }

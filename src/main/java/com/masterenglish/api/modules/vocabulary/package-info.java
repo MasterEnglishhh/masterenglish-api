@@ -2,9 +2,7 @@
         id = "vocabulary",
         displayName = "Vocabulary Catalog & Flashcards",
         allowedDependencies = {
-            "content::authoring",
-            "content::pronunciation",
-            "identity::user-lock",
+            "common::events",
             "common::api",
             "common::entity",
             "common::error",

@@ -2,8 +2,7 @@
         id = "learning",
         displayName = "Learning & Spaced Repetition (SRS)",
         allowedDependencies = {
-            "vocabulary::query",
-            "identity::user-lock",
+            "common::events",
             "common::api",
             "common::entity",
             "common::error",

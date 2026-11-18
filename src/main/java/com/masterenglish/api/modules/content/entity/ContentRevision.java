@@ -1,5 +1,7 @@
 package com.masterenglish.api.modules.content.entity;
 
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -115,9 +117,8 @@ public class ContentRevision {
 
     private void requireStatus(String expected) {
         if (!expected.equals(status))
-            throw new com.masterenglish.api.common.error.BusinessException(
-                    com.masterenglish.api.common.error.ErrorCode.CONFLICT,
-                    "Invalid content workflow transition from " + status);
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Invalid content workflow transition from " + status);
     }
 
     @PrePersist

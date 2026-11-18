@@ -4,14 +4,16 @@ import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.identity.service.UserProfileMapper;
 import com.masterenglish.api.modules.identity.service.UserService;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
-@Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -22,11 +24,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserProfileResponse findProfileById(UUID id) {
+        log.debug("Reading user profile");
         Objects.requireNonNull(id, "id must not be null");
         return userRepository
                 .findById(id)
-                .map(UserProfileResponse::from)
+                .map(UserProfileMapper::from)
                 .orElseThrow(
                         () ->
                                 new BusinessException(

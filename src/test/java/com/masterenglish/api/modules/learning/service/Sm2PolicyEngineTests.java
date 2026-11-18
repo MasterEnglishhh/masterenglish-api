@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.learning.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.masterenglish.api.modules.learning.dto.response.Sm2Result;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;

@@ -3,18 +3,18 @@ package com.masterenglish.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.masterenglish.api.common.api.WordSenseCardDto;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.learning.dto.ReviewRequest;
-import com.masterenglish.api.modules.learning.dto.ReviewResponse;
+import com.masterenglish.api.modules.learning.dto.request.ReviewRequest;
+import com.masterenglish.api.modules.learning.dto.response.ReviewResponse;
 import com.masterenglish.api.modules.learning.repository.UserWordProgressRepository;
 import com.masterenglish.api.modules.learning.service.ReviewService;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedServiceImpl;
+import com.masterenglish.api.modules.vocabulary.service.VocabularyQueryService;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.impl.VocabularySeedServiceImpl;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -44,7 +44,7 @@ class VocabularyRegressionTests {
     @Autowired UserWordProgressRepository progress;
     @Autowired com.masterenglish.api.modules.learning.service.DueQueueService dueQueue;
     @Autowired com.masterenglish.api.modules.learning.service.SavedWordService saved;
-    @Autowired com.masterenglish.api.modules.content.authoring.ContentAuthoringService authoring;
+    @Autowired com.masterenglish.api.modules.content.service.ContentAuthoringService authoring;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper;
     User admin;
     User learner;
@@ -252,7 +252,9 @@ class VocabularyRegressionTests {
                         org.springframework.data.domain.PageRequest.of(0, 1));
         assertThat(result.totalItems()).isEqualTo(1);
         assertThat(result.items())
-                .extracting(com.masterenglish.api.modules.learning.dto.SavedWordDto::wordSenseId)
+                .extracting(
+                        com.masterenglish.api.modules.learning.dto.response.SavedWordDto
+                                ::wordSenseId)
                 .containsExactly(target.wordSenseId());
     }
 
@@ -337,6 +339,33 @@ class VocabularyRegressionTests {
         approve(revision);
         assertThatThrownBy(() -> authoring.publish(revision, admin.getId()))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void archivedContentCannotPublishAnAlreadyApprovedRevision() {
+        String snapshot =
+                jdbc.queryForObject(
+                        "SELECT snapshot::text FROM content_revisions WHERE id=?",
+                        String.class,
+                        card.wordRevisionId());
+        UUID revision =
+                draft(card.wordId(), "WORD", snapshot, VocabularySeedServiceImpl.DEFAULT_SOURCE_ID);
+        approve(revision);
+        em.flush();
+        jdbc.update(
+                "UPDATE content_items SET is_archived=true, archived_at=NOW() WHERE id=?",
+                card.wordId());
+        em.clear();
+
+        assertThatThrownBy(() -> authoring.publish(revision, admin.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Content item cannot be edited.");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT published_revision_id FROM content_items WHERE id=?",
+                                UUID.class,
+                                card.wordId()))
+                .isEqualTo(card.wordRevisionId());
     }
 
     @Test

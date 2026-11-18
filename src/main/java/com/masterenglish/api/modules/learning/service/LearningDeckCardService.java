@@ -1,7 +1,7 @@
 package com.masterenglish.api.modules.learning.service;
 
 import com.masterenglish.api.common.api.PageResponse;
-import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
+import com.masterenglish.api.common.api.WordSenseCardDto;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 

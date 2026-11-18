@@ -2,12 +2,12 @@ package com.masterenglish.api.modules.identity.controller;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
-import com.masterenglish.api.modules.identity.dto.LoginResult;
-import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.infrastructure.security.AuthCookieHelper;
 import com.masterenglish.api.modules.identity.dto.request.LoginRequest;
 import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
+import com.masterenglish.api.modules.identity.dto.response.LoginResult;
+import com.masterenglish.api.modules.identity.dto.response.RefreshResult;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
-import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
 import com.masterenglish.api.modules.identity.service.AuthenticationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -57,7 +57,7 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
                 .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
-                .body(UserProfileResponse.from(result.user()));
+                .body(result.user());
     }
 
     @PostMapping("/refresh")
