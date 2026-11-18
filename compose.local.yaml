@@ -26,6 +26,21 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  redis:
+    image: redis:7.4-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-16379}:6379"
+    volumes:
+      - redis_local_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mailpit:
     image: axllent/mailpit:v1.32.0
     profiles: ["mail"]
@@ -43,3 +58,4 @@ services:
 
 volumes:
   postgres_local_data:
+  redis_local_data:
