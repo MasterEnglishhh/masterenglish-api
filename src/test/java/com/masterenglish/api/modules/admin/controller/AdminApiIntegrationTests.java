@@ -254,6 +254,30 @@ class AdminApiIntegrationTests {
                                                 UserPrincipal.create(contentAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
+        var principal =
+                SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser));
+        mockMvc.perform(
+                        get("/api/v1/admin/content/items")
+                                .param("search", "RESILIENCE")
+                                .param("status", "DRAFT")
+                                .param("size", "1")
+                                .with(principal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1))
+                .andExpect(jsonPath("$.items[0].title").value("resilience"));
+        mockMvc.perform(
+                        get("/api/v1/admin/content/items")
+                                .param("search", "RESILIENCE")
+                                .param("status", "PUBLISHED")
+                                .with(principal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(0));
+        mockMvc.perform(
+                        get("/api/v1/admin/content/items")
+                                .param("search", "no matching fixture")
+                                .with(principal))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(0));
     }
 
     @Test

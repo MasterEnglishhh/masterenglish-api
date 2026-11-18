@@ -26,6 +26,7 @@ import com.masterenglish.api.modules.content.service.ContentAuthoringService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -75,14 +76,13 @@ public class ContentAdminServiceImpl implements ContentAdminService {
     @Transactional(readOnly = true)
     public PageResponse<ItemView> findContentItems(
             String search, String contentType, String status, Pageable pageable) {
-        String typeFilter =
-                contentType == null || contentType.isBlank() || "ALL".equalsIgnoreCase(contentType)
-                        ? null
-                        : contentType.trim().toUpperCase();
-        Boolean archivedFilter = "ARCHIVED".equalsIgnoreCase(status) ? Boolean.TRUE : null;
-
+        String searchFilter = search == null || search.isBlank() ? null : search.strip();
         Page<ContentItem> itemsPage =
-                itemRepository.findContentItems(typeFilter, archivedFilter, pageable);
+                itemRepository.findContentItems(
+                        normalizeFilter(contentType),
+                        normalizeFilter(status),
+                        searchFilter,
+                        pageable);
         List<ItemView> dtos = new ArrayList<>();
 
         for (ContentItem item : itemsPage.getContent()) {
@@ -156,6 +156,14 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 itemsPage.getTotalElements(),
                 itemsPage.getTotalPages(),
                 itemsPage.hasNext());
+    }
+
+    private static String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        return "ALL".equals(normalized) ? null : normalized;
     }
 
     @Override
