@@ -3,9 +3,9 @@ package com.masterenglish.api.modules.identity.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -14,15 +14,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.security.CurrentUser;
+import com.masterenglish.api.infrastructure.security.AuthCookieHelper;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
-import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
-import org.springframework.http.ResponseCookie;
 import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.User;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.service.UserService;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseCookie;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -42,8 +42,9 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 class UserControllerUnitTests {
 
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+    private final ObjectMapper objectMapper =
+            new ObjectMapper()
+                    .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 
     private UserService userServiceMock;
     private MockMvc mockMvc;
@@ -53,28 +54,29 @@ class UserControllerUnitTests {
     void setUp() {
         userServiceMock = mock(UserService.class);
 
-        HandlerMethodArgumentResolver currentUserResolver = new HandlerMethodArgumentResolver() {
-            @Override
-            public boolean supportsParameter(MethodParameter parameter) {
-                return parameter.hasParameterAnnotation(CurrentUser.class);
-            }
+        HandlerMethodArgumentResolver currentUserResolver =
+                new HandlerMethodArgumentResolver() {
+                    @Override
+                    public boolean supportsParameter(MethodParameter parameter) {
+                        return parameter.hasParameterAnnotation(CurrentUser.class);
+                    }
 
-            @Override
-            public Object resolveArgument(
-                    MethodParameter parameter,
-                    ModelAndViewContainer mavContainer,
-                    NativeWebRequest webRequest,
-                    WebDataBinderFactory binderFactory) {
-                User user = new User("learner@test.com", "hash", "Learner", "User");
-                try {
-                    var idField = user.getClass().getSuperclass().getDeclaredField("id");
-                    idField.setAccessible(true);
-                    idField.set(user, testUserId);
-                } catch (Exception ignored) {
-                }
-                return UserPrincipal.create(user);
-            }
-        };
+                    @Override
+                    public Object resolveArgument(
+                            MethodParameter parameter,
+                            ModelAndViewContainer mavContainer,
+                            NativeWebRequest webRequest,
+                            WebDataBinderFactory binderFactory) {
+                        User user = new User("learner@test.com", "hash", "Learner", "User");
+                        try {
+                            var idField = user.getClass().getSuperclass().getDeclaredField("id");
+                            idField.setAccessible(true);
+                            idField.set(user, testUserId);
+                        } catch (Exception ignored) {
+                        }
+                        return UserPrincipal.create(user);
+                    }
+                };
 
         AuthCookieHelper cookieHelper = mock(AuthCookieHelper.class);
         when(cookieHelper.clearAccessTokenCookie())
@@ -82,16 +84,26 @@ class UserControllerUnitTests {
         when(cookieHelper.clearRefreshTokenCookie())
                 .thenReturn(ResponseCookie.from("refresh_token", "").maxAge(0).build());
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userServiceMock, cookieHelper))
-                .setCustomArgumentResolvers(currentUserResolver)
-                .build();
+        mockMvc =
+                MockMvcBuilders.standaloneSetup(new UserController(userServiceMock, cookieHelper))
+                        .setCustomArgumentResolvers(currentUserResolver)
+                        .build();
     }
 
     @Test
     @DisplayName("GET /api/v1/users/me returns user profile")
     void getProfile_returnsProfile() throws Exception {
-        when(userServiceMock.findProfileById(testUserId)).thenReturn(
-                new UserProfileResponse(testUserId, "learner@test.com", "Learner", "User", "User Learner", Set.of("LEARNER"), null, null));
+        when(userServiceMock.findProfileById(testUserId))
+                .thenReturn(
+                        new UserProfileResponse(
+                                testUserId,
+                                "learner@test.com",
+                                "Learner",
+                                "User",
+                                "User Learner",
+                                Set.of("LEARNER"),
+                                null,
+                                null));
 
         mockMvc.perform(get("/api/v1/users/me"))
                 .andExpect(status().isOk())
@@ -101,8 +113,10 @@ class UserControllerUnitTests {
     @Test
     @DisplayName("GET /api/v1/users/me/goal returns learning goal")
     void getGoal_returnsGoal() throws Exception {
-        when(userServiceMock.findGoalByUserId(testUserId)).thenReturn(
-                new LearningGoalResponse((short) 750, 45, LocalDate.now().plusMonths(2), Instant.now()));
+        when(userServiceMock.findGoalByUserId(testUserId))
+                .thenReturn(
+                        new LearningGoalResponse(
+                                (short) 750, 45, LocalDate.now().plusMonths(2), Instant.now()));
 
         mockMvc.perform(get("/api/v1/users/me/goal"))
                 .andExpect(status().isOk())
@@ -113,13 +127,16 @@ class UserControllerUnitTests {
     @Test
     @DisplayName("PUT /api/v1/users/me/goal updates learning goal")
     void updateGoal_valid_returnsUpdated() throws Exception {
-        UpdateLearningGoalRequest req = new UpdateLearningGoalRequest((short) 800, 60, LocalDate.now().plusMonths(3));
-        when(userServiceMock.updateGoal(eq(testUserId), any())).thenReturn(
-                new LearningGoalResponse((short) 800, 60, req.targetDate(), Instant.now()));
+        UpdateLearningGoalRequest req =
+                new UpdateLearningGoalRequest((short) 800, 60, LocalDate.now().plusMonths(3));
+        when(userServiceMock.updateGoal(eq(testUserId), any()))
+                .thenReturn(
+                        new LearningGoalResponse((short) 800, 60, req.targetDate(), Instant.now()));
 
-        mockMvc.perform(put("/api/v1/users/me/goal")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(
+                        put("/api/v1/users/me/goal")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetScore").value(800))
                 .andExpect(jsonPath("$.dailyMinutes").value(60));
@@ -129,12 +146,22 @@ class UserControllerUnitTests {
     @DisplayName("PUT /api/v1/users/me updates profile")
     void updateProfile_valid_returnsUpdated() throws Exception {
         UpdateProfileRequest req = new UpdateProfileRequest("An", "Nguyen", "0901234567");
-        when(userServiceMock.updateProfile(eq(testUserId), any())).thenReturn(
-                new UserProfileResponse(testUserId, "learner@test.com", "An", "Nguyen", "Nguyen An", Set.of("LEARNER"), "0901234567", null));
+        when(userServiceMock.updateProfile(eq(testUserId), any()))
+                .thenReturn(
+                        new UserProfileResponse(
+                                testUserId,
+                                "learner@test.com",
+                                "An",
+                                "Nguyen",
+                                "Nguyen An",
+                                Set.of("LEARNER"),
+                                "0901234567",
+                                null));
 
-        mockMvc.perform(put("/api/v1/users/me")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("An"))
                 .andExpect(jsonPath("$.phone").value("0901234567"));
@@ -145,25 +172,29 @@ class UserControllerUnitTests {
     void updateProfile_blankName_returnsBadRequest() throws Exception {
         UpdateProfileRequest req = new UpdateProfileRequest(" ", "Nguyen", null);
 
-        mockMvc.perform(put("/api/v1/users/me")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(
+                        put("/api/v1/users/me")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("POST /api/v1/users/me/password returns 204 and clears both cookies")
     void changePassword_valid_clearsCookies() throws Exception {
-        ChangePasswordRequest req = new ChangePasswordRequest("old-password-123456", "new-password-1234567");
+        ChangePasswordRequest req =
+                new ChangePasswordRequest("old-password-123456", "new-password-1234567");
 
-        mockMvc.perform(post("/api/v1/users/me/password")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(
+                        post("/api/v1/users/me/password")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isNoContent())
-                .andExpect(header().stringValues(
-                        "Set-Cookie",
-                        "access_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT",
-                        "refresh_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT"));
+                .andExpect(
+                        header().stringValues(
+                                        "Set-Cookie",
+                                        "access_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT",
+                                        "refresh_token=; Max-Age=0; Expires=Thu, 1 Jan 1970 00:00:00 GMT"));
 
         verify(userServiceMock).changePassword(eq(testUserId), any());
     }
@@ -172,11 +203,13 @@ class UserControllerUnitTests {
     @DisplayName("PUT /api/v1/users/me/goal rejects invalid targetScore or minutes")
     void updateGoal_invalidBean_returnsBadRequest() throws Exception {
         // Score < 10 or Minutes < 5
-        UpdateLearningGoalRequest req = new UpdateLearningGoalRequest((short) 5, 2, LocalDate.now().plusMonths(1));
+        UpdateLearningGoalRequest req =
+                new UpdateLearningGoalRequest((short) 5, 2, LocalDate.now().plusMonths(1));
 
-        mockMvc.perform(put("/api/v1/users/me/goal")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(
+                        put("/api/v1/users/me/goal")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest());
     }
 }

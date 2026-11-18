@@ -2,9 +2,10 @@
         id = "identity",
         displayName = "Identity and account",
         allowedDependencies = {
-            "common::api",
             "common::entity",
             "common::error",
-            "common::security"
+            "common::security",
+            "common::api",
+            "common::events"
         })
 package com.masterenglish.api.modules.identity;

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.security.RoleCode;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.entity.AuthRateLimit;
 import com.masterenglish.api.modules.identity.entity.AuthRateLimitEvent;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
@@ -16,7 +17,6 @@ import com.masterenglish.api.modules.identity.repository.AuthRateLimitEventRepos
 import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;

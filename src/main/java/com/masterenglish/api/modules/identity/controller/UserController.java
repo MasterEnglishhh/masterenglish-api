@@ -1,13 +1,13 @@
 package com.masterenglish.api.modules.identity.controller;
 
 import com.masterenglish.api.common.security.CurrentUser;
+import com.masterenglish.api.infrastructure.security.AuthCookieHelper;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
 import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
-import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.service.UserService;
 import jakarta.validation.Valid;
 import java.util.Objects;
@@ -47,8 +47,12 @@ public class UserController {
         userService.changePassword(principal.getId(), request);
         // Every session is revoked, so clear the cookies and make the client sign in again.
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, authCookieHelper.clearAccessTokenCookie().toString())
-                .header(HttpHeaders.SET_COOKIE, authCookieHelper.clearRefreshTokenCookie().toString())
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        authCookieHelper.clearAccessTokenCookie().toString())
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        authCookieHelper.clearRefreshTokenCookie().toString())
                 .build();
     }
 
@@ -59,8 +63,7 @@ public class UserController {
     }
 
     @GetMapping("/me/goal")
-    public ResponseEntity<LearningGoalResponse> getMyGoal(
-            @CurrentUser UserPrincipal principal) {
+    public ResponseEntity<LearningGoalResponse> getMyGoal(@CurrentUser UserPrincipal principal) {
         return ResponseEntity.ok(userService.findGoalByUserId(principal.getId()));
     }
 

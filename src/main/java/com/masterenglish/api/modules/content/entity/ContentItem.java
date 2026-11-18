@@ -76,6 +76,10 @@ public class ContentItem {
         this.updatedAt = this.createdAt;
     }
 
+    public boolean allowsRevisionChanges() {
+        return !archived && accessRevokedAt == null;
+    }
+
     public void setPublishedRevisionId(UUID publishedRevisionId) {
         this.publishedRevisionId = publishedRevisionId;
     }

@@ -5,11 +5,11 @@ import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
 import com.masterenglish.api.common.security.RoleCode;
-import com.masterenglish.api.modules.admin.dto.AdminMessageResponse;
-import com.masterenglish.api.modules.admin.dto.user.LockUserRequest;
-import com.masterenglish.api.modules.admin.dto.user.UpdateRolesRequest;
+import com.masterenglish.api.modules.admin.dto.request.LockUserRequest;
+import com.masterenglish.api.modules.admin.dto.request.UpdateRolesRequest;
+import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
+import com.masterenglish.api.modules.admin.dto.response.AdminUserDto;
 import com.masterenglish.api.modules.admin.service.AdminUserService;
-import com.masterenglish.api.modules.identity.admin.AdminUserDto;
 import jakarta.validation.Valid;
 import java.util.Objects;
 import java.util.Set;
@@ -48,7 +48,8 @@ public class AdminUserController {
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String sortDirection) {
-        Pageable pageable = PageRequestUtils.of(page, size, sortBy, sortDirection, ALLOWED_SORT_FIELDS);
+        Pageable pageable =
+                PageRequestUtils.of(page, size, sortBy, sortDirection, ALLOWED_SORT_FIELDS);
         return ResponseEntity.ok(userService.findUsers(search, role, status, pageable));
     }
 
@@ -75,15 +76,13 @@ public class AdminUserController {
 
     @PostMapping("/{id}/unlock")
     public ResponseEntity<AdminUserDto> unlockUser(
-            @PathVariable UUID id,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @PathVariable UUID id, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.ok(userService.unlockUser(id, currentUser.getId()));
     }
 
     @PostMapping("/{id}/revoke-sessions")
     public ResponseEntity<AdminMessageResponse> revokeSessions(
-            @PathVariable UUID id,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @PathVariable UUID id, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.ok(userService.revokeSessions(id, currentUser.getId()));
     }
 }

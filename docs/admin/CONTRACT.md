@@ -1,9 +1,9 @@
 # Hợp đồng API chi tiết: Admin Portal (Quản trị Hệ thống & Nội dung)
 
-**Ngày ban hành:** 11/11/2026  
-**Module Backend:** `com.masterenglish.api.modules.admin`  
-**Phiên bản API:** `v1`  
-**Cơ chế xác thực:** Session Cookie (`ACCESS_TOKEN`), CSRF Header (`X-XSRF-TOKEN`).  
+**Ngày ban hành:** 11/11/2026\
+**Module Backend:** `com.masterenglish.api.modules.admin`\
+**Phiên bản API:** `v1`\
+**Cơ chế xác thực:** Session Cookie (`ACCESS_TOKEN`), CSRF Header (`X-XSRF-TOKEN`).\
 **Định dạng lỗi chung:** RFC 7807 (`application/problem+json`) với `{ type, title, status, detail, code, traceId, errors }`.
 
 ---

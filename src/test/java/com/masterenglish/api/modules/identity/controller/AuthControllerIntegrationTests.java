@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.identity.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.masterenglish.api.TestcontainersConfiguration;
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.config.JwtProperties;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
 import com.masterenglish.api.modules.identity.entity.Role;
@@ -18,6 +21,7 @@ import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.identity.service.AuthSessionService;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
@@ -51,13 +55,18 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-@TestPropertySource(properties = {"app.security.cookie-secure=false"})
+@TestPropertySource(
+        properties = {
+            "app.security.cookie-secure=false",
+            "app.registration.breach-check-enabled=false"
+        })
 class AuthControllerIntegrationTests {
 
     @Autowired private WebApplicationContext context;
     @Autowired private JsonMapper jsonMapper;
     @Autowired private UserRepository userRepository;
     @Autowired private AuthSessionRepository authSessionRepository;
+    @Autowired private AuthSessionService authSessionService;
     @Autowired private RefreshTokenRepository refreshTokenRepository;
     @Autowired private AuthRateLimitRepository rateLimitRepository;
     @Autowired private AuthRateLimitEventRepository rateLimitEventRepository;
@@ -90,6 +99,81 @@ class AuthControllerIntegrationTests {
         user.addRole(learnerRole);
         user.markEmailVerified(Instant.now());
         return userRepository.saveAndFlush(user);
+    }
+
+    @Test
+    void changePasswordClearsCookiesAndRevokesOldAccessAndRefresh() throws Exception {
+        var user = createVerifiedUser("change-password@example.test", CORRECT_PASSWORD);
+        var bootstrap = bootstrapCsrf();
+        var login =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .cookie(bootstrap.cookie())
+                                        .header(bootstrap.headerName(), bootstrap.token())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                jsonMapper.writeValueAsString(
+                                                        Map.of(
+                                                                "email",
+                                                                user.getEmail(),
+                                                                "password",
+                                                                CORRECT_PASSWORD))))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse();
+        var access = new Cookie("access_token", extractCookieValue(login, "access_token"));
+        var refresh = new Cookie("refresh_token", extractCookieValue(login, "refresh_token"));
+        String newPassword = "A different fixture password 24!";
+        String change =
+                jsonMapper.writeValueAsString(
+                        Map.of("currentPassword", CORRECT_PASSWORD, "newPassword", newPassword));
+
+        mockMvc.perform(
+                        post("/api/v1/users/me/password")
+                                .cookie(access)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(change))
+                .andExpect(status().isForbidden());
+
+        var csrf = bootstrapCsrf();
+        var changed =
+                mockMvc.perform(
+                                post("/api/v1/users/me/password")
+                                        .cookie(csrf.cookie(), access)
+                                        .header(csrf.headerName(), csrf.token())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(change))
+                        .andExpect(status().isNoContent())
+                        .andReturn()
+                        .getResponse();
+        assertThat(findSetCookieHeader(changed, "access_token")).contains("Max-Age=0");
+        assertThat(findSetCookieHeader(changed, "refresh_token")).contains("Max-Age=0");
+        mockMvc.perform(get("/api/v1/users/me").cookie(access))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .cookie(csrf.cookie(), refresh)
+                                .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isUnauthorized());
+        assertThatThrownBy(() -> authSessionService.createSession(user, null, null))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        error ->
+                                assertThat(error.getErrorCode())
+                                        .isEqualTo(ErrorCode.UNAUTHENTICATED));
+        assertThat(authSessionRepository.findByUserId(user.getId()))
+                .singleElement()
+                .satisfies(
+                        session ->
+                                assertThat(session.getRevokeReason().name())
+                                        .isEqualTo("PASSWORD_CHANGE"));
+        assertThat(userRepository.findById(user.getId()))
+                .hasValueSatisfying(
+                        updated ->
+                                assertThat(
+                                                passwordEncoder.matches(
+                                                        newPassword, updated.getPasswordHash()))
+                                        .isTrue());
     }
 
     @Test

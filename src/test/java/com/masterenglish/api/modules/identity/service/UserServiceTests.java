@@ -15,15 +15,12 @@ import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
-import com.masterenglish.api.modules.identity.entity.RevokeReason;
-import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.transaction.PlatformTransactionManager;
 import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.LearningGoal;
+import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.LearningGoalRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.service.impl.UserServiceImpl;
@@ -33,6 +30,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
 
 class UserServiceTests {
 
@@ -71,16 +71,19 @@ class UserServiceTests {
         String nfc = "mật khẩu tiếng việt dài";
         User user = userWithPassword(nfc);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
         String nfd = java.text.Normalizer.normalize(nfc, java.text.Normalizer.Form.NFD);
 
         userService.changePassword(userId, new ChangePasswordRequest(nfd, "new-password-1234567"));
 
-        assertThat(passwordEncoder.matches("new-password-1234567", user.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("new-password-1234567", user.getPasswordHash()))
+                .isTrue();
         verify(rateLimiterService).resetLoginFailure("test@example.com");
     }
 
     @Test
-    @DisplayName("changePassword stops before checking the password when the account is rate limited")
+    @DisplayName(
+            "changePassword stops before checking the password when the account is rate limited")
     void changePassword_rateLimited_rejectedEarly() {
         UUID userId = UUID.randomUUID();
         User user = userWithPassword("old-password-123456");
@@ -92,7 +95,8 @@ class UserServiceTests {
                         () ->
                                 userService.changePassword(
                                         userId,
-                                        new ChangePasswordRequest("old-password-123456", "new-password-1234567")))
+                                        new ChangePasswordRequest(
+                                                "old-password-123456", "new-password-1234567")))
                 .isSameAs(limited);
         assertThat(passwordEncoder.matches("old-password-123456", user.getPasswordHash())).isTrue();
         verify(sessionRepository, never()).revokeAllActiveSessions(any(), any(), any());
@@ -110,7 +114,8 @@ class UserServiceTests {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         UserProfileResponse response =
-                userService.updateProfile(userId, new UpdateProfileRequest("An", "Nguyen", " 0901234567 "));
+                userService.updateProfile(
+                        userId, new UpdateProfileRequest("An", "Nguyen", " 0901234567 "));
 
         assertThat(response.firstName()).isEqualTo("An");
         assertThat(response.lastName()).isEqualTo("Nguyen");
@@ -124,12 +129,53 @@ class UserServiceTests {
         User user = userWithPassword("old-password-123456");
         int versionBefore = user.getAuthVersion();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
 
         userService.changePassword(
                 userId, new ChangePasswordRequest("old-password-123456", "new-password-1234567"));
 
-        assertThat(passwordEncoder.matches("new-password-1234567", user.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("new-password-1234567", user.getPasswordHash()))
+                .isTrue();
         assertThat(user.getAuthVersion()).isEqualTo(versionBefore + 1);
+        verify(sessionRepository)
+                .revokeAllActiveSessions(eq(userId), eq(RevokeReason.PASSWORD_CHANGE), any());
+    }
+
+    @Test
+    void changePassword_concurrentChange_returnsConflict() {
+        UUID userId = UUID.randomUUID();
+        User original = userWithPassword("old-password-123456");
+        User concurrent = userWithPassword("concurrent-password-123");
+        when(userRepository.findById(userId)).thenReturn(Optional.of(original));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(concurrent));
+
+        assertThatThrownBy(
+                        () ->
+                                userService.changePassword(
+                                        userId,
+                                        new ChangePasswordRequest(
+                                                "old-password-123456", "new-password-1234567")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+        verify(sessionRepository, never()).revokeAllActiveSessions(any(), any(), any());
+    }
+
+    @Test
+    void changePassword_redisResetUnavailable_keepsCommittedChange() {
+        UUID userId = UUID.randomUUID();
+        User user = userWithPassword("old-password-123456");
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        doThrow(new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "unavailable"))
+                .when(rateLimiterService)
+                .resetLoginFailure("test@example.com");
+
+        userService.changePassword(
+                userId, new ChangePasswordRequest("old-password-123456", "new-password-1234567"));
+
+        assertThat(passwordEncoder.matches("new-password-1234567", user.getPasswordHash()))
+                .isTrue();
         verify(sessionRepository)
                 .revokeAllActiveSessions(eq(userId), eq(RevokeReason.PASSWORD_CHANGE), any());
     }
@@ -145,7 +191,8 @@ class UserServiceTests {
                         () ->
                                 userService.changePassword(
                                         userId,
-                                        new ChangePasswordRequest("wrong-password-123456", "new-password-1234567")))
+                                        new ChangePasswordRequest(
+                                                "wrong-password-123456", "new-password-1234567")))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         be -> assertThat(be.getErrorCode()).isEqualTo(ErrorCode.PASSWORD_REJECTED));
@@ -164,7 +211,8 @@ class UserServiceTests {
                         () ->
                                 userService.changePassword(
                                         userId,
-                                        new ChangePasswordRequest("old-password-123456", "old-password-123456")))
+                                        new ChangePasswordRequest(
+                                                "old-password-123456", "old-password-123456")))
                 .isInstanceOf(BusinessException.class);
         verify(sessionRepository, never()).revokeAllActiveSessions(any(), any(), any());
     }
@@ -179,7 +227,8 @@ class UserServiceTests {
         assertThatThrownBy(
                         () ->
                                 userService.changePassword(
-                                        userId, new ChangePasswordRequest("old-password-123456", "short")))
+                                        userId,
+                                        new ChangePasswordRequest("old-password-123456", "short")))
                 .isInstanceOf(BusinessException.class);
     }
 
@@ -225,7 +274,8 @@ class UserServiceTests {
     @DisplayName("findGoalByUserId returns goal when exists")
     void findGoalByUserId_exists_returnsGoal() {
         UUID userId = UUID.randomUUID();
-        LearningGoal goal = new LearningGoal(userId, (short) 750, 45, LocalDate.now().plusMonths(3));
+        LearningGoal goal =
+                new LearningGoal(userId, (short) 750, 45, LocalDate.now().plusMonths(3));
         when(goalRepository.findById(userId)).thenReturn(Optional.of(goal));
 
         LearningGoalResponse res = userService.findGoalByUserId(userId);
@@ -241,7 +291,10 @@ class UserServiceTests {
 
         assertThatThrownBy(() -> userService.findGoalByUserId(userId))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
     @Test
@@ -253,7 +306,8 @@ class UserServiceTests {
         when(goalRepository.save(org.mockito.ArgumentMatchers.any(LearningGoal.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
-        UpdateLearningGoalRequest req = new UpdateLearningGoalRequest((short) 650, 30, LocalDate.now().plusDays(60));
+        UpdateLearningGoalRequest req =
+                new UpdateLearningGoalRequest((short) 650, 30, LocalDate.now().plusDays(60));
         LearningGoalResponse res = userService.updateGoal(userId, req);
 
         assertThat(res.targetScore()).isEqualTo((short) 650);
@@ -264,21 +318,29 @@ class UserServiceTests {
     @DisplayName("updateGoal rejects score not divisible by 5")
     void updateGoal_invalidScore_throwsValidationError() {
         UUID userId = UUID.randomUUID();
-        UpdateLearningGoalRequest req = new UpdateLearningGoalRequest((short) 653, 30, LocalDate.now().plusDays(60));
+        UpdateLearningGoalRequest req =
+                new UpdateLearningGoalRequest((short) 653, 30, LocalDate.now().plusDays(60));
 
         assertThatThrownBy(() -> userService.updateGoal(userId, req))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
     }
 
     @Test
     @DisplayName("updateGoal rejects target date in the past")
     void updateGoal_pastDate_throwsValidationError() {
         UUID userId = UUID.randomUUID();
-        UpdateLearningGoalRequest req = new UpdateLearningGoalRequest((short) 650, 30, LocalDate.now().minusDays(1));
+        UpdateLearningGoalRequest req =
+                new UpdateLearningGoalRequest((short) 650, 30, LocalDate.now().minusDays(1));
 
         assertThatThrownBy(() -> userService.updateGoal(userId, req))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+                .satisfies(
+                        ex ->
+                                assertThat(((BusinessException) ex).getErrorCode())
+                                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
     }
 }

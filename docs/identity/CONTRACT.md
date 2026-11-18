@@ -1,9 +1,9 @@
 # Hợp đồng API chi tiết: Identity, Xác thực & Hồ sơ Học viên (M01)
 
-**Ngày cập nhật:** 12/11/2026  
-**Module Backend:** `com.masterenglish.api.modules.identity`  
-**Phiên bản API:** `v1`  
-**Cơ chế xác thực:** Session Cookie (`ACCESS_TOKEN`), CSRF Header (`X-XSRF-TOKEN`).  
+**Ngày cập nhật:** 12/11/2026\
+**Module Backend:** `com.masterenglish.api.modules.identity`\
+**Phiên bản API:** `v1`\
+**Cơ chế xác thực:** Session Cookie (`ACCESS_TOKEN`), CSRF Header (`X-XSRF-TOKEN`).\
 **Định dạng lỗi chung:** RFC 7807 (`application/problem+json`) với `{ type, title, status, detail, code, traceId, errors }`.
 
 ---

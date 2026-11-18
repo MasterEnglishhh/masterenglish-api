@@ -7,12 +7,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedServiceImpl;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.impl.VocabularySeedServiceImpl;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;

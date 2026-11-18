@@ -11,7 +11,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
+@Repository
 public interface UserSavedWordRepository
         extends JpaRepository<UserSavedWord, UserSavedWord.UserSavedWordId> {
 
@@ -19,11 +21,9 @@ public interface UserSavedWordRepository
 
     String ELIGIBLE =
             """
-            FROM user_saved_words sw JOIN word_senses s ON s.id=sw.word_sense_id AND NOT s.is_archived
-            JOIN words w ON w.id=s.word_id AND w.published_revision_id=s.word_revision_id
-            JOIN content_items i ON i.id=w.id AND i.published_revision_id=w.published_revision_id
-            JOIN content_revisions r ON r.id=w.published_revision_id AND r.content_item_id=w.id AND r.status='PUBLISHED'
-            WHERE sw.user_id=:userId AND NOT i.is_archived AND i.access_revoked_at IS NULL
+            FROM user_saved_words sw
+            JOIN catalog_visible_senses s ON s.word_sense_id=sw.word_sense_id
+            WHERE sw.user_id=:userId
               AND (cast(:cefrLevel AS text) IS NULL OR s.cefr_level=:cefrLevel)
             """;
 
@@ -34,7 +34,9 @@ public interface UserSavedWordRepository
     Page<UserSavedWord> findEligible(
             @Param("userId") UUID userId, @Param("cefrLevel") String cefrLevel, Pageable pageable);
 
-    @Query(value = "SELECT sw.word_sense_id " + ELIGIBLE + " AND w.id=:wordId", nativeQuery = true)
+    @Query(
+            value = "SELECT sw.word_sense_id " + ELIGIBLE + " AND s.word_id=:wordId",
+            nativeQuery = true)
     List<UUID> findSavedSenseIdsForWord(
             @Param("userId") UUID userId,
             @Param("wordId") UUID wordId,

@@ -1,13 +1,13 @@
 package com.masterenglish.api.modules.admin.service;
 
 import com.masterenglish.api.common.api.PageResponse;
-import com.masterenglish.api.modules.admin.dto.AdminMessageResponse;
-import com.masterenglish.api.modules.content.admin.AdminContentItemDto;
-import com.masterenglish.api.modules.content.admin.AdminRevisionDto;
-import com.masterenglish.api.modules.content.admin.ContentSourceDto;
-import com.masterenglish.api.modules.content.admin.CreateContentSourceRequest;
-import com.masterenglish.api.modules.content.admin.CreateDeckDraftRequest;
-import com.masterenglish.api.modules.content.admin.CreateWordDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
+import com.masterenglish.api.modules.admin.dto.response.AdminContentItemDto;
+import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
+import com.masterenglish.api.modules.admin.dto.response.AdminRevisionDto;
+import com.masterenglish.api.modules.admin.dto.response.ContentSourceDto;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 

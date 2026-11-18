@@ -2,8 +2,8 @@
         id = "content",
         displayName = "Content & Revisions",
         allowedDependencies = {
-            "identity::user-lock",
             "common::api",
+            "common::events",
             "common::entity",
             "common::storage",
             "common::error",

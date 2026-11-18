@@ -1,7 +1,7 @@
 package com.masterenglish.api.modules.admin.service;
 
-import com.masterenglish.api.modules.admin.dto.overview.AdminKpiDto;
-import com.masterenglish.api.modules.admin.dto.overview.RecentActivityDto;
+import com.masterenglish.api.modules.admin.dto.response.AdminKpiDto;
+import com.masterenglish.api.modules.admin.dto.response.RecentActivityDto;
 import java.util.List;
 
 public interface AdminOverviewService {

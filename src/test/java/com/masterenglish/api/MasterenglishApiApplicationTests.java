@@ -47,6 +47,16 @@ class MasterenglishApiApplicationTests {
     @Test
     void contextLoads() {
         assertThat(port).isPositive();
+        assertThat(
+                        context.getBeansOfType(
+                                com.masterenglish.api.modules.vocabulary.service
+                                        .ProductionVocabularyImportService.class))
+                .isEmpty();
+        assertThat(
+                        context.getBeansOfType(
+                                com.masterenglish.api.modules.content.service
+                                        .PronunciationImportService.class))
+                .isEmpty();
     }
 
     @Test

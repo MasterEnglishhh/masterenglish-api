@@ -15,12 +15,14 @@ import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.service.BreachedPasswordChecker;
 import com.masterenglish.api.modules.identity.service.RateLimiterService;
 import com.masterenglish.api.modules.identity.service.RegistrationPasswordPolicy;
+import com.masterenglish.api.modules.identity.service.UserProfileMapper;
 import com.masterenglish.api.modules.identity.service.UserService;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -28,8 +30,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+@Slf4j
 @Service
-@Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -69,11 +71,12 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserProfileResponse findProfileById(UUID id) {
         Objects.requireNonNull(id, "id must not be null");
         return userRepository
                 .findById(id)
-                .map(UserProfileResponse::from)
+                .map(UserProfileMapper::from)
                 .orElseThrow(
                         () ->
                                 new BusinessException(
@@ -89,7 +92,7 @@ public class UserServiceImpl implements UserService {
         // Avatar changes only through the media flow (M08), so keep the current one.
         user.updateProfile(
                 request.firstName(), request.lastName(), request.phone(), user.getAvatarMediaId());
-        return UserProfileResponse.from(user);
+        return UserProfileMapper.from(user);
     }
 
     @Override
@@ -122,7 +125,7 @@ public class UserServiceImpl implements UserService {
                 status -> {
                     var fresh =
                             userRepository
-                                    .findById(userId)
+                                    .findByIdForUpdate(userId)
                                     .orElseThrow(UserServiceImpl::userNotFound);
                     // The password was changed by another request while we checked this one.
                     if (!Objects.equals(fresh.getPasswordHash(), currentHash)) {
@@ -134,7 +137,14 @@ public class UserServiceImpl implements UserService {
                     sessionRepository.revokeAllActiveSessions(
                             userId, RevokeReason.PASSWORD_CHANGE, Instant.now());
                 });
-        rateLimiterService.resetLoginFailure(email);
+        try {
+            rateLimiterService.resetLoginFailure(email);
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != ErrorCode.SERVICE_UNAVAILABLE) {
+                throw exception;
+            }
+            log.warn("Could not clear the login rate limit after a committed password change");
+        }
     }
 
     private static BusinessException userNotFound() {
@@ -142,15 +152,17 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public LearningGoalResponse findGoalByUserId(UUID userId) {
         Objects.requireNonNull(userId, "userId must not be null");
         return goalRepository
                 .findById(userId)
-                .map(LearningGoalResponse::from)
+                .map(UserServiceImpl::goalResponse)
                 .orElseThrow(
                         () ->
                                 new BusinessException(
-                                        ErrorCode.RESOURCE_NOT_FOUND, "Chưa thiết lập mục tiêu học tập."));
+                                        ErrorCode.RESOURCE_NOT_FOUND,
+                                        "Chưa thiết lập mục tiêu học tập."));
     }
 
     @Override
@@ -161,7 +173,8 @@ public class UserServiceImpl implements UserService {
 
         if (request.targetScore() % 5 != 0) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR, "Điểm mục tiêu phải chia hết cho 5 (ví dụ: 500, 650, 750).");
+                    ErrorCode.VALIDATION_ERROR,
+                    "Điểm mục tiêu phải chia hết cho 5 (ví dụ: 500, 650, 750).");
         }
         if (request.targetDate() != null && request.targetDate().isBefore(LocalDate.now())) {
             throw new BusinessException(
@@ -191,6 +204,14 @@ public class UserServiceImpl implements UserService {
                                                 request.dailyMinutes(),
                                                 request.targetDate()));
 
-        return LearningGoalResponse.from(goalRepository.save(goal));
+        return goalResponse(goalRepository.save(goal));
+    }
+
+    private static LearningGoalResponse goalResponse(LearningGoal goal) {
+        return new LearningGoalResponse(
+                goal.getTargetScore(),
+                goal.getDailyMinutes(),
+                goal.getTargetDate(),
+                goal.getUpdatedAt());
     }
 }

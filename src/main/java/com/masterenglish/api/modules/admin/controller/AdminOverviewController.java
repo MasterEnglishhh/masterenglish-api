@@ -1,7 +1,7 @@
 package com.masterenglish.api.modules.admin.controller;
 
-import com.masterenglish.api.modules.admin.dto.overview.AdminKpiDto;
-import com.masterenglish.api.modules.admin.dto.overview.RecentActivityDto;
+import com.masterenglish.api.modules.admin.dto.response.AdminKpiDto;
+import com.masterenglish.api.modules.admin.dto.response.RecentActivityDto;
 import com.masterenglish.api.modules.admin.service.AdminOverviewService;
 import java.util.List;
 import java.util.Objects;
@@ -20,7 +20,8 @@ public class AdminOverviewController {
     private final AdminOverviewService overviewService;
 
     public AdminOverviewController(AdminOverviewService overviewService) {
-        this.overviewService = Objects.requireNonNull(overviewService, "overviewService must not be null");
+        this.overviewService =
+                Objects.requireNonNull(overviewService, "overviewService must not be null");
     }
 
     @GetMapping("/kpis")

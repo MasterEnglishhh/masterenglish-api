@@ -4,12 +4,12 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
-import com.masterenglish.api.modules.admin.dto.system.AiQuotaMetricDto;
-import com.masterenglish.api.modules.admin.dto.system.FeatureFlagDto;
-import com.masterenglish.api.modules.admin.dto.system.StorageQuotaDto;
-import com.masterenglish.api.modules.admin.dto.system.UpdateFeatureFlagRequest;
+import com.masterenglish.api.modules.admin.dto.request.UpdateFeatureFlagRequest;
+import com.masterenglish.api.modules.admin.dto.response.AiQuotaMetricDto;
+import com.masterenglish.api.modules.admin.dto.response.AuditLogEntryDto;
+import com.masterenglish.api.modules.admin.dto.response.FeatureFlagDto;
+import com.masterenglish.api.modules.admin.dto.response.StorageQuotaDto;
 import com.masterenglish.api.modules.admin.service.AdminSystemService;
-import com.masterenglish.api.modules.content.admin.AuditLogEntryDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Objects;
@@ -32,7 +32,8 @@ public class AdminSystemController {
     private final AdminSystemService systemService;
 
     public AdminSystemController(AdminSystemService systemService) {
-        this.systemService = Objects.requireNonNull(systemService, "systemService must not be null");
+        this.systemService =
+                Objects.requireNonNull(systemService, "systemService must not be null");
     }
 
     @GetMapping("/audit-logs")
@@ -55,7 +56,8 @@ public class AdminSystemController {
             @PathVariable String key,
             @Valid @RequestBody UpdateFeatureFlagRequest request,
             @CurrentUser AuthenticatedUser currentUser) {
-        return ResponseEntity.ok(systemService.updateFeatureFlag(key, request.enabled(), currentUser.getId()));
+        return ResponseEntity.ok(
+                systemService.updateFeatureFlag(key, request.enabled(), currentUser.getId()));
     }
 
     @GetMapping(value = {"/quotas/storage", "/meters/storage"})

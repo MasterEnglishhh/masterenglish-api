@@ -45,6 +45,27 @@ directly from an IDE, set the VM option `-Duser.timezone=UTC` and activate the
 java -Duser.timezone=UTC -jar build/libs/masterenglish-api-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
 ```
 
+## Use Redis for login and OTP rate limits
+
+From the API repository, start the optional Redis service:
+
+```powershell
+docker compose --env-file .env -f compose.local.yaml --profile redis up -d --wait redis
+```
+
+Add `AUTH_RATE_LIMIT_BACKEND=redis` to the backend `.env` and restart the API.
+The default URL is `redis://127.0.0.1:16379`. Override
+`AUTH_RATE_LIMIT_REDIS_URL` when the API and Redis use a different address.
+`AUTH_RATE_LIMIT_REDIS_TIMEOUT_MS` defaults to 1000 milliseconds.
+
+Redis stores expiring rate-limit counters keyed by hashed email and IP.
+Accounts, OTP challenges and sessions stay in PostgreSQL. In Redis mode, a
+rate-limited request returns HTTP 429 with `Retry-After`. When Redis is
+unavailable, affected requests return HTTP 503 with no automatic fallback.
+The default backend remains PostgreSQL. Existing counters stay in their
+original backend when you switch. For a shared deployment, use the same
+Redis database and rate-limit secret across API instances.
+
 ## Run tests
 
 ```powershell

@@ -8,16 +8,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.security.UserPrincipal;
-import com.masterenglish.api.modules.learning.dto.ReviewRequest;
+import com.masterenglish.api.modules.learning.dto.request.ReviewRequest;
 import com.masterenglish.api.modules.learning.repository.UserWordProgressRepository;
 import com.masterenglish.api.modules.learning.repository.WordReviewRepository;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.VocabularyQueryService;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;

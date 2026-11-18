@@ -1,7 +1,7 @@
 package com.masterenglish.api.config;
 
 import com.masterenglish.api.common.security.SecurityProblemHandler;
-import com.masterenglish.api.modules.identity.security.JwtAuthenticationFilter;
+import com.masterenglish.api.infrastructure.security.JwtAuthenticationFilter;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -10,6 +10,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -34,7 +36,8 @@ public class SecurityConfiguration {
             SecurityProblemHandler problemHandler,
             CookieCsrfTokenRepository csrfTokenRepository,
             UrlBasedCorsConfigurationSource corsConfigurationSource,
-            ObjectProvider<JwtAuthenticationFilter> jwtAuthenticationFilterProvider)
+            ObjectProvider<JwtAuthenticationFilter> jwtAuthenticationFilterProvider,
+            Environment environment)
             throws Exception {
 
         JwtAuthenticationFilter jwtAuthenticationFilter =
@@ -53,40 +56,46 @@ public class SecurityConfiguration {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 // spa() installs Spring's plain-header/XOR handling; override its default
                 // repository afterwards.
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").spa().csrfTokenRepository(csrfTokenRepository))
+                .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
                 .exceptionHandling(
                         errors ->
                                 errors.authenticationEntryPoint(problemHandler)
                                         .accessDeniedHandler(problemHandler))
                 .authorizeHttpRequests(
-                        requests ->
-                                requests.dispatcherTypeMatchers(DispatcherType.ERROR)
-                                        .permitAll()
-                                        .requestMatchers(
+                        requests -> {
+                            if (environment.acceptsProfiles(Profiles.of("local"))) {
+                                requests.requestMatchers(
                                                 HttpMethod.GET,
-                                                "/api/actuator/health",
-                                                "/api/actuator/health/**",
                                                 "/v3/api-docs",
                                                 "/v3/api-docs/**",
-                                                "/swagger-ui/**",
-                                                "/swagger-ui.html")
-                                        .permitAll()
-                                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf")
-                                        .permitAll()
-                                        .requestMatchers(
-                                                HttpMethod.POST,
-                                                "/api/v1/auth/login",
-                                                "/api/v1/auth/register",
-                                                "/api/v1/auth/register/verify",
-                                                "/api/v1/auth/register/resend",
-                                                "/api/v1/auth/password/forgot",
-                                                "/api/v1/auth/password/verify",
-                                                "/api/v1/auth/password/reset",
-                                                "/api/v1/auth/refresh",
-                                                "/api/v1/auth/logout")
-                                        .permitAll()
-                                        .anyRequest()
-                                        .authenticated());
+                                                "/swagger-ui.html",
+                                                "/swagger-ui/**")
+                                        .permitAll();
+                            }
+                            requests.dispatcherTypeMatchers(DispatcherType.ERROR)
+                                    .permitAll()
+                                    .requestMatchers(
+                                            HttpMethod.GET,
+                                            "/api/actuator/health",
+                                            "/api/actuator/health/**")
+                                    .permitAll()
+                                    .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf")
+                                    .permitAll()
+                                    .requestMatchers(
+                                            HttpMethod.POST,
+                                            "/api/v1/auth/login",
+                                            "/api/v1/auth/register",
+                                            "/api/v1/auth/register/verify",
+                                            "/api/v1/auth/register/resend",
+                                            "/api/v1/auth/password/forgot",
+                                            "/api/v1/auth/password/verify",
+                                            "/api/v1/auth/password/reset",
+                                            "/api/v1/auth/refresh",
+                                            "/api/v1/auth/logout")
+                                    .permitAll()
+                                    .anyRequest()
+                                    .authenticated();
+                        });
 
         return http.build();
     }

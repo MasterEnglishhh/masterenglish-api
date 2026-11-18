@@ -2,11 +2,11 @@ package com.masterenglish.api.modules.vocabulary.controller;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
-import com.masterenglish.api.modules.vocabulary.query.DeckDetailDto;
-import com.masterenglish.api.modules.vocabulary.query.DeckDto;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.query.WordDetailDto;
-import com.masterenglish.api.modules.vocabulary.query.WordListDto;
+import com.masterenglish.api.modules.vocabulary.dto.response.DeckDetailDto;
+import com.masterenglish.api.modules.vocabulary.dto.response.DeckDto;
+import com.masterenglish.api.modules.vocabulary.dto.response.WordDetailDto;
+import com.masterenglish.api.modules.vocabulary.dto.response.WordListDto;
+import com.masterenglish.api.modules.vocabulary.service.VocabularyQueryService;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;

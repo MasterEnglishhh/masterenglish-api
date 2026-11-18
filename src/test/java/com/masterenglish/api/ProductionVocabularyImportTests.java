@@ -9,18 +9,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.masterenglish.api.common.events.ContentEvents.RevisionPublished;
 import com.masterenglish.api.common.storage.PronunciationStorage;
-import com.masterenglish.api.modules.content.authoring.ContentAuthoringService;
-import com.masterenglish.api.modules.content.authoring.PublishedContentReader;
-import com.masterenglish.api.modules.content.pronunciation.LocalPronunciationImporter;
-import com.masterenglish.api.modules.content.pronunciation.PronunciationQuery;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
-import com.masterenglish.api.modules.identity.user.UserLockService;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.seed.ProductionVocabularyImportService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.ProductionVocabularyImportService;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
 import jakarta.persistence.EntityManager;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,28 +27,28 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
+@ActiveProfiles("content-import")
 @Import(TestcontainersConfiguration.class)
+@RecordApplicationEvents
 @Transactional
 class ProductionVocabularyImportTests {
-    @Autowired ApplicationContext context;
+    @Autowired ApplicationEvents events;
     @Autowired UserRepository users;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper mapper;
-    @Autowired UserLockService lock;
     @Autowired VocabularySeedService seed;
-    @Autowired PublishedContentReader reader;
-    @Autowired ContentAuthoringService authoring;
-    @Autowired PronunciationQuery pronunciation;
-    @Autowired VocabularyQueryService vocabulary;
+    @Autowired ProductionVocabularyImportService importer;
     @MockitoBean PronunciationStorage storage;
 
     @Test
@@ -65,10 +60,11 @@ class ProductionVocabularyImportTests {
         int rolesBefore = count("user_roles");
         Path manifest = bundle(directory);
         when(storage.bucket()).thenReturn("media-fixture");
-        var result = importer().importStarter(actor.getEmail(), manifest);
+        var result = importer.importStarter(actor.getEmail(), manifest);
         assertThat(result.words()).isEqualTo(59);
         assertThat(result.decks()).isEqualTo(6);
         assertThat(result.audioImported()).isEqualTo(59);
+        assertThat(events.stream(RevisionPublished.class)).hasSize(65);
         assertThat(count("word_pronunciations")).isEqualTo(59);
         assertThat(count("words")).isEqualTo(59);
         assertThat(count("decks")).isEqualTo(6);
@@ -77,7 +73,8 @@ class ProductionVocabularyImportTests {
         assertThat(count("user_word_progress")).isZero();
         assertThat(users.findById(learner.getId()).orElseThrow().getRoleNames())
                 .containsExactly("LEARNER");
-        assertThat(importer().importStarter(actor.getEmail(), manifest).audioImported()).isZero();
+        assertThat(importer.importStarter(actor.getEmail(), manifest).audioImported()).isZero();
+        assertThat(events.stream(RevisionPublished.class)).hasSize(65);
         assertThat(count("content_revisions")).isEqualTo(65);
     }
 
@@ -89,7 +86,7 @@ class ProductionVocabularyImportTests {
         var root = mapper.readTree(Files.readString(manifest));
         ((com.fasterxml.jackson.databind.node.ArrayNode) root.path("entries")).remove(0);
         Files.writeString(manifest, root.toString());
-        assertThatThrownBy(() -> importer().importStarter(actor.getEmail(), manifest))
+        assertThatThrownBy(() -> importer.importStarter(actor.getEmail(), manifest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exactly");
         assertThat(count("content_items")).isZero();
@@ -102,20 +99,17 @@ class ProductionVocabularyImportTests {
         User actor = account(true);
         Path manifest = bundle(directory);
         Files.write(directory.resolve("sample.mp3"), new byte[256]);
-        assertThatThrownBy(() -> importer().importStarter(actor.getEmail(), manifest))
+        assertThatThrownBy(() -> importer.importStarter(actor.getEmail(), manifest))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(count("content_items")).isZero();
         verifyNoInteractions(storage);
     }
 
     @Test
-    void learnerCannotImportAndNormalStartupHasNoProductionImporter(@TempDir Path directory)
-            throws Exception {
+    void learnerCannotImport(@TempDir Path directory) throws Exception {
         User learner = account(false);
         Path manifest = bundle(directory);
-        assertThat(context.getBeansOfType(ProductionVocabularyImportService.class)).isEmpty();
-        assertThat(context.getBeansOfType(LocalPronunciationImporter.class)).isEmpty();
-        assertThatThrownBy(() -> importer().importStarter(learner.getEmail(), manifest))
+        assertThatThrownBy(() -> importer.importStarter(learner.getEmail(), manifest))
                 .hasMessageContaining("administrator");
         assertThat(count("content_items")).isZero();
         verifyNoInteractions(storage);
@@ -131,7 +125,7 @@ class ProductionVocabularyImportTests {
         doThrow(new IllegalStateException("simulated storage outage"))
                 .when(storage)
                 .put(anyString(), any(), anyString());
-        assertThatThrownBy(() -> importer().importStarter(actor.getEmail(), manifest))
+        assertThatThrownBy(() -> importer.importStarter(actor.getEmail(), manifest))
                 .hasMessageContaining("simulated storage outage");
         // Match the command's transaction boundary and verify persisted state after rollback.
         TestTransaction.flagForRollback();
@@ -148,7 +142,7 @@ class ProductionVocabularyImportTests {
         ((com.fasterxml.jackson.databind.node.ObjectNode) root.path("entries").get(0))
                 .put("file", "../sample.mp3");
         Files.writeString(manifest, root.toString());
-        assertThatThrownBy(() -> importer().importStarter(actor.getEmail(), manifest))
+        assertThatThrownBy(() -> importer.importStarter(actor.getEmail(), manifest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("filename");
         assertThat(count("content_items")).isZero();
@@ -242,29 +236,5 @@ class ProductionVocabularyImportTests {
 
     private int count(String table) {
         return jdbc.queryForObject("SELECT count(*) FROM " + table, Integer.class);
-    }
-
-    private ProductionVocabularyImportService importer() {
-        var audio =
-                new LocalPronunciationImporter(
-                        context.getBeanProvider(PronunciationStorage.class),
-                        jdbc,
-                        mapper,
-                        lock,
-                        reader,
-                        authoring,
-                        em);
-        var target =
-                new ProductionVocabularyImportService(
-                        jdbc, mapper, lock, seed, audio, pronunciation, vocabulary);
-        var proxy = new org.springframework.aop.framework.ProxyFactory(target);
-        proxy.setProxyTargetClass(true);
-        proxy.addAdvice(
-                new org.springframework.transaction.interceptor.TransactionInterceptor(
-                        context.getBean(
-                                org.springframework.transaction.PlatformTransactionManager.class),
-                        new org.springframework.transaction.annotation
-                                .AnnotationTransactionAttributeSource()));
-        return (ProductionVocabularyImportService) proxy.getProxy();
     }
 }

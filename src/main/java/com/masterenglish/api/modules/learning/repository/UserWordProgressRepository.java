@@ -12,23 +12,20 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
+@Repository
 public interface UserWordProgressRepository
         extends JpaRepository<UserWordProgress, UserWordProgress.UserWordProgressId> {
 
     String ELIGIBLE =
             """
             FROM user_word_progress p
-            JOIN word_senses s ON s.id=p.word_sense_id AND NOT s.is_archived
-            JOIN words w ON w.id=s.word_id AND w.published_revision_id=s.word_revision_id
-            JOIN content_items i ON i.id=w.id AND i.published_revision_id=w.published_revision_id
-            JOIN content_revisions r ON r.id=w.published_revision_id AND r.content_item_id=w.id AND r.status='PUBLISHED'
-            WHERE p.user_id=:userId AND p.due_at<=:now AND NOT i.is_archived AND i.access_revoked_at IS NULL
+            JOIN catalog_visible_senses s ON s.word_sense_id=p.word_sense_id
+            WHERE p.user_id=:userId AND p.due_at<=:now
             AND (cast(:deckId AS uuid) IS NULL OR EXISTS (
-                SELECT 1 FROM deck_words dw JOIN decks d ON d.id=dw.deck_id
-                JOIN content_items di ON di.id=d.id AND di.published_revision_id=d.published_revision_id
-                JOIN content_revisions dr ON dr.id=d.published_revision_id AND dr.status='PUBLISHED'
-                WHERE dw.word_sense_id=s.id AND d.id=:deckId AND NOT di.is_archived AND di.access_revoked_at IS NULL))
+                SELECT 1 FROM catalog_visible_deck_senses ds
+                WHERE ds.word_sense_id=p.word_sense_id AND ds.deck_id=:deckId))
             """;
 
     @Query(

@@ -8,8 +8,8 @@ import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.error.RateLimitExceededException;
 import com.masterenglish.api.config.JwtProperties;
-import com.masterenglish.api.modules.identity.dto.LoginResult;
-import com.masterenglish.api.modules.identity.dto.RefreshResult;
+import com.masterenglish.api.modules.identity.dto.response.LoginResult;
+import com.masterenglish.api.modules.identity.dto.response.RefreshResult;
 import com.masterenglish.api.modules.identity.entity.AuthSession;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
 import com.masterenglish.api.modules.identity.entity.Role;
@@ -70,7 +70,7 @@ class AuthenticationServiceTests {
                         "auth.user@example.com", RAW_PASSWORD, "Mozilla/5.0", "192.168.10.1");
 
         assertThat(result).isNotNull();
-        assertThat(result.user().getEmail()).isEqualTo("auth.user@example.com");
+        assertThat(result.user().email()).isEqualTo("auth.user@example.com");
         assertThat(result.accessToken()).isNotBlank();
         assertThat(result.rawRefreshToken()).isNotBlank();
     }

@@ -1,6 +1,6 @@
 package com.masterenglish.api.modules.learning.service;
 
-import com.masterenglish.api.modules.learning.dto.DueQueueResponse;
+import com.masterenglish.api.modules.learning.dto.response.DueQueueResponse;
 import java.util.UUID;
 
 public interface DueQueueService {

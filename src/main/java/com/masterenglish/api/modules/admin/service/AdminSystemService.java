@@ -1,10 +1,10 @@
 package com.masterenglish.api.modules.admin.service;
 
 import com.masterenglish.api.common.api.PageResponse;
-import com.masterenglish.api.modules.admin.dto.system.AiQuotaMetricDto;
-import com.masterenglish.api.modules.admin.dto.system.FeatureFlagDto;
-import com.masterenglish.api.modules.admin.dto.system.StorageQuotaDto;
-import com.masterenglish.api.modules.content.admin.AuditLogEntryDto;
+import com.masterenglish.api.modules.admin.dto.response.AiQuotaMetricDto;
+import com.masterenglish.api.modules.admin.dto.response.AuditLogEntryDto;
+import com.masterenglish.api.modules.admin.dto.response.FeatureFlagDto;
+import com.masterenglish.api.modules.admin.dto.response.StorageQuotaDto;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;

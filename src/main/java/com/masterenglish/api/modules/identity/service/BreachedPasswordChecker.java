@@ -13,9 +13,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /** Only a five-character hash prefix leaves this server; never a password or full hash. */
+@Slf4j
 @Service
 public class BreachedPasswordChecker {
     private final RegistrationProperties properties;
@@ -80,6 +82,7 @@ public class BreachedPasswordChecker {
     }
 
     private static BusinessException unavailable() {
+        log.warn("Password breach check unavailable");
         return new BusinessException(
                 ErrorCode.SERVICE_UNAVAILABLE,
                 "Chưa thể kiểm tra độ an toàn của mật khẩu. Vui lòng thử lại sau.");

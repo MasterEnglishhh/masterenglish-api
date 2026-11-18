@@ -1,12 +1,12 @@
 package com.masterenglish.api.modules.identity.controller;
 
+import com.masterenglish.api.infrastructure.security.AuthCookieHelper;
 import com.masterenglish.api.modules.identity.dto.request.ForgotPasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.PasswordResetOtpRequest;
 import com.masterenglish.api.modules.identity.dto.request.ResetPasswordRequest;
 import com.masterenglish.api.modules.identity.dto.response.AuthMessageResponse;
 import com.masterenglish.api.modules.identity.dto.response.PasswordResetChallengeResponse;
 import com.masterenglish.api.modules.identity.dto.response.PasswordResetGrantResponse;
-import com.masterenglish.api.modules.identity.security.AuthCookieHelper;
 import com.masterenglish.api.modules.identity.service.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;

@@ -1,7 +1,8 @@
 package com.masterenglish.api.modules.learning.service;
 
 import com.masterenglish.api.common.api.PageResponse;
-import com.masterenglish.api.modules.learning.dto.SavedWordDto;
+import com.masterenglish.api.modules.learning.dto.response.SavedWordDto;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 
@@ -13,5 +14,5 @@ public interface SavedWordService {
 
     PageResponse<SavedWordDto> getSavedWords(UUID userId, String cefrLevel, Pageable pageable);
 
-    java.util.List<UUID> getSavedSenseIdsForWord(UUID userId, UUID wordId);
+    List<UUID> getSavedSenseIdsForWord(UUID userId, UUID wordId);
 }

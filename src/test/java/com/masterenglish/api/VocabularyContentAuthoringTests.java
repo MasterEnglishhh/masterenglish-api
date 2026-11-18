@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
-import com.masterenglish.api.modules.content.authoring.ContentAuthoringService;
 import com.masterenglish.api.modules.content.entity.ContentItem;
 import com.masterenglish.api.modules.content.entity.ContentRevision;
 import com.masterenglish.api.modules.content.repository.AuditLogRepository;
 import com.masterenglish.api.modules.content.repository.ContentItemRepository;
 import com.masterenglish.api.modules.content.repository.ContentRevisionRepository;
 import com.masterenglish.api.modules.content.repository.RevisionDependencyRepository;
+import com.masterenglish.api.modules.content.service.ContentAuthoringService;
 import com.masterenglish.api.modules.vocabulary.entity.Deck;
 import com.masterenglish.api.modules.vocabulary.entity.Word;
 import com.masterenglish.api.modules.vocabulary.entity.WordSense;
@@ -19,8 +19,8 @@ import com.masterenglish.api.modules.vocabulary.repository.DeckRepository;
 import com.masterenglish.api.modules.vocabulary.repository.DeckWordRepository;
 import com.masterenglish.api.modules.vocabulary.repository.WordRepository;
 import com.masterenglish.api.modules.vocabulary.repository.WordSenseRepository;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedService;
-import com.masterenglish.api.modules.vocabulary.seed.VocabularySeedServiceImpl;
+import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
+import com.masterenglish.api.modules.vocabulary.service.impl.VocabularySeedServiceImpl;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -104,7 +104,7 @@ class VocabularyContentAuthoringTests {
                 """;
 
         UUID wordItemId = UUID.randomUUID();
-        ContentItem wordItem =
+        var wordItem =
                 authoringService.createItemWithDraft(
                         wordItemId,
                         "WORD",
@@ -122,16 +122,15 @@ class VocabularyContentAuthoringTests {
         assertThat(draft.getStatus()).isEqualTo("DRAFT");
 
         // 2. Submit for review
-        ContentRevision inReview = authoringService.submitForReview(draft.getId(), adminId);
+        var inReview = authoringService.submitForReview(draft.getId(), adminId);
         assertThat(inReview.getStatus()).isEqualTo("IN_REVIEW");
 
         // 3. Approve
-        ContentRevision approved =
-                authoringService.approve(inReview.getId(), adminId, "Content verified");
+        var approved = authoringService.approve(inReview.getId(), adminId, "Content verified");
         assertThat(approved.getStatus()).isEqualTo("APPROVED");
 
         // 4. Publish
-        ContentRevision published = authoringService.publish(approved.getId(), adminId);
+        var published = authoringService.publish(approved.getId(), adminId);
         assertThat(published.getStatus()).isEqualTo("PUBLISHED");
         assertThat(published.getPublishedAt()).isNotNull();
 

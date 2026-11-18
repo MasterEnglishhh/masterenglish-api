@@ -18,29 +18,12 @@ theo checksum nếu lượt nhập bị gián đoạn; chúng có thể được
 Không xóa tài khoản, tiến độ hay lịch sử ôn. Không ghi đè bản phát âm đã có nếu
 khác voice/checksum/bucket hoặc đã bị archive.
 
-## 1. Commit và build backend mới — CMD trên Windows
+## 1. Xác nhận bản backend dùng để nhập
 
-Repo frontend không thay đổi ở bước này. Từ CMD:
-
-```cmd
-cd /d D:\MasterEnglish\masterenglish-api
-git add -- .github/workflows/ci.yml
-git add -- src/main/java/com/masterenglish/api/MasterenglishApiApplication.java src/main/java/com/masterenglish/api/ContentImportCommand.java
-git add -- src/main/java/com/masterenglish/api/modules/content/pronunciation/LocalPronunciationImporter.java
-git add -- src/main/java/com/masterenglish/api/modules/vocabulary/package-info.java src/main/java/com/masterenglish/api/modules/vocabulary/seed
-git add -- src/main/resources/vocabulary/local-topics.json
-git add -- src/test/java/com/masterenglish/api/ProductionVocabularyImportTests.java
-git add -- scripts/content/grant_content_admin.sql scripts/pronunciation/package_starter.py scripts/pronunciation/test_package_starter.py
-git add -- docs/vocabulary/PRODUCTION_IMPORT.md docs/vocabulary/PRONUNCIATION.md
-git --no-pager diff --cached --stat
-git --no-pager diff --cached --check
-git commit -m "feat(vocabulary): add one-shot production starter import"
-git push origin main
-```
-
-Chờ Backend CI verify/publish xanh. Lấy **Deploy by digest** của run mới, chạy
-workflow Infra **Deploy production** với digest đó và chờ deploy xanh. Dùng
-chính image mới này cho bước nhập, không dùng image của lần deploy trước.
+Chọn bản Backend CI đã verify và publish thành công, có hỗ trợ
+`--content-import`. Lấy **Deploy by digest** của bản đó, chạy workflow Infra
+**Deploy production** với digest này và chờ triển khai thành công. Dùng đúng
+image đã triển khai cho bước nhập.
 
 ## 2. Chuẩn bị file để chuyển qua WinSCP
 

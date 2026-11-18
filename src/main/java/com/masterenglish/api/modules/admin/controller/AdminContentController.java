@@ -4,14 +4,16 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
-import com.masterenglish.api.modules.admin.dto.AdminMessageResponse;
+import com.masterenglish.api.modules.admin.dto.request.ArchiveItemRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.ReviewDecisionRequest;
+import com.masterenglish.api.modules.admin.dto.response.AdminContentItemDto;
+import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
+import com.masterenglish.api.modules.admin.dto.response.AdminRevisionDto;
+import com.masterenglish.api.modules.admin.dto.response.ContentSourceDto;
 import com.masterenglish.api.modules.admin.service.AdminContentService;
-import com.masterenglish.api.modules.content.admin.AdminContentItemDto;
-import com.masterenglish.api.modules.content.admin.AdminRevisionDto;
-import com.masterenglish.api.modules.content.admin.ContentSourceDto;
-import com.masterenglish.api.modules.content.admin.CreateContentSourceRequest;
-import com.masterenglish.api.modules.content.admin.CreateDeckDraftRequest;
-import com.masterenglish.api.modules.content.admin.CreateWordDraftRequest;
 import jakarta.validation.Valid;
 import java.util.Objects;
 import java.util.UUID;
@@ -35,7 +37,8 @@ public class AdminContentController {
     private final AdminContentService contentService;
 
     public AdminContentController(AdminContentService contentService) {
-        this.contentService = Objects.requireNonNull(contentService, "contentService must not be null");
+        this.contentService =
+                Objects.requireNonNull(contentService, "contentService must not be null");
     }
 
     @GetMapping("/items")
@@ -46,7 +49,8 @@ public class AdminContentController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         Pageable pageable = PageRequestUtils.of(page, size);
-        return ResponseEntity.ok(contentService.findContentItems(search, contentType, status, pageable));
+        return ResponseEntity.ok(
+                contentService.findContentItems(search, contentType, status, pageable));
     }
 
     @PostMapping("/words")
@@ -67,15 +71,14 @@ public class AdminContentController {
 
     @PostMapping("/revisions/{id}/submit")
     public ResponseEntity<AdminRevisionDto> submitRevision(
-            @PathVariable UUID id,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @PathVariable UUID id, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.ok(contentService.submitRevision(id, currentUser.getId()));
     }
 
     @PostMapping("/revisions/{id}/approve")
     public ResponseEntity<AdminRevisionDto> approveRevision(
             @PathVariable UUID id,
-            @RequestBody(required = false) ReviewDecisionBody body,
+            @RequestBody(required = false) ReviewDecisionRequest body,
             @CurrentUser AuthenticatedUser currentUser) {
         String note = body != null ? body.reviewNote() : null;
         return ResponseEntity.ok(contentService.approveRevision(id, note, currentUser.getId()));
@@ -84,7 +87,7 @@ public class AdminContentController {
     @PostMapping("/revisions/{id}/reject")
     public ResponseEntity<AdminRevisionDto> rejectRevision(
             @PathVariable UUID id,
-            @RequestBody(required = false) ReviewDecisionBody body,
+            @RequestBody(required = false) ReviewDecisionRequest body,
             @CurrentUser AuthenticatedUser currentUser) {
         String note = body != null ? body.reviewNote() : null;
         return ResponseEntity.ok(contentService.rejectRevision(id, note, currentUser.getId()));
@@ -92,18 +95,18 @@ public class AdminContentController {
 
     @PostMapping("/revisions/{id}/publish")
     public ResponseEntity<AdminRevisionDto> publishRevision(
-            @PathVariable UUID id,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @PathVariable UUID id, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.ok(contentService.publishRevision(id, currentUser.getId()));
     }
 
     @PostMapping("/items/{id}/archive")
     public ResponseEntity<AdminMessageResponse> archiveItem(
             @PathVariable UUID id,
-            @RequestBody(required = false) ArchiveItemBody body,
+            @RequestBody(required = false) ArchiveItemRequest body,
             @CurrentUser AuthenticatedUser currentUser) {
         String reason = body != null ? body.reason() : null;
-        return ResponseEntity.ok(contentService.archiveContentItem(id, reason, currentUser.getId()));
+        return ResponseEntity.ok(
+                contentService.archiveContentItem(id, reason, currentUser.getId()));
     }
 
     @GetMapping("/sources")
@@ -122,7 +125,4 @@ public class AdminContentController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(contentService.createSource(request, currentUser.getId()));
     }
-
-    public record ReviewDecisionBody(String reviewNote) {}
-    public record ArchiveItemBody(String reason) {}
 }

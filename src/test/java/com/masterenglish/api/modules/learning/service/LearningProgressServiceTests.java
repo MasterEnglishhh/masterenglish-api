@@ -8,20 +8,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.masterenglish.api.common.api.PageResponse;
-import com.masterenglish.api.modules.learning.dto.LearningProgressResponse;
-import com.masterenglish.api.modules.learning.dto.ReviewHistoryItemDto;
+import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.common.events.VocabularyEvents;
+import com.masterenglish.api.modules.learning.dto.response.LearningProgressResponse;
+import com.masterenglish.api.modules.learning.dto.response.ReviewHistoryItemDto;
 import com.masterenglish.api.modules.learning.entity.WordReview;
 import com.masterenglish.api.modules.learning.repository.UserSavedWordRepository;
 import com.masterenglish.api.modules.learning.repository.UserWordProgressRepository;
 import com.masterenglish.api.modules.learning.repository.WordReviewRepository;
-import com.masterenglish.api.modules.vocabulary.query.VocabularyQueryService;
-import com.masterenglish.api.modules.vocabulary.query.WordSenseCardDto;
-import java.util.Optional;
+import com.masterenglish.api.modules.learning.service.impl.LearningProgressServiceImpl;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,7 @@ class LearningProgressServiceTests {
     private WordReviewRepository reviewRepository;
     private UserWordProgressRepository progressRepository;
     private UserSavedWordRepository savedWordRepository;
-    private VocabularyQueryService vocabularyQueryService;
+    private VocabularyEvents vocabulary;
     private LearningProgressService service;
     private final UUID userId = UUID.randomUUID();
 
@@ -44,13 +45,13 @@ class LearningProgressServiceTests {
         reviewRepository = mock(WordReviewRepository.class);
         progressRepository = mock(UserWordProgressRepository.class);
         savedWordRepository = mock(UserSavedWordRepository.class);
-        vocabularyQueryService = mock(VocabularyQueryService.class);
+        vocabulary = mock(VocabularyEvents.class);
         service =
                 new LearningProgressServiceImpl(
                         reviewRepository,
                         progressRepository,
                         savedWordRepository,
-                        vocabularyQueryService,
+                        vocabulary,
                         Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -81,9 +82,23 @@ class LearningProgressServiceTests {
                 .thenReturn(new PageImpl<>(List.of(review), pageable, 6));
         WordSenseCardDto card =
                 new WordSenseCardDto(
-                        null, null, 0, senseId, wordId, null, "approach", null, "noun", "B1",
-                        "cách tiếp cận", null, List.of(), null, null, null);
-        when(vocabularyQueryService.getCardBySenseId(senseId)).thenReturn(Optional.of(card));
+                        null,
+                        null,
+                        0,
+                        senseId,
+                        wordId,
+                        null,
+                        "approach",
+                        null,
+                        "noun",
+                        "B1",
+                        "cách tiếp cận",
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        null);
+        when(vocabulary.getCardBySenseId(senseId)).thenReturn(Optional.of(card));
 
         PageResponse<ReviewHistoryItemDto> page = service.getReviewHistory(userId, pageable);
 
@@ -97,6 +112,18 @@ class LearningProgressServiceTests {
         assertThat(item.lemma()).isEqualTo("approach");
         assertThat(item.meaningVi()).isEqualTo("cách tiếp cận");
         assertThat(item.nextDueAt()).isEqualTo(NOW.plusSeconds(3600));
+
+        when(vocabulary.getCardBySenseId(senseId)).thenReturn(Optional.empty());
+        var archived = service.getReviewHistory(userId, pageable);
+        assertThat(archived.totalItems()).isEqualTo(6);
+        assertThat(archived.items())
+                .singleElement()
+                .satisfies(
+                        history -> {
+                            assertThat(history.wordSenseId()).isEqualTo(senseId);
+                            assertThat(history.lemma()).isNull();
+                            assertThat(history.meaningVi()).isNull();
+                        });
     }
 
     @Test
@@ -113,8 +140,7 @@ class LearningProgressServiceTests {
 
         LearningProgressResponse result = service.getProgress(userId);
 
-        assertThat(result)
-                .isEqualTo(new LearningProgressResponse(12, 3, 4, 20, 57, 9));
+        assertThat(result).isEqualTo(new LearningProgressResponse(12, 3, 4, 20, 57, 9));
     }
 
     @Test
