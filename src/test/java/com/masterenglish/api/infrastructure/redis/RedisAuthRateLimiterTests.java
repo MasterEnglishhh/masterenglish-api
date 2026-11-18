@@ -16,6 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.infrastructure.security.UserPrincipal;
+import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.AuthRateLimitRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
@@ -37,6 +39,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -77,6 +80,7 @@ class RedisAuthRateLimiterTests {
     @Autowired private RedisClient redisClient;
     @Autowired private JsonMapper jsonMapper;
     @Autowired private UserRepository users;
+    @Autowired private PasswordEncoder passwordEncoder;
     @MockitoBean private RegistrationMailer mailer;
 
     @Test
@@ -172,6 +176,55 @@ class RedisAuthRateLimiterTests {
         assertThat(postgresCounters.count()).isZero();
         loginLimiter.resetLoginFailure(" REDIS-LOGIN@EXAMPLE.TEST ");
         loginLimiter.checkLoginRateLimit(email, null);
+    }
+
+    @Test
+    void passwordChangeSharesTheRedisLoginEmailLimit() throws Exception {
+        var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        String email = "redis-password-change@example.test";
+        var user =
+                new User(
+                        email,
+                        passwordEncoder.encode("Correct fixture password 123!"),
+                        "Test",
+                        "Learner");
+        user.markEmailVerified(Instant.now());
+        var principal = UserPrincipal.create(users.saveAndFlush(user));
+        String login =
+                jsonMapper.writeValueAsString(
+                        Map.of("email", email, "password", "Wrong password 123!"));
+        for (int attempt = 0; attempt < 4; attempt++) {
+            mvc.perform(
+                            post("/api/v1/auth/login")
+                                    .with(csrf())
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(login))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mvc.perform(
+                        post("/api/v1/users/me/password")
+                                .with(csrf())
+                                .with(
+                                        org.springframework.security.test.web.servlet.request
+                                                .SecurityMockMvcRequestPostProcessors.user(
+                                                principal))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        jsonMapper.writeValueAsString(
+                                                Map.of(
+                                                        "currentPassword", "Wrong password 123!",
+                                                        "newPassword",
+                                                                "Another fixture password 234!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_REJECTED"));
+        mvc.perform(
+                        post("/api/v1/auth/login")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(login))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
     }
 
     @Test

@@ -8,4 +8,6 @@ public interface UserLockService {
     void verifyAndLockUser(UUID userId);
 
     void verifyContentAdmin(UUID userId);
+
+    void verifyContentAuthor(UUID userId);
 }

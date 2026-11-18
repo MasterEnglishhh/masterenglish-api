@@ -1,12 +1,16 @@
 package com.masterenglish.api.common.events;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.masterenglish.api.common.api.PageResponse;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -122,4 +126,220 @@ public class ContentEvents {
             String snapshot,
             String changeSummary,
             UUID sourceId) {}
+
+    public PageResponse<ItemView> findContentItems(
+            String search, String contentType, String status, Pageable pageable) {
+        return events.request(
+                reply -> new AdminFindContentItems(search, contentType, status, pageable, reply));
+    }
+
+    public ItemView createWordDraft(WordDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateWordDraft(request, actorId, reply));
+    }
+
+    public ItemView createDeckDraft(DeckDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateDeckDraft(request, actorId, reply));
+    }
+
+    public RevisionView submitRevision(UUID revisionId, UUID actorId) {
+        return events.request(reply -> new AdminSubmitRevision(revisionId, actorId, reply));
+    }
+
+    public RevisionView approveRevision(UUID revisionId, String reviewNote, UUID actorId) {
+        return events.request(
+                reply -> new AdminApproveRevision(revisionId, reviewNote, actorId, reply));
+    }
+
+    public RevisionView rejectRevision(UUID revisionId, String reviewNote, UUID actorId) {
+        return events.request(
+                reply -> new AdminRejectRevision(revisionId, reviewNote, actorId, reply));
+    }
+
+    public RevisionView publishRevision(UUID revisionId, UUID actorId) {
+        return events.request(reply -> new AdminPublishRevision(revisionId, actorId, reply));
+    }
+
+    public void archiveContentItem(UUID itemId, String reason, UUID actorId) {
+        events.<Void>request(reply -> new AdminArchiveContentItem(itemId, reason, actorId, reply));
+    }
+
+    public PageResponse<SourceView> findSources(String search, Pageable pageable) {
+        return events.request(reply -> new AdminFindSources(search, pageable, reply));
+    }
+
+    public SourceView createSource(AdminSource request, UUID actorId) {
+        return events.request(reply -> new AdminCreateSource(request, actorId, reply));
+    }
+
+    public PageResponse<AuditEntry> findAuditLogs(
+            String search, String entityType, Pageable pageable) {
+        return events.request(reply -> new AdminFindAuditLogs(search, entityType, pageable, reply));
+    }
+
+    public void recordAuditLog(
+            UUID actorId,
+            String action,
+            String entityType,
+            UUID entityId,
+            String metadata,
+            String reason) {
+        events.<Void>request(
+                reply ->
+                        new AdminRecordAuditLog(
+                                actorId, action, entityType, entityId, metadata, reason, reply));
+    }
+
+    public long getStorageReadyBytes() {
+        return events.request(reply -> new AdminGetStorageReadyBytes(reply));
+    }
+
+    public long getStorageReadyCount() {
+        return events.request(reply -> new AdminGetStorageReadyCount(reply));
+    }
+
+    public List<AuditEntry> getRecentActivities(int limit) {
+        return events.request(reply -> new AdminGetRecentActivities(limit, reply));
+    }
+
+    public long countTotalContentItems() {
+        return events.request(reply -> new AdminCountTotalContentItems(reply));
+    }
+
+    public long countPendingReviewRevisions() {
+        return events.request(reply -> new AdminCountPendingReviewRevisions(reply));
+    }
+
+    public record ItemView(
+            UUID id,
+            String title,
+            String code,
+            String module,
+            String type,
+            String status,
+            int versionNo,
+            String summary,
+            String author,
+            String reviewer,
+            Instant updatedAt,
+            String level,
+            UUID latestRevisionId) {}
+
+    public record RevisionView(
+            UUID revisionId,
+            UUID contentItemId,
+            String status,
+            int versionNo,
+            String reviewNote,
+            Instant publishedAt,
+            Instant updatedAt) {}
+
+    public record SourceView(
+            UUID id,
+            String title,
+            String sourceType,
+            String sourceUrl,
+            String author,
+            String licenseCode,
+            String status,
+            Instant createdAt) {}
+
+    public record AuditEntry(
+            UUID id,
+            String actorEmail,
+            String action,
+            String entityType,
+            UUID entityId,
+            String details,
+            String ipAddress,
+            Instant timestamp,
+            String severity) {}
+
+    public record WordDraft(
+            String lemma,
+            String partOfSpeech,
+            String cefrLevel,
+            String meaningVi,
+            String definitionEn,
+            String ipa,
+            List<String> examplesEn,
+            List<String> examplesVi,
+            UUID sourceId,
+            String changeSummary) {}
+
+    public record DeckDraft(
+            String title,
+            String description,
+            String level,
+            List<UUID> wordSenseIds,
+            UUID sourceId,
+            String changeSummary) {}
+
+    public record AdminSource(
+            String title,
+            String sourceType,
+            String sourceUrl,
+            String author,
+            String licenseCode,
+            String licenseUrl,
+            String attribution,
+            String permissionNote) {}
+
+    public record AdminFindContentItems(
+            String search,
+            String contentType,
+            String status,
+            Pageable pageable,
+            EventReply<PageResponse<ItemView>> reply) {}
+
+    public record AdminCreateWordDraft(
+            WordDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreateDeckDraft(
+            DeckDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminSubmitRevision(
+            UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminApproveRevision(
+            UUID revisionId, String reviewNote, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminRejectRevision(
+            UUID revisionId, String reviewNote, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminPublishRevision(
+            UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminArchiveContentItem(
+            UUID itemId, String reason, UUID actorId, EventReply<Void> reply) {}
+
+    public record AdminFindSources(
+            String search, Pageable pageable, EventReply<PageResponse<SourceView>> reply) {}
+
+    public record AdminCreateSource(
+            AdminSource request, UUID actorId, EventReply<SourceView> reply) {}
+
+    public record AdminFindAuditLogs(
+            String search,
+            String entityType,
+            Pageable pageable,
+            EventReply<PageResponse<AuditEntry>> reply) {}
+
+    public record AdminRecordAuditLog(
+            UUID actorId,
+            String action,
+            String entityType,
+            UUID entityId,
+            String metadata,
+            String reason,
+            EventReply<Void> reply) {}
+
+    public record AdminGetStorageReadyBytes(EventReply<Long> reply) {}
+
+    public record AdminGetStorageReadyCount(EventReply<Long> reply) {}
+
+    public record AdminGetRecentActivities(int limit, EventReply<List<AuditEntry>> reply) {}
+
+    public record AdminCountTotalContentItems(EventReply<Long> reply) {}
+
+    public record AdminCountPendingReviewRevisions(EventReply<Long> reply) {}
 }

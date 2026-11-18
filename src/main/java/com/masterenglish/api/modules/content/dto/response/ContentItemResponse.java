@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.content.dto.response;
 
+import java.time.Instant;
 import java.util.UUID;
 import lombok.Value;
 
@@ -9,4 +10,5 @@ public class ContentItemResponse {
     String contentType;
     UUID publishedRevisionId;
     long version;
+    Instant createdAt;
 }

@@ -36,6 +36,10 @@ public interface ContentAuthoringService {
 
     ContentRevisionResponse publish(UUID revisionId, UUID publisherId);
 
+    ContentRevisionResponse reject(UUID revisionId, UUID reviewerId, String reviewNote);
+
+    void archiveItem(UUID itemId, String reason, UUID actorId);
+
     boolean hasSource(UUID sourceId);
 
     Optional<UUID> findPublishedRevisionId(String importNamespace, String externalKey);

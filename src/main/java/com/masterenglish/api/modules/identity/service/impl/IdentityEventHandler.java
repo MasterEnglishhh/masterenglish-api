@@ -3,6 +3,7 @@ package com.masterenglish.api.modules.identity.service.impl;
 import com.masterenglish.api.common.events.IdentityEvents.LockUser;
 import com.masterenglish.api.common.events.IdentityEvents.ResolveContentAdmin;
 import com.masterenglish.api.common.events.IdentityEvents.VerifyContentAdmin;
+import com.masterenglish.api.common.events.IdentityEvents.VerifyContentAuthor;
 import com.masterenglish.api.modules.identity.service.UserLockService;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,12 @@ class IdentityEventHandler {
     @EventListener
     void on(LockUser event) {
         users.verifyAndLockUser(event.userId());
+        event.reply().complete(null);
+    }
+
+    @EventListener
+    void on(VerifyContentAuthor event) {
+        users.verifyContentAuthor(event.userId());
         event.reply().complete(null);
     }
 }

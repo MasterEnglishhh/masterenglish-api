@@ -49,6 +49,16 @@ public class UserLockServiceImpl implements UserLockService {
     @Override
     @Transactional
     public void verifyContentAdmin(UUID userId) {
+        verifyContentRole(userId, false);
+    }
+
+    @Override
+    @Transactional
+    public void verifyContentAuthor(UUID userId) {
+        verifyContentRole(userId, true);
+    }
+
+    private void verifyContentRole(UUID userId, boolean allowSystemAdmin) {
         var user =
                 userRepository
                         .findByIdForUpdate(userId)
@@ -57,8 +67,10 @@ public class UserLockServiceImpl implements UserLockService {
                                         new BusinessException(
                                                 ErrorCode.ACCESS_DENIED,
                                                 "Content administrator required."));
+        var roles = user.getRoleNames();
         if (!user.getStatus().name().equals("ACTIVE")
-                || !user.getRoleNames().contains("CONTENT_ADMIN")) {
+                || !(roles.contains("CONTENT_ADMIN")
+                        || (allowSystemAdmin && roles.contains("SYSTEM_ADMIN")))) {
             throw new BusinessException(
                     ErrorCode.ACCESS_DENIED, "Active content administrator required.");
         }

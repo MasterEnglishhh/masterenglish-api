@@ -68,7 +68,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
             String attribution,
             String permissionNote,
             UUID createdBy) {
-        identity.verifyContentAdmin(createdBy);
+        identity.verifyContentAuthor(createdBy);
         ContentSource source =
                 new ContentSource(
                         id,
@@ -96,7 +96,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
             String snapshotJson,
             String changeSummary,
             UUID sourceId) {
-        identity.verifyContentAdmin(createdBy);
+        identity.verifyContentAuthor(createdBy);
         return response(
                 createDraft(
                                 itemId,
@@ -176,7 +176,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
     @Override
     @Transactional
     public ContentRevisionResponse submitForReview(UUID revisionId, UUID actorUserId) {
-        identity.verifyContentAdmin(actorUserId);
+        identity.verifyContentAuthor(actorUserId);
         ContentRevision revision = revisionForUpdate(revisionId);
         submitRevision(revision, actorUserId);
         return response(revision);
@@ -198,7 +198,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
     @Override
     @Transactional
     public ContentRevisionResponse approve(UUID revisionId, UUID reviewerId, String reviewNote) {
-        identity.verifyContentAdmin(reviewerId);
+        identity.verifyContentAuthor(reviewerId);
         ContentRevision revision = revisionForUpdate(revisionId);
         approveRevision(revision, reviewerId, reviewNote);
         return response(revision);
@@ -219,8 +219,58 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
 
     @Override
     @Transactional
+    public ContentRevisionResponse reject(UUID revisionId, UUID reviewerId, String reviewNote) {
+        identity.verifyContentAuthor(reviewerId);
+        ContentRevision revision =
+                revisionRepository
+                        .findByIdForUpdate(revisionId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Revision not found: " + revisionId));
+        revision.reject(reviewerId, reviewNote);
+        auditLogRepository.save(
+                new AuditLog(
+                        "USER",
+                        reviewerId,
+                        "CONTENT_REJECTED",
+                        "CONTENT_REVISION",
+                        revisionId,
+                        "{}",
+                        reviewNote));
+        return response(revisionRepository.save(revision));
+    }
+
+    @Override
+    @Transactional
+    public void archiveItem(UUID itemId, String reason, UUID actorId) {
+        identity.verifyContentAuthor(actorId);
+        ContentItem item =
+                itemRepository
+                        .findByIdForUpdate(itemId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Content item not found: " + itemId));
+        item.archive(reason);
+        itemRepository.save(item);
+        auditLogRepository.save(
+                new AuditLog(
+                        "USER",
+                        actorId,
+                        "CONTENT_ARCHIVED",
+                        item.getContentType(),
+                        itemId,
+                        "{}",
+                        reason));
+    }
+
+    @Override
+    @Transactional
     public ContentRevisionResponse publish(UUID revisionId, UUID publisherId) {
-        identity.verifyContentAdmin(publisherId);
+        identity.verifyContentAuthor(publisherId);
         ContentRevision revision =
                 revisionRepository
                         .findById(revisionId)
@@ -336,7 +386,8 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                 item.getId(),
                 item.getContentType(),
                 item.getPublishedRevisionId(),
-                item.getVersion());
+                item.getVersion(),
+                item.getCreatedAt());
     }
 
     private static ContentRevisionResponse response(ContentRevision revision) {
@@ -348,7 +399,9 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                 revision.getSnapshot(),
                 revision.getReviewedBy(),
                 revision.getReviewedAt(),
-                revision.getPublishedAt());
+                revision.getPublishedAt(),
+                revision.getReviewNote(),
+                revision.getUpdatedAt());
     }
 
     private static ContentSourceResponse response(ContentSource source) {
@@ -362,6 +415,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                 source.getLicenseUrl(),
                 source.getAttribution(),
                 source.getPermissionNote(),
-                source.getStatus());
+                source.getStatus(),
+                source.getCreatedAt());
     }
 }

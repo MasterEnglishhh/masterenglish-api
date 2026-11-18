@@ -2,6 +2,7 @@
         id = "content",
         displayName = "Content & Revisions",
         allowedDependencies = {
+            "common::api",
             "common::events",
             "common::entity",
             "common::storage",

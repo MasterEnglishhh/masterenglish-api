@@ -34,6 +34,8 @@ public interface ContentRevisionRepository
 
     boolean existsByContentItemIdAndStatusNot(UUID contentItemId, String status);
 
+    long countByStatus(String status);
+
     interface Asset {
         UUID getWordId();
 

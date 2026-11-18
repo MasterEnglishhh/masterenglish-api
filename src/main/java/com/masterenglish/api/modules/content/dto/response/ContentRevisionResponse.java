@@ -14,4 +14,6 @@ public class ContentRevisionResponse {
     UUID reviewedBy;
     Instant reviewedAt;
     Instant publishedAt;
+    String reviewNote;
+    Instant updatedAt;
 }

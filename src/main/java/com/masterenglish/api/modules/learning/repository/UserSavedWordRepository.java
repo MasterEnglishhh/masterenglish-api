@@ -17,6 +17,8 @@ import org.springframework.stereotype.Repository;
 public interface UserSavedWordRepository
         extends JpaRepository<UserSavedWord, UserSavedWord.UserSavedWordId> {
 
+    long countByIdUserId(UUID userId);
+
     String ELIGIBLE =
             """
             FROM user_saved_words sw

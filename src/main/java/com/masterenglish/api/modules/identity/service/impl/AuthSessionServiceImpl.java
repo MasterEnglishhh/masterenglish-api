@@ -12,6 +12,7 @@ import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.RefreshTokenRepository;
+import com.masterenglish.api.modules.identity.repository.UserRepository;
 import com.masterenglish.api.modules.identity.service.AuthSessionService;
 import com.masterenglish.api.modules.identity.service.UserProfileMapper;
 import java.time.Clock;
@@ -35,24 +36,40 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 
     private final AuthSessionRepository authSessionRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository users;
     private final JwtTokenService jwtTokenService;
     private final Clock clock;
 
     public AuthSessionServiceImpl(
             AuthSessionRepository authSessionRepository,
             RefreshTokenRepository refreshTokenRepository,
+            UserRepository users,
             JwtTokenService jwtTokenService,
             Clock clock) {
         this.authSessionRepository = Objects.requireNonNull(authSessionRepository);
         this.refreshTokenRepository = Objects.requireNonNull(refreshTokenRepository);
+        this.users = Objects.requireNonNull(users);
         this.jwtTokenService = Objects.requireNonNull(jwtTokenService);
         this.clock = Objects.requireNonNull(clock);
     }
 
     @Override
     @Transactional
-    public LoginResult createSession(User user, String userAgent, String clientIp) {
-        Objects.requireNonNull(user, "user must not be null");
+    public LoginResult createSession(User authenticatedUser, String userAgent, String clientIp) {
+        Objects.requireNonNull(authenticatedUser, "user must not be null");
+        // Credential verification occurs before this transaction; serialize issuance with
+        // revocation.
+        User user =
+                users.findByIdForUpdate(authenticatedUser.getId())
+                        .filter(
+                                current ->
+                                        current.getAuthVersion()
+                                                == authenticatedUser.getAuthVersion())
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.UNAUTHENTICATED,
+                                                "Email hoặc mật khẩu không chính xác"));
         Instant now = clock.instant();
 
         long activeCount = authSessionRepository.countActiveSessions(user.getId(), now);

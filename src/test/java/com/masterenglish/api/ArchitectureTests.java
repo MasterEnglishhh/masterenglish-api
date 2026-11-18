@@ -15,6 +15,7 @@ class ArchitectureTests {
         assertThat(modules.getModuleByName("content")).isPresent();
         assertThat(modules.getModuleByName("vocabulary")).isPresent();
         assertThat(modules.getModuleByName("learning")).isPresent();
+        assertThat(modules.getModuleByName("admin")).isPresent();
         assertThat(modules.getModuleByName("modules")).isEmpty();
         modules.verify();
     }

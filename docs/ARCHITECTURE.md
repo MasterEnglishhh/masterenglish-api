@@ -1,7 +1,7 @@
 # Kiến trúc modular monolith của backend
 
-Spring Modulith quản lý bốn module nghiệp vụ Identity, Content, Vocabulary
-và Learning. Mỗi module sở hữu controller, DTO, nghiệp vụ và dữ liệu của mình.
+Spring Modulith quản lý năm module nghiệp vụ Identity, Content, Vocabulary,
+Learning và Admin. Mỗi module sở hữu controller, DTO, nghiệp vụ và dữ liệu của mình.
 
 ```text
 modules/<module>/
@@ -45,6 +45,15 @@ HTTP và cùng JSON payload.
 
 ## Giao tiếp giữa module
 
+Admin sở hữu API quản trị, điều phối use case và lưu feature flags. Identity
+sở hữu tài khoản, vai trò, phiên và mục tiêu học. Content sở hữu vòng đời nội
+dung, nguồn, audit và dữ liệu media. Learning sở hữu lịch sử ôn và tiến độ,
+đọc thẻ qua hợp đồng sự kiện của Vocabulary.
+
+Thao tác quản trị đồng bộ và audit cùng tham gia một transaction. Controller và
+service thực thi phân quyền nghiệp vụ. Swagger UI và OpenAPI được bật với
+profile `local`.
+
 Các module dùng kiểu dữ liệu trong `common/events` để trao đổi với nhau.
 Mỗi listener gọi service của chính module mình để xử lý event.
 
@@ -66,6 +75,14 @@ Các truy vấn phân trang và đếm dùng các view `catalog_visible_items`,
 `catalog_visible_senses` và `catalog_visible_deck_senses`. Flyway V8.1 tạo
 view trên PostgreSQL hiện tại. Các view phản ánh ngay trạng thái archive,
 thu hồi và phiên bản đang xuất bản, kể cả khi phải lọc trước phân trang.
+
+## Nâng cấp từ dev đã áp dụng V9
+
+Nếu lịch sử Flyway có V9 và thiếu V8.1, diễn tập trên DB cô lập từ bản sao
+trước khi cập nhật môi trường. Với V8.1 là migration duy nhất còn thiếu, chạy
+Flyway một lần với `outOfOrder=true`. Sau đó bỏ override, chạy validate và kiểm
+tra ba view catalog cùng dữ liệu feature flags. Với DB theo lịch sử main hoặc
+DB mới, chạy Flyway theo thứ tự mặc định.
 
 ## Kiểm tra
 

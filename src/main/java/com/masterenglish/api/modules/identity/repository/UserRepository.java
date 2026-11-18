@@ -36,6 +36,35 @@ public interface UserRepository
     @Query("select (count(u) > 0) from User u where lower(u.email) = lower(:email)")
     boolean existsByEmailIgnoreCase(@Param("email") String email);
 
+    @Query(
+            value =
+                    """
+            SELECT u FROM User u
+            WHERE (:status IS NULL OR u.status = :status)
+              AND (:roleCode IS NULL OR EXISTS (
+                    SELECT 1 FROM UserRole ur2
+                    WHERE ur2.user = u AND ur2.role.code = :roleCode
+              ))
+              AND (:searchPattern IS NULL OR LOWER(u.email) LIKE :searchPattern
+                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE :searchPattern)
+            """,
+            countQuery =
+                    """
+            SELECT count(DISTINCT u) FROM User u
+            WHERE (:status IS NULL OR u.status = :status)
+              AND (:roleCode IS NULL OR EXISTS (
+                    SELECT 1 FROM UserRole ur2
+                    WHERE ur2.user = u AND ur2.role.code = :roleCode
+              ))
+              AND (:searchPattern IS NULL OR LOWER(u.email) LIKE :searchPattern
+                   OR LOWER(CONCAT(COALESCE(u.lastName, ''), ' ', COALESCE(u.firstName, ''))) LIKE :searchPattern)
+            """)
+    org.springframework.data.domain.Page<User> findAdminUsers(
+            @Param("searchPattern") String searchPattern,
+            @Param("roleCode") com.masterenglish.api.common.security.RoleCode roleCode,
+            @Param("status") com.masterenglish.api.modules.identity.entity.UserStatus status,
+            org.springframework.data.domain.Pageable pageable);
+
     record PendingUser(UUID id, String email, String status, Instant createdAt) {}
 
     record Registration(
