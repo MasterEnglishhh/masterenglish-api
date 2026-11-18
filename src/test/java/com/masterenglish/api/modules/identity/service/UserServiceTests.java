@@ -301,7 +301,8 @@ class UserServiceTests {
     @DisplayName("updateGoal creates or updates goal when valid")
     void updateGoal_validRequest_savesGoal() {
         UUID userId = UUID.randomUUID();
-        when(userRepository.existsById(userId)).thenReturn(true);
+        when(userRepository.findByIdForUpdate(userId))
+                .thenReturn(Optional.of(userWithPassword("fixture")));
         when(goalRepository.findById(userId)).thenReturn(Optional.empty());
         when(goalRepository.save(org.mockito.ArgumentMatchers.any(LearningGoal.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -309,6 +310,9 @@ class UserServiceTests {
         UpdateLearningGoalRequest req =
                 new UpdateLearningGoalRequest((short) 650, 30, LocalDate.now().plusDays(60));
         LearningGoalResponse res = userService.updateGoal(userId, req);
+        var order = org.mockito.Mockito.inOrder(userRepository, goalRepository);
+        order.verify(userRepository).findByIdForUpdate(userId);
+        order.verify(goalRepository).findById(userId);
 
         assertThat(res.targetScore()).isEqualTo((short) 650);
         assertThat(res.dailyMinutes()).isEqualTo(30);

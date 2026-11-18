@@ -181,9 +181,8 @@ public class UserServiceImpl implements UserService {
                     ErrorCode.VALIDATION_ERROR, "Ngày mục tiêu phải từ hôm nay trở đi.");
         }
 
-        if (!userRepository.existsById(userId)) {
-            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found");
-        }
+        // Lock the user even when they do not yet have a goal.
+        userRepository.findByIdForUpdate(userId).orElseThrow(UserServiceImpl::userNotFound);
 
         LearningGoal goal =
                 goalRepository
