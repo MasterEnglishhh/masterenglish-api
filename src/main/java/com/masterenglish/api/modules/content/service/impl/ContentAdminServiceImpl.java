@@ -25,10 +25,12 @@ import com.masterenglish.api.modules.content.service.ContentAdminService;
 import com.masterenglish.api.modules.content.service.ContentAuthoringService;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -251,6 +253,40 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 revId);
     }
 
+    /**
+     * Mỗi nghĩa từ phải thuộc một từ đã xuất bản; bộ thẻ ghim đúng phiên bản đang xuất bản của từ
+     * đó.
+     */
+    private List<Map<String, Object>> deckMembers(List<UUID> wordSenseIds) {
+        List<Map<String, Object>> members = new ArrayList<>();
+        if (wordSenseIds == null) {
+            return members;
+        }
+        Set<UUID> seen = new HashSet<>();
+        for (UUID senseId : wordSenseIds) {
+            if (!seen.add(senseId)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "Nghĩa từ bị chọn trùng: " + senseId);
+            }
+            var owner =
+                    itemRepository
+                            .findPublishedWordBySense("[{\"id\":\"" + senseId + "\"}]")
+                            .orElseThrow(
+                                    () ->
+                                            new BusinessException(
+                                                    ErrorCode.VALIDATION_ERROR,
+                                                    "Nghĩa từ chưa thuộc từ nào đã xuất bản: "
+                                                            + senseId));
+            Map<String, Object> member = new HashMap<>();
+            member.put("word_id", owner.getWordId().toString());
+            member.put("word_sense_id", senseId.toString());
+            member.put("pinned_word_revision_id", owner.getRevisionId().toString());
+            member.put("position", members.size() + 1);
+            members.add(member);
+        }
+        return members;
+    }
+
     @Override
     @Transactional
     public ItemView createDeckDraft(DeckDraft request, UUID actorId) {
@@ -263,7 +299,7 @@ public class ContentAdminServiceImpl implements ContentAdminService {
         if (request.level() != null) {
             snapshot.put("level", request.level().trim().toUpperCase());
         }
-        snapshot.put("members", List.of());
+        snapshot.put("members", deckMembers(request.wordSenseIds()));
 
         String snapshotJson;
         try {

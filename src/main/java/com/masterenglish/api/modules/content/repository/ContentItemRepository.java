@@ -23,6 +23,32 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
 
     long countByArchivedFalse();
 
+    /**
+     * Từ đã xuất bản đang chứa nghĩa `senseId`, kèm phiên bản xuất bản hiện hành để ghim vào bộ
+     * thẻ.
+     */
+    interface PublishedSenseOwner {
+        UUID getWordId();
+
+        UUID getRevisionId();
+    }
+
+    @Query(
+            value =
+                    """
+                    SELECT i.id AS wordId, i.published_revision_id AS revisionId
+                    FROM content_items i
+                    JOIN content_revisions r ON r.id = i.published_revision_id
+                    WHERE i.content_type = 'WORD'
+                      AND NOT i.is_archived
+                      AND i.access_revoked_at IS NULL
+                      AND COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses'
+                          @> CAST(:probe AS jsonb)
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<PublishedSenseOwner> findPublishedWordBySense(@Param("probe") String probe);
+
     String ADMIN_CONTENT_FILTER =
             """
             FROM content_items i

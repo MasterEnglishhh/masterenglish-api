@@ -124,14 +124,27 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                 itemRepository
                         .findByIdForUpdate(id)
                         .orElseGet(
-                                () ->
-                                        itemRepository.save(
-                                                new ContentItem(
-                                                        id,
-                                                        contentType,
-                                                        createdBy,
-                                                        importNamespace,
-                                                        externalKey)));
+                                () -> {
+                                    // Trả 409 có lời giải thích thay vì để ràng buộc duy nhất của
+                                    // DB thành lỗi 500.
+                                    if (importNamespace != null
+                                            && externalKey != null
+                                            && itemRepository
+                                                    .findByImportNamespaceAndExternalKey(
+                                                            importNamespace, externalKey)
+                                                    .isPresent()) {
+                                        throw new BusinessException(
+                                                ErrorCode.CONFLICT,
+                                                "Nội dung mã '" + externalKey + "' đã tồn tại.");
+                                    }
+                                    return itemRepository.save(
+                                            new ContentItem(
+                                                    id,
+                                                    contentType,
+                                                    createdBy,
+                                                    importNamespace,
+                                                    externalKey));
+                                });
         if (!item.getContentType().equals(contentType) || !item.allowsRevisionChanges()) {
             throw new BusinessException(ErrorCode.CONFLICT, "Content item cannot be edited.");
         }
