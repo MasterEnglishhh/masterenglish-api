@@ -52,6 +52,11 @@ public class VocabularySnapshotValidator {
 
     @EventListener
     void on(SnapshotValidationRequested event) {
+        // Other content types belong to their own module; leave the reply unanswered for them.
+        if (!"WORD".equals(event.type()) && !"DECK".equals(event.type())) {
+            log.debug("Skipping {} snapshot validation for item {}", event.type(), event.itemId());
+            return;
+        }
         validate(event.itemId(), event.type(), event.data());
         event.reply().complete(null);
     }

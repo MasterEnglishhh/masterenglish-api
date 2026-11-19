@@ -13,11 +13,17 @@ import com.masterenglish.api.modules.content.entity.RevisionDependency;
 import com.masterenglish.api.modules.content.repository.ContentSourceLinkRepository;
 import com.masterenglish.api.modules.content.repository.ContentSourceRepository;
 import com.masterenglish.api.modules.content.repository.RevisionDependencyRepository;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 class ContentPublication {
+    // Types with a snapshot validator registered in another module. Add a type here when its module
+    // starts validating, so publication of unvalidated types fails with 400 instead of 500.
+    private static final Set<String> VALIDATED_TYPES =
+            Set.of("WORD", "DECK", "GRAMMAR_TOPIC", "GRAMMAR_LESSON");
+
     private final ContentSnapshots snapshots;
     private final ContentSourceLinkRepository sourceLinks;
     private final ContentSourceRepository sources;
@@ -43,6 +49,10 @@ class ContentPublication {
     /** Runs inside the authoring transaction before the revision becomes immutable. */
     void prepare(ContentItem item, ContentRevision revision) {
         String type = item.getContentType();
+        if (!VALIDATED_TYPES.contains(type)) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Unsupported content type: " + type);
+        }
         JsonNode data = snapshots.data(revision.getSnapshot());
         contentEvents.validateSnapshot(item.getId(), type, data);
         captureSources(revision.getId());
