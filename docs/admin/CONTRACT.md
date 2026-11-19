@@ -12,7 +12,7 @@
 
 | Vai trò (RoleCode) | Mô tả quyền hạn trong Admin Portal |
 |---|---|
-| `SYSTEM_ADMIN` | Toàn quyền: Xem Dashboard, quản lý User/Roles/Lock, Quản trị Nội dung, Feature Flags, Quotas, Audit Logs. |
+| `SYSTEM_ADMIN` | Toàn quyền: Xem Dashboard, quản lý User/Roles/Lock, Quản trị Nội dung, Feature Flags (chế độ chỉ xem), Quotas, Audit Logs. |
 | `CONTENT_ADMIN` | Quyền nội dung: Xem Dashboard, CRUD bản thảo Từ vựng/Bộ thẻ, duyệt/từ chối/xuất bản Revisions, quản lý nguồn trích dẫn. |
 | `LEARNER` | Bị từ chối (`403 Forbidden`) đối với tất cả endpoint `/api/v1/admin/*`. |
 
@@ -24,7 +24,10 @@
 *Yêu cầu quyền:* `SYSTEM_ADMIN` hoặc `CONTENT_ADMIN`
 
 #### `GET /api/v1/admin/overview/kpis`
-- **Mô tả:** Lấy danh sách thẻ KPI hiển thị đầu trang Dashboard.
+- **Mô tả:** Lấy danh sách thẻ KPI hiển thị đầu trang Dashboard. Không còn claim tăng trưởng hoặc sức khỏe hệ thống giả:
+  - `total-users` và `content-bank`: `changePercent` và `trendText` trả về `null` do chưa có nguồn đo tăng trưởng thực tế.
+  - `storage-r2`: giữ số liệu đo đạc thực tế từ Cloudflare R2 (`storage.percentUsed()`).
+  - `security-health`: trả về `value: "Chưa có dữ liệu"`, `subValue: null`, `changePercent: null`, `trendText: null`; không suy đoán chỉ số giả như `99.98%` hay `0 cảnh báo`.
 - **Request:** Không tham số.
 - **Response:** `200 OK`
 ```json
@@ -34,9 +37,9 @@
     "title": "Người dùng đăng ký",
     "value": "14,820",
     "subValue": "1,240 hoạt động",
-    "changePercent": 12.5,
-    "trendText": "+12.5% so với tuần trước",
-    "trendDirection": "up",
+    "changePercent": null,
+    "trendText": null,
+    "trendDirection": "neutral",
     "iconName": "users"
   },
   {
@@ -44,9 +47,9 @@
     "title": "Ngân hàng nội dung",
     "value": "3,450",
     "subValue": "128 chờ duyệt",
-    "changePercent": 8.2,
-    "trendText": "+8.2% câu hỏi & từ vựng mới",
-    "trendDirection": "up",
+    "changePercent": null,
+    "trendText": null,
+    "trendDirection": "neutral",
     "iconName": "book-open"
   },
   {
@@ -62,10 +65,10 @@
   {
     "id": "security-health",
     "title": "Trạng thái hệ thống",
-    "value": "99.98%",
-    "subValue": "0 cảnh báo rủi ro",
-    "changePercent": 0.0,
-    "trendText": "Toàn bộ API hoạt động ổn định",
+    "value": "Chưa có dữ liệu",
+    "subValue": null,
+    "changePercent": null,
+    "trendText": null,
     "trendDirection": "neutral",
     "iconName": "shield-check"
   }
@@ -332,7 +335,7 @@
 *Yêu cầu quyền:* `SYSTEM_ADMIN`
 
 #### `GET /api/v1/admin/system/feature-flags`
-- **Mô tả:** Lấy danh sách toàn bộ cờ tính năng runtime.
+- **Mô tả:** Lấy danh sách toàn bộ cờ tính năng hệ thống (chỉ xem; trạng thái lưu hiện chưa phản ánh hoạt động thực tế hoặc điều khiển runtime).
 - **Response:** `200 OK`
 ```json
 [
@@ -372,14 +375,16 @@
 ```
 
 #### `PUT /api/v1/admin/system/feature-flags/{key}`
-- **Mô tả:** Bật/tắt cờ tính năng (tự động ghi nhận audit log `UPDATE_FEATURE_FLAG`).
+- **Mô tả:** Thao tác cập nhật trạng thái cờ tính năng hiện bị từ chối; hệ thống chỉ cho phép xem danh mục cờ và chưa hỗ trợ điều khiển tính năng runtime. Mọi yêu cầu PUT với key đã biết đều bị chặn với mã `409 Conflict`, hoàn toàn không mutation vào database và không ghi audit log.
 - **Request Body:**
 ```json
 {
   "enabled": false
 }
 ```
-- **Response:** `200 OK` (`FeatureFlagDto`).
+- **Response:**
+  - `409 Conflict` (`ProblemDetail`): Key cờ tồn tại nhưng thao tác cập nhật bị từ chối. Không thay đổi DB và không ghi audit log (`detail`: `"Chưa hỗ trợ điều khiển tính năng; trạng thái lưu chưa phản ánh hoạt động thực tế"`).
+  - `404 Not Found` (`ProblemDetail`): Không tìm thấy key cờ tính năng (`detail`: `"Feature flag not found: ..."`).
 
 #### `GET /api/v1/admin/system/quotas/storage` (hoặc `/meters/storage`)
 - **Mô tả:** Thống kê mức sử dụng dung lượng lưu trữ Cloudflare R2.
@@ -397,26 +402,17 @@
 ```
 
 #### `GET /api/v1/admin/system/quotas/ai` (hoặc `/meters/ai-quota`)
-- **Mô tả:** Thống kê hạn mức token AI trong ngày.
+- **Mô tả:** Thống kê hạn mức token AI trong ngày. Hiện chưa có nguồn đo thực tế nên trả về danh sách rỗng `[]` (không trả về hạn ngạch hoặc token sử dụng giả định).
 - **Response:** `200 OK`
 ```json
-[
-  {
-    "provider": "Anthropic / OpenAI",
-    "model": "claude-3-5-sonnet & gpt-4o-mini",
-    "dailyTokenUsage": 1420500,
-    "dailyTokenLimit": 5000000,
-    "percentUsed": 28.4,
-    "resetHours": 6
-  }
-]
+[]
 ```
 
 #### `GET /api/v1/admin/system/audit-logs`
-- **Mô tả:** Tra cứu nhật ký kiểm toán hệ thống có phân trang và bộ lọc.
+- **Mô tả:** Tra cứu nhật ký kiểm toán hệ thống có phân trang và bộ lọc theo loại thực thể thực tế.
 - **Query params:**
   - `search`: `string` (hành động, lý do).
-  - `entityType`: `"ALL" | "USER" | "ROLE" | "CONTENT" | "FEATURE_FLAG" | "SESSION"` (tùy chọn).
+  - `entityType`: `"ALL" | "USER" | "WORD" | "DECK" | "CONTENT_REVISION" | "FEATURE_FLAG"` (chỉ hỗ trợ các giá trị thực tế này; bỏ trống hoặc truyền `"ALL"` để lấy toàn bộ. Các thao tác phân quyền `ROLE` và phiên làm việc `SESSION` được lưu trữ dưới `USER`).
   - `page`, `size`: `integer`.
 - **Response:** `200 OK`
 ```json
@@ -468,5 +464,5 @@ Các mã lỗi thường gặp:
 - `UNAUTHENTICATED` (`401`): Chưa gửi cookie phiên hoặc token hết hạn.
 - `ACCESS_DENIED` (`403`): Thiếu vai trò (`SYSTEM_ADMIN` hoặc `CONTENT_ADMIN`).
 - `RESOURCE_NOT_FOUND` (`404`): Không tìm thấy User, Revision, Content Item hoặc Feature Flag.
-- `CONFLICT` (`409`): Sai trạng thái vòng đời (ví dụ: cố publish khi chưa approve, hoặc submit khi không phải DRAFT).
+- `CONFLICT` (`409`): Sai trạng thái vòng đời (ví dụ: cố publish khi chưa approve, hoặc submit khi không phải DRAFT), hoặc thao tác cập nhật cờ tính năng chưa được hỗ trợ.
 - `VALIDATION_ERROR` (`400`): Dữ liệu đầu vào sai quy chuẩn.

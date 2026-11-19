@@ -1,12 +1,16 @@
 package com.masterenglish.api.modules.admin.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
@@ -24,7 +28,6 @@ import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
 import com.masterenglish.api.modules.admin.dto.response.AdminRevisionDto;
 import com.masterenglish.api.modules.admin.dto.response.AdminUserDto;
 import com.masterenglish.api.modules.admin.dto.response.AiQuotaMetricDto;
-import com.masterenglish.api.modules.admin.dto.response.FeatureFlagDto;
 import com.masterenglish.api.modules.admin.dto.response.RecentActivityDto;
 import com.masterenglish.api.modules.admin.dto.response.StorageQuotaDto;
 import com.masterenglish.api.modules.admin.entity.FeatureFlag;
@@ -174,18 +177,29 @@ class AdminServiceUnitTests {
         when(contentAdminMock.getStorageReadyBytes()).thenReturn(10737418240L); // 10 GB
         when(contentAdminMock.getStorageReadyCount()).thenReturn(500L);
 
-        // Update feature flag
-        FeatureFlagDto updatedFlag =
-                systemService.updateFeatureFlag("ai_tutor_chat", false, actorId);
-        assertThat(updatedFlag.enabled()).isFalse();
-        verify(contentAdminMock)
-                .recordAuditLog(
-                        eq(actorId),
-                        eq("UPDATE_FEATURE_FLAG"),
-                        eq("FEATURE_FLAG"),
-                        eq(null),
-                        any(),
-                        any());
+        // Update feature flag (known key -> 409 CONFLICT, no mutation, no audit)
+        assertThatThrownBy(() -> systemService.updateFeatureFlag("ai_tutor_chat", false, actorId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        e -> {
+                            BusinessException be = (BusinessException) e;
+                            assertThat(be.getErrorCode()).isEqualTo(ErrorCode.CONFLICT);
+                            assertThat(be.getMessage())
+                                    .isEqualTo(
+                                            "Chưa hỗ trợ điều khiển tính năng; trạng thái lưu chưa phản ánh hoạt động thực tế");
+                        });
+        verify(flagRepoMock, never()).save(any());
+        verify(contentAdminMock, never()).recordAuditLog(any(), any(), any(), any(), any(), any());
+
+        // Update feature flag (unknown key -> 404 RESOURCE_NOT_FOUND)
+        when(flagRepoMock.findById("unknown_key")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> systemService.updateFeatureFlag("unknown_key", false, actorId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        e -> {
+                            BusinessException be = (BusinessException) e;
+                            assertThat(be.getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+                        });
 
         // Storage Quota
         StorageQuotaDto quota = systemService.getStorageQuota();
@@ -195,7 +209,7 @@ class AdminServiceUnitTests {
 
         // AI Quota
         List<AiQuotaMetricDto> aiMetrics = systemService.getAiQuotaMetrics();
-        assertThat(aiMetrics).isNotEmpty();
+        assertThat(aiMetrics).isEmpty();
     }
 
     @Test
@@ -235,8 +249,21 @@ class AdminServiceUnitTests {
         assertThat(kpis).hasSize(4);
         assertThat(kpis.get(0).title()).isEqualTo("Người dùng đăng ký");
         assertThat(kpis.get(0).value()).isEqualTo("1,200");
+        assertThat(kpis.get(0).subValue()).isEqualTo("950 hoạt động");
+        assertThat(kpis.get(0).changePercent()).isNull();
+        assertThat(kpis.get(0).trendText()).isNull();
         assertThat(kpis.get(1).title()).isEqualTo("Ngân hàng nội dung");
         assertThat(kpis.get(1).value()).isEqualTo("3,400");
+        assertThat(kpis.get(1).subValue()).isEqualTo("15 chờ duyệt");
+        assertThat(kpis.get(1).changePercent()).isNull();
+        assertThat(kpis.get(1).trendText()).isNull();
+        assertThat(kpis.get(2).title()).isEqualTo("Dung lượng Cloudflare R2");
+        assertThat(kpis.get(2).changePercent()).isEqualTo(0.04);
+        assertThat(kpis.get(3).title()).isEqualTo("Trạng thái hệ thống");
+        assertThat(kpis.get(3).value()).isEqualTo("Chưa có dữ liệu");
+        assertThat(kpis.get(3).subValue()).isNull();
+        assertThat(kpis.get(3).changePercent()).isNull();
+        assertThat(kpis.get(3).trendText()).isNull();
 
         List<RecentActivityDto> activities = overviewService.getRecentActivities(10);
         assertThat(activities).hasSize(1);

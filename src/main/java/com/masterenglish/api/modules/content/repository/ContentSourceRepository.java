@@ -19,7 +19,8 @@ public interface ContentSourceRepository extends JpaRepository<ContentSource, UU
     Optional<ContentSource> findByTitle(String title);
 
     @org.springframework.data.jpa.repository.Query(
-            "SELECT s FROM ContentSource s WHERE :search IS NULL OR LOWER(s.title) LIKE LOWER(CONCAT('%', :search, '%'))")
+            "SELECT s FROM ContentSource s WHERE CAST(:search AS string) IS NULL "
+                    + "OR LOWER(s.title) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))")
     org.springframework.data.domain.Page<ContentSource> findSources(
             @org.springframework.data.repository.query.Param("search") String search,
             org.springframework.data.domain.Pageable pageable);
