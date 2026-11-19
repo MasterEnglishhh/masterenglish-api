@@ -70,18 +70,9 @@ public class AdminSystemServiceImpl implements AdminSystemService {
                                                 ErrorCode.RESOURCE_NOT_FOUND,
                                                 "Feature flag not found: " + key));
 
-        flag.updateState(enabled, actorId);
-        FeatureFlag saved = flagRepository.save(flag);
-
-        content.recordAuditLog(
-                actorId,
-                "UPDATE_FEATURE_FLAG",
-                "FEATURE_FLAG",
-                null,
-                String.format("{\"key\":\"%s\",\"enabled\":%b}", key, enabled),
-                "Chuyển trạng thái cờ " + flag.getName() + " sang " + (enabled ? "BẬT" : "TẮT"));
-
-        return featureFlag(saved);
+        throw new BusinessException(
+                ErrorCode.CONFLICT,
+                "Chưa hỗ trợ điều khiển tính năng; trạng thái lưu chưa phản ánh hoạt động thực tế");
     }
 
     @Override
@@ -113,14 +104,7 @@ public class AdminSystemServiceImpl implements AdminSystemService {
     @Override
     @Transactional(readOnly = true)
     public List<AiQuotaMetricDto> getAiQuotaMetrics() {
-        return List.of(
-                new AiQuotaMetricDto(
-                        "Anthropic / OpenAI",
-                        "claude-3-5-sonnet & gpt-4o-mini",
-                        1420500L,
-                        5000000L,
-                        28.4,
-                        6));
+        return List.of();
     }
 
     private String formatBytes(long bytes) {

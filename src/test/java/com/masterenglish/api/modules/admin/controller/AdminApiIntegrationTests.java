@@ -25,6 +25,7 @@ import com.masterenglish.api.modules.identity.repository.RoleRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
@@ -109,7 +109,11 @@ class AdminApiIntegrationTests {
                                         SecurityMockMvcRequestPostProcessors.user(
                                                 UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0].changePercent").doesNotExist())
+                .andExpect(jsonPath("$[1].changePercent").doesNotExist())
+                .andExpect(jsonPath("$[3].value").value("Chưa có dữ liệu"))
+                .andExpect(jsonPath("$[3].changePercent").doesNotExist());
 
         mockMvc.perform(
                         get("/api/v1/admin/overview/activities")
@@ -322,40 +326,60 @@ class AdminApiIntegrationTests {
     }
 
     @Test
-    void featureFlagUpdateRollsBackWhenAuditFails() throws Exception {
+    @DisplayName("Cập nhật cờ bị từ chối trước mutation hoặc ghi nhận audit log")
+    void featureFlagUpdateRejectedBeforeMutationOrAudit() throws Exception {
         var fixture = UserPrincipal.create(systemAdminUser);
-        TestTransaction.end();
         var key = "ai_tutor_chat";
-        var enabled = featureFlags.findById(key).orElseThrow().isEnabled();
+        var initialFlag = featureFlags.findById(key).orElseThrow();
+        var initialEnabled = initialFlag.isEnabled();
 
-        org.mockito.Mockito.doThrow(new IllegalStateException("fixture audit failure"))
-                .when(content)
-                .recordAuditLog(
-                        org.mockito.ArgumentMatchers.eq(fixture.getId()),
-                        org.mockito.ArgumentMatchers.eq("UPDATE_FEATURE_FLAG"),
-                        org.mockito.ArgumentMatchers.eq("FEATURE_FLAG"),
-                        org.mockito.ArgumentMatchers.isNull(),
-                        org.mockito.ArgumentMatchers.anyString(),
-                        org.mockito.ArgumentMatchers.anyString());
-
+        // Updating known key is rejected with 409 CONFLICT
         mockMvc.perform(
                         put("/api/v1/admin/system/feature-flags/{key}", key)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         objectMapper.writeValueAsString(
-                                                new UpdateFeatureFlagRequest(!enabled)))
+                                                new UpdateFeatureFlagRequest(!initialEnabled)))
                                 .with(csrf())
                                 .with(SecurityMockMvcRequestPostProcessors.user(fixture)))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.detail")
+                                .value(
+                                        "Chưa hỗ trợ điều khiển tính năng; trạng thái lưu chưa phản ánh hoạt động thực tế"));
+
+        // DB state is not mutated
         org.assertj.core.api.Assertions.assertThat(featureFlags.findById(key))
                 .hasValueSatisfying(
                         flag ->
                                 org.assertj.core.api.Assertions.assertThat(flag.isEnabled())
-                                        .isEqualTo(enabled));
+                                        .isEqualTo(initialEnabled));
+
+        // No audit log was recorded
+        org.mockito.Mockito.verify(content, org.mockito.Mockito.never())
+                .recordAuditLog(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq("UPDATE_FEATURE_FLAG"),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+
+        // Updating unknown key returns 404 NOT_FOUND
+        mockMvc.perform(
+                        put("/api/v1/admin/system/feature-flags/{key}", "non_existent_key")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                new UpdateFeatureFlagRequest(true)))
+                                .with(csrf())
+                                .with(SecurityMockMvcRequestPostProcessors.user(fixture)))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    @DisplayName("Admin System - SYSTEM_ADMIN có thể xem/đổi Feature Flags và tra cứu Audit Logs")
+    @DisplayName(
+            "Admin System - SYSTEM_ADMIN có thể xem Feature Flags, Quotas và tra cứu Audit Logs")
     void system_featuresAndAudit_success() throws Exception {
         // List feature flags
         mockMvc.perform(
@@ -366,7 +390,7 @@ class AdminApiIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
 
-        // Update feature flag
+        // Update feature flag returns 409 CONFLICT
         UpdateFeatureFlagRequest flagReq = new UpdateFeatureFlagRequest(false);
         mockMvc.perform(
                         put("/api/v1/admin/system/feature-flags/ai_tutor_chat")
@@ -376,8 +400,7 @@ class AdminApiIntegrationTests {
                                 .with(
                                         SecurityMockMvcRequestPostProcessors.user(
                                                 UserPrincipal.create(systemAdminUser))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.enabled").value(false));
+                .andExpect(status().isConflict());
 
         // Storage Quota
         mockMvc.perform(
@@ -388,6 +411,16 @@ class AdminApiIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bucket").isNotEmpty());
 
+        // AI Quota returns empty list
+        mockMvc.perform(
+                        get("/api/v1/admin/system/quotas/ai")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(systemAdminUser))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
+
         // Audit Logs
         mockMvc.perform(
                         get("/api/v1/admin/system/audit-logs")
@@ -396,5 +429,125 @@ class AdminApiIntegrationTests {
                                                 UserPrincipal.create(systemAdminUser))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    @DisplayName(
+            "Admin System - Tra cứu Audit Logs theo từng loại thực thể thực tế và gom cụm với ALL")
+    void auditLogs_filterByStoredEntityTypes() throws Exception {
+        var actorId = systemAdminUser.getId();
+        // Fixture tạo audit records cho từng loại thực thể thực tế
+        content.recordAuditLog(actorId, "CREATE_WORD", "WORD", UUID.randomUUID(), "{}", "Tạo từ");
+        content.recordAuditLog(
+                actorId, "CREATE_DECK", "DECK", UUID.randomUUID(), "{}", "Tạo bộ thẻ");
+        content.recordAuditLog(
+                actorId,
+                "APPROVE_REVISION",
+                "CONTENT_REVISION",
+                UUID.randomUUID(),
+                "{}",
+                "Duyệt revision");
+        content.recordAuditLog(
+                actorId, "UPDATE_ROLES", "USER", actorId, "{}", "Đổi vai trò người dùng");
+        content.recordAuditLog(
+                actorId, "REVOKE_SESSION", "USER", actorId, "{}", "Thu hồi phiên người dùng");
+        content.recordAuditLog(
+                actorId, "SEED_FLAG", "FEATURE_FLAG", null, "{}", "Khởi tạo cờ hệ thống");
+
+        var adminUser = UserPrincipal.create(systemAdminUser);
+
+        // Lọc WORD
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("entityType", "WORD")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].entityType").value("WORD"))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("WORD"))));
+
+        // Lọc DECK
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("entityType", "DECK")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].entityType").value("DECK"))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("DECK"))));
+
+        // Lọc CONTENT_REVISION
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("entityType", "CONTENT_REVISION")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].entityType").value("CONTENT_REVISION"))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.everyItem(
+                                        org.hamcrest.Matchers.is("CONTENT_REVISION"))));
+
+        // Lọc USER (bao gồm cả phân quyền và phiên làm việc)
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("entityType", "USER")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].entityType").value("USER"))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("USER"))));
+
+        // Lọc FEATURE_FLAG
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("entityType", "FEATURE_FLAG")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].entityType").value("FEATURE_FLAG"))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.everyItem(
+                                        org.hamcrest.Matchers.is("FEATURE_FLAG"))));
+
+        // ALL (hoặc bỏ trống entityType) trả về tất cả và phải chứa đầy đủ các loại fixture vừa tạo
+        mockMvc.perform(
+                        get("/api/v1/admin/system/audit-logs")
+                                .param("size", "50")
+                                .with(SecurityMockMvcRequestPostProcessors.user(adminUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isNotEmpty())
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].entityType",
+                                org.hamcrest.Matchers.hasItems(
+                                        "WORD",
+                                        "DECK",
+                                        "CONTENT_REVISION",
+                                        "USER",
+                                        "FEATURE_FLAG")))
+                .andExpect(
+                        jsonPath(
+                                "$.items[*].action",
+                                org.hamcrest.Matchers.hasItems(
+                                        "CREATE_WORD",
+                                        "CREATE_DECK",
+                                        "APPROVE_REVISION",
+                                        "UPDATE_ROLES",
+                                        "REVOKE_SESSION",
+                                        "SEED_FLAG")));
     }
 }

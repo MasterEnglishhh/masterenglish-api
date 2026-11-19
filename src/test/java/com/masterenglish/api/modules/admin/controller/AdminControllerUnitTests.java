@@ -12,6 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.error.GlobalExceptionHandler;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.RoleCode;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
@@ -25,7 +28,6 @@ import com.masterenglish.api.modules.admin.dto.response.AdminKpiDto;
 import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
 import com.masterenglish.api.modules.admin.dto.response.AdminRevisionDto;
 import com.masterenglish.api.modules.admin.dto.response.AdminUserDto;
-import com.masterenglish.api.modules.admin.dto.response.AiQuotaMetricDto;
 import com.masterenglish.api.modules.admin.dto.response.AuditLogEntryDto;
 import com.masterenglish.api.modules.admin.dto.response.ContentSourceDto;
 import com.masterenglish.api.modules.admin.dto.response.FeatureFlagDto;
@@ -123,6 +125,7 @@ class AdminControllerUnitTests {
         systemMvc =
                 MockMvcBuilders.standaloneSetup(new AdminSystemController(systemServiceMock))
                         .setCustomArgumentResolvers(currentUserResolver)
+                        .setControllerAdvice(new GlobalExceptionHandler())
                         .build();
     }
 
@@ -360,14 +363,12 @@ class AdminControllerUnitTests {
 
         when(systemServiceMock.getFeatureFlags()).thenReturn(List.of(mockFlag));
         when(systemServiceMock.updateFeatureFlag(eq("flag_1"), eq(false), eq(testActorId)))
-                .thenReturn(
-                        new FeatureFlagDto("flag_1", "Flag 1", "Desc", false, "AI", Instant.now()));
+                .thenThrow(
+                        new BusinessException(
+                                ErrorCode.CONFLICT,
+                                "Chưa hỗ trợ điều khiển tính năng; trạng thái lưu chưa phản ánh hoạt động thực tế"));
         when(systemServiceMock.getStorageQuota()).thenReturn(mockQuota);
-        when(systemServiceMock.getAiQuotaMetrics())
-                .thenReturn(
-                        List.of(
-                                new AiQuotaMetricDto(
-                                        "Anthropic", "claude-3-5-sonnet", 100L, 500L, 20.0, 6)));
+        when(systemServiceMock.getAiQuotaMetrics()).thenReturn(List.of());
         when(systemServiceMock.findAuditLogs(any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(mockAudit), 0, 10, 1, 1, false));
 
@@ -382,8 +383,7 @@ class AdminControllerUnitTests {
                         put("/api/v1/admin/system/feature-flags/flag_1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(updateReq)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.enabled").value(false));
+                .andExpect(status().isConflict());
 
         systemMvc
                 .perform(get("/api/v1/admin/system/quotas/storage"))
@@ -393,7 +393,8 @@ class AdminControllerUnitTests {
         systemMvc
                 .perform(get("/api/v1/admin/system/quotas/ai"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].provider").value("Anthropic"));
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
 
         systemMvc
                 .perform(get("/api/v1/admin/system/audit-logs"))
