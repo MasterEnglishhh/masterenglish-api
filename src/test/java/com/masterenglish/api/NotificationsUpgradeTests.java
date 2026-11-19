@@ -12,8 +12,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class NotificationsUpgradeTests {
 
     @Test
-    @DisplayName("Nâng cấp CSDL đang ở V9 lên V10 giữ nguyên tài khoản và tạo bảng thông báo")
-    void upgradesV9DatabaseToNotifications() throws Exception {
+    @DisplayName("Nâng cấp CSDL đang ở V10 lên V11 giữ nguyên tài khoản và tạo bảng thông báo")
+    void upgradesV10DatabaseToNotifications() throws Exception {
         try (var postgres = new PostgreSQLContainer("postgres:17")) {
             postgres.start();
             var configuration =
@@ -23,7 +23,7 @@ class NotificationsUpgradeTests {
                                     postgres.getUsername(),
                                     postgres.getPassword())
                             .locations("classpath:db/migration");
-            configuration.target("9").load().migrate();
+            configuration.target("10").load().migrate();
 
             UUID user = UUID.randomUUID();
             try (var connection =
@@ -51,7 +51,7 @@ class NotificationsUpgradeTests {
                     var statement = connection.createStatement()) {
                 try (var result =
                         statement.executeQuery(
-                                "SELECT count(*) FROM flyway_schema_history WHERE version='10' AND success")) {
+                                "SELECT count(*) FROM flyway_schema_history WHERE version='11' AND success")) {
                     result.next();
                     assertThat(result.getInt(1)).isEqualTo(1);
                 }
