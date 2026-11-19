@@ -49,7 +49,7 @@ CREATE TABLE notifications (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT notifications_c1 CHECK (type IN ('REVIEW_DUE', 'SYSTEM')),
-    CONSTRAINT notifications_c2 CHECK (visibility IN ('PUBLIC', 'PRIVATE')),
+    CONSTRAINT notifications_c2 CHECK (visibility IN ('PUBLIC', 'PRIVATE', 'USER')),
     CONSTRAINT notifications_c3 CHECK (btrim(title) <> '' AND btrim(body) <> ''),
     CONSTRAINT notifications_c4 CHECK (
         target_url IS NULL
