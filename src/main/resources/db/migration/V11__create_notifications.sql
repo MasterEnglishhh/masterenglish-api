@@ -95,3 +95,4 @@ CREATE TABLE notification_deliveries (
 CREATE INDEX ix_notification_deliveries_pending
     ON notification_deliveries (next_retry_at)
     WHERE status = 'PENDING' AND next_retry_at IS NOT NULL;
+
