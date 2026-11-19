@@ -35,7 +35,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-@TestPropertySource(properties = "notification.mail.enabled=true")
+@TestPropertySource(
+        properties = {
+            "notification.mail.enabled=true",
+            "notification.mail.from=reminders@example.test",
+            "notification.mail.web-base-url=http://localhost:3000/"
+        })
 @Transactional
 class ReminderPlannerIntegrationTests {
 

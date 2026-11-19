@@ -146,16 +146,30 @@ khóa có giá trị mặc định nên app và CI khởi động được khi t
 | `notification.retry-backoff` | `1m,5m,30m` | Một khoảng chờ cho mỗi lần thử lại |
 | `notification.scheduler-batch-size` | `200` | Số tùy chọn đọc mỗi trang khi quét |
 | `notification.worker-batch-size` | `20` | Số email tối đa mỗi lượt worker |
-| `notification.mail.enabled` | `${MAIL_ENABLED:false}` | Tắt thì không tạo delivery EMAIL và worker không gửi |
-| `notification.mail.from` | `${MAIL_FROM:}` | Trống thì mọi lần gửi lỗi `MAIL_NOT_CONFIGURED` |
-| `notification.mail.web-base-url` | `${NOTIFICATION_WEB_BASE_URL:http://localhost:3000}` | Gốc URL tuyệt đối trong email; production phải đặt địa chỉ web thật |
+| `notification.mail.enabled` | `${MAIL_ENABLED:false}` | Bật email nhắc; chỉ có hiệu lực khi có đủ `from` và `web-base-url` |
+| `notification.mail.from` | `${MAIL_FROM:}` | Trống thì không tạo delivery EMAIL và worker không gửi |
+| `notification.mail.web-base-url` | `${NOTIFICATION_WEB_BASE_URL:}` | Gốc URL tuyệt đối cho link trong email. Trống thì không tạo delivery EMAIL và worker không gửi, để email không bao giờ mang link hỏng. Có giá trị thì phải là URL `http(s)://` tuyệt đối |
 
-Cấu hình sai (múi giờ không hợp lệ, `max-retries` ngoài 0–3, thiếu khoảng chờ) làm app dừng ngay khi
-khởi động thay vì chạy sai.
+Cấu hình sai (múi giờ không hợp lệ, `max-retries` ngoài 0–3, thiếu khoảng chờ, `web-base-url` không
+phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì chạy sai. Khi `MAIL_ENABLED=true` mà thiếu
+`MAIL_FROM` hoặc `NOTIFICATION_WEB_BASE_URL`, job ghi một cảnh báo lúc khởi động và nhắc chỉ đi in-app.
+
+### Checklist deploy
+
+1. Chạy Flyway tới V11 (V10 grammar, V11 notifications).
+2. Giữ `NOTIFICATION_SCHEDULER_ENABLED` mặc định (`true`) trên một hoặc nhiều instance; dedupe và
+   `SKIP LOCKED` cho phép chạy song song.
+3. Muốn gửi email nhắc: đặt `MAIL_ENABLED=true`, `MAIL_FROM`, cấu hình SMTP (`SMTP_*`) và
+   `NOTIFICATION_WEB_BASE_URL` là địa chỉ web thật, ví dụ `https://app.example.com`.
+4. Thiếu một trong các biến ở bước 3 thì nhắc chỉ đi in-app, không có email và không có link hỏng.
+5. Kiểm tra log khởi động không có cảnh báo `Reminder email is enabled but ...`.
 
 ## 5. Bảo mật và log
 
-- Không log email, tiêu đề, nội dung thông báo hay token. Log chỉ chứa ID và mã lỗi đã làm sạch.
+- Không log email, tiêu đề, nội dung thông báo hay token. Log chỉ chứa ID delivery, số lượng, mã lỗi
+  đã làm sạch hoặc tên lớp exception. `ClaimedDelivery.toString()` chỉ in ID; exception của mailer chỉ
+  mang mã lỗi. Hai sự kiện request/reply chỉ mang ID người dùng và không được lưu vào
+  `event_publication` (listener đồng bộ `@EventListener`).
 - `recipient_address` chỉ được đọc trong worker gửi email, không trả qua API.
 - `title`/`body` là nội dung công khai, không chứa OTP, token hay địa chỉ email.
 

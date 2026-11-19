@@ -79,7 +79,7 @@ public class ReminderPlannerImpl implements ReminderPlanner {
     }
 
     private int planPage(List<NotificationPreference> page, ReminderRule rule, Instant now) {
-        boolean mailEnabled = properties.mail().enabled();
+        boolean mailEnabled = properties.mail().deliverable();
         Map<UUID, Candidate> candidates = new LinkedHashMap<>();
         for (NotificationPreference preference : page) {
             boolean wantsEmail = preference.isEmailEnabled() && mailEnabled;

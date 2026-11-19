@@ -47,7 +47,12 @@ import org.springframework.test.context.TestPropertySource;
 /** Runs without a test transaction: claims must commit for concurrent workers to see them. */
 @Import({TestcontainersConfiguration.class, EmailDeliveryWorkerIntegrationTests.Fakes.class})
 @SpringBootTest
-@TestPropertySource(properties = "notification.mail.enabled=true")
+@TestPropertySource(
+        properties = {
+            "notification.mail.enabled=true",
+            "notification.mail.from=reminders@example.test",
+            "notification.mail.web-base-url=http://localhost:3000/"
+        })
 class EmailDeliveryWorkerIntegrationTests {
 
     private static final Instant T = Instant.parse("2026-11-19T13:00:00Z");

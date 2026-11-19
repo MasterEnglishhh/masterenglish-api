@@ -45,7 +45,7 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
 
     @Override
     public int deliverDueEmails() {
-        if (!properties.mail().enabled()) return 0;
+        if (!properties.mail().deliverable()) return 0;
         int processed = 0;
         while (processed < properties.workerBatchSize()) {
             Optional<ClaimedDelivery> claimed = store.claimNext(clock.instant());
@@ -83,7 +83,7 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
     }
 
     private String text(ClaimedDelivery delivery) {
-        String base = properties.mail().webBaseUrl().replaceAll("/+$", "");
+        String base = properties.mail().webBaseUrl();
         String target = delivery.targetUrl() == null ? "/" : delivery.targetUrl();
         return delivery.body()
                 + "\n\nÔn ngay: "

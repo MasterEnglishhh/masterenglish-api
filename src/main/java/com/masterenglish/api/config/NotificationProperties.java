@@ -26,7 +26,24 @@ public record NotificationProperties(
     public record Mail(
             @DefaultValue("false") boolean enabled,
             @DefaultValue("") String from,
-            @DefaultValue("http://localhost:3000") String webBaseUrl) {}
+            @DefaultValue("") String webBaseUrl) {
+
+        public Mail {
+            webBaseUrl = webBaseUrl == null ? "" : webBaseUrl.strip().replaceAll("/+$", "");
+            if (!webBaseUrl.isEmpty() && !webBaseUrl.matches("https?://[^\\s/?#]+(/[^\\s?#]*)?")) {
+                throw new IllegalArgumentException(
+                        "notification.mail.web-base-url must be an absolute http(s) URL.");
+            }
+        }
+
+        /**
+         * Reminder emails are created and sent only when mail is on and both the sender and the web
+         * address are set, so an email never carries a broken link.
+         */
+        public boolean deliverable() {
+            return enabled && from != null && !from.isBlank() && !webBaseUrl.isEmpty();
+        }
+    }
 
     public NotificationProperties {
         try {

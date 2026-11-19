@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.notifications.service.impl;
 
+import com.masterenglish.api.config.NotificationProperties;
 import com.masterenglish.api.modules.notifications.service.EmailDeliveryWorker;
 import com.masterenglish.api.modules.notifications.service.ReminderPlanner;
 import java.time.Clock;
@@ -18,10 +19,19 @@ class NotificationJobs {
     private final EmailDeliveryWorker worker;
     private final Clock clock;
 
-    NotificationJobs(ReminderPlanner planner, EmailDeliveryWorker worker, Clock clock) {
+    NotificationJobs(
+            ReminderPlanner planner,
+            EmailDeliveryWorker worker,
+            NotificationProperties properties,
+            Clock clock) {
         this.planner = planner;
         this.worker = worker;
         this.clock = clock;
+        if (properties.mail().enabled() && !properties.mail().deliverable()) {
+            log.warn(
+                    "Reminder email is enabled but MAIL_FROM or NOTIFICATION_WEB_BASE_URL is empty;"
+                            + " reminders stay in-app only");
+        }
     }
 
     @Scheduled(
