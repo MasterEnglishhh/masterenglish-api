@@ -9,6 +9,8 @@ import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
 import com.masterenglish.api.modules.identity.entity.LearningGoal;
 import com.masterenglish.api.modules.identity.entity.RevokeReason;
+import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.AuthSessionRepository;
 import com.masterenglish.api.modules.identity.repository.LearningGoalRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
@@ -20,8 +22,11 @@ import com.masterenglish.api.modules.identity.service.UserService;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -149,6 +154,14 @@ public class UserServiceImpl implements UserService {
 
     private static BusinessException userNotFound() {
         return new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, String> findActiveEmails(Set<UUID> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        return userRepository.findAllByIdInAndStatus(userIds, UserStatus.ACTIVE).stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
     }
 
     @Override

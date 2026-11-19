@@ -4,9 +4,8 @@ Hợp đồng kỹ thuật cho module `notifications`. Ngày ban hành: 19/11/20
 
 Trạng thái:
 
-- Đã có: M10.01–M10.04 (feed, đánh dấu đã đọc, kênh nhận, giờ nhắc/múi giờ/quiet hours).
-- Dự kiến ở pha sau: M10.05 (scheduler nhắc thẻ đến hạn) và M10.08 (worker gửi email qua outbox).
-  Mục 6–7 ghi các quy tắc đã chốt cho hai chức năng này.
+- Đã có: M10.01–M10.04 (feed, đánh dấu đã đọc, kênh nhận, giờ nhắc/múi giờ/quiet hours), M10.05
+  (scheduler nhắc thẻ đến hạn) và M10.08 (worker gửi email qua outbox).
 - Ngoài phạm vi: M10.06 nhắc mục tiêu hằng ngày, M10.07 thông báo nội dung mới, M10.09–M10.11,
   chuyển email OTP/bảo mật sang outbox, browser push, bảng `system_settings`.
 
@@ -138,11 +137,21 @@ khóa có giá trị mặc định nên app và CI khởi động được khi t
 |---|---|---|
 | `notification.default-timezone` | `${NOTIFICATION_DEFAULT_TIMEZONE:Asia/Ho_Chi_Minh}` | Phải là múi giờ IANA, sai thì app không khởi động |
 | `notification.learning-email-default` | `false` | Giá trị `emailEnabled` khi chưa lưu cài đặt |
+| `notification.scheduler.enabled` | `${NOTIFICATION_SCHEDULER_ENABLED:true}` | Bật cả hai job. Profile `local` đặt `false`; task `test` của Gradle đặt `false` |
+| `notification.scheduler.interval` | `PT15M` | Chu kỳ quét nhắc (ISO-8601) |
+| `notification.worker.interval` | `PT1M` | Chu kỳ worker gửi email |
+| `notification.scheduler.initial-delay` | `PT1M` | Độ trễ trước lần chạy đầu sau khi khởi động |
+| `notification.max-retries` | `3` | 0–3; tổng số lần thử = `max-retries + 1` ≤ 4 |
+| `notification.lease-seconds` | `60` | Lease của một lần claim |
+| `notification.retry-backoff` | `1m,5m,30m` | Một khoảng chờ cho mỗi lần thử lại |
+| `notification.scheduler-batch-size` | `200` | Số tùy chọn đọc mỗi trang khi quét |
+| `notification.worker-batch-size` | `20` | Số email tối đa mỗi lượt worker |
+| `notification.mail.enabled` | `${MAIL_ENABLED:false}` | Tắt thì không tạo delivery EMAIL và worker không gửi |
+| `notification.mail.from` | `${MAIL_FROM:}` | Trống thì mọi lần gửi lỗi `MAIL_NOT_CONFIGURED` |
+| `notification.mail.web-base-url` | `${NOTIFICATION_WEB_BASE_URL:http://localhost:3000}` | Gốc URL tuyệt đối trong email; production phải đặt địa chỉ web thật |
 
-Pha scheduler/worker sẽ thêm `notification.scheduler.enabled` (tắt ở profile `local` và trong test),
-`notification.scheduler.interval` (15 phút), `notification.max-retries` (3),
-`notification.lease-seconds` (60), `notification.mail.enabled=${MAIL_ENABLED:false}` và
-`notification.mail.from=${MAIL_FROM:}`.
+Cấu hình sai (múi giờ không hợp lệ, `max-retries` ngoài 0–3, thiếu khoảng chờ) làm app dừng ngay khi
+khởi động thay vì chạy sai.
 
 ## 5. Bảo mật và log
 
@@ -150,16 +159,22 @@ Pha scheduler/worker sẽ thêm `notification.scheduler.enabled` (tắt ở prof
 - `recipient_address` chỉ được đọc trong worker gửi email, không trả qua API.
 - `title`/`body` là nội dung công khai, không chứa OTP, token hay địa chỉ email.
 
-## 6. Nhắc thẻ Flashcard đến hạn (M10.05, pha sau)
+## 6. Nhắc thẻ Flashcard đến hạn (M10.05)
 
 - **Thẻ đến hạn:** `due_at <= now` và nghĩa còn hiển thị trong `catalog_visible_senses`, cùng định
-  nghĩa với hàng ôn của module `learning`. Số thẻ lấy qua sự kiện request/reply trong `common/events`.
+  nghĩa với hàng ôn của module `learning`. Module `notifications` không đọc bảng của module khác; nó
+  gọi hai hợp đồng request/reply trong `common/events`:
+  - `LearningEvents.countDueCards(Set<UUID>, Instant)`: số thẻ đến hạn theo người học, người không
+    có thẻ không có trong kết quả.
+  - `IdentityEvents.findActiveEmails(Set<UUID>)`: email của tài khoản `ACTIVE`, tài khoản khác bị bỏ.
 - **Điều kiện tạo nhắc** ở mỗi lần quét: có `dailyReminderTime`; có ít nhất một kênh bật; giờ địa
   phương ≥ giờ nhắc; ngoài quiet hours; rule `REVIEW_DUE` bật và đã qua `minimum_gap_minutes`; tài
   khoản `ACTIVE`; số thẻ đến hạn > 0. Lỡ một lần quét thì gửi bù trong cùng ngày địa phương, không
-  bù ngày đã qua.
+  bù ngày đã qua. Bộ quét đọc tùy chọn theo trang (keyset trên `user_id`), lọc giờ theo múi giờ trong
+  Java, rồi gọi identity và learning một lần cho mỗi trang.
 - **Dedupe:** `REVIEW_DUE:{userId}:{ngày địa phương yyyy-MM-dd}` với unique `(user_id, dedupe_key)`.
-  Chạy lặp hoặc nhiều instance không tạo trùng.
+  Chạy lặp hoặc nhiều instance không tạo trùng: thông báo được ghi bằng
+  `INSERT … ON CONFLICT (user_id, dedupe_key) DO NOTHING`, mỗi người học trong một transaction riêng.
 - **Nội dung đã chốt:**
   - `title`: `Bạn có {n} thẻ cần ôn hôm nay`
   - `body`: `{n} thẻ Flashcard đã đến hạn ôn tập. Ôn ngay để giữ nhịp ghi nhớ.`
@@ -167,14 +182,19 @@ Pha scheduler/worker sẽ thêm `notification.scheduler.enabled` (tắt ở prof
   - Email: tiêu đề như `title`; thân thư gồm `body`, liên kết tới `/learn/review` và liên kết tắt
     hoặc đổi giờ nhắc tới `/learn/notifications/settings` (URL tuyệt đối ghép từ địa chỉ web cấu hình).
 - Kênh `IN_APP` ghi delivery `SENT` ngay khi tạo thông báo. Kênh `EMAIL` ghi `PENDING` khi người học
-  bật email và hệ thống bật mail.
+  bật email và hệ thống bật mail, với `recipient_address` là email tại thời điểm tạo.
 
-## 7. Gửi email qua outbox (M10.08, pha sau)
+## 7. Gửi email qua outbox (M10.08)
 
 - Worker claim bằng transaction ngắn với `FOR UPDATE SKIP LOCKED`: dòng `PENDING` đã tới
   `next_retry_at`, hoặc `PROCESSING` đã hết `lease_until`. Mỗi lần claim tăng `attempt_count`, đặt
   `claim_token` và lease 60 giây, commit rồi mới gửi SMTP ngoài transaction. Kết quả chỉ được ghi khi
-  `claim_token` còn khớp.
+  `claim_token` còn khớp. Worker claim từng delivery một, nên mỗi email có lease mới; thời gian chờ SMTP
+  (tối đa khoảng 15 giây) luôn ngắn hơn lease.
+- Trước khi gửi, worker hỏi lại identity; tài khoản không còn `ACTIVE` thì delivery chuyển `FAILED`
+  với `USER_INACTIVE`, không thử lại.
+- Mã lỗi đã làm sạch: `MAIL_NOT_CONFIGURED`, `MAIL_AUTH_FAILED`, `MAIL_SEND_FAILED`, `MAIL_ERROR`,
+  `USER_INACTIVE`, `LEASE_EXPIRED`, `RETRIES_EXHAUSTED`.
 - Thử lại sau 1, 5 và 30 phút (một lần đầu và tối đa ba lần thử lại, CHECK `attempt_count` 0–4).
   Thất bại ở lần thứ tư chuyển `FAILED`.
 - Dòng `PROCESSING` hết lease mà `attempt_count = 4` chuyển `FAILED` với

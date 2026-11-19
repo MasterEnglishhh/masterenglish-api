@@ -1,10 +1,13 @@
 package com.masterenglish.api.modules.identity.repository;
 
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.fragment.PasswordResetOperations;
 import com.masterenglish.api.modules.identity.repository.fragment.RegistrationOperations;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -27,6 +30,8 @@ public interface UserRepository
     Optional<User> findById(UUID id);
 
     @EntityGraph(attributePaths = {"userRoles", "userRoles.role"})
+    List<User> findAllByIdInAndStatus(Collection<UUID> ids, UserStatus status);
+
     @Query("select u from User u where lower(u.email) = lower(:email)")
     Optional<User> findForAuthenticationByEmail(@Param("email") String email);
 

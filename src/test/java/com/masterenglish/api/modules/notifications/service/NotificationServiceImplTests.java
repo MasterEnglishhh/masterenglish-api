@@ -20,9 +20,11 @@ import com.masterenglish.api.modules.notifications.repository.NotificationPrefer
 import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
 import com.masterenglish.api.modules.notifications.service.impl.NotificationServiceImpl;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +47,19 @@ class NotificationServiceImplTests {
                 new NotificationServiceImpl(
                         notifications,
                         preferences,
-                        new NotificationProperties("Asia/Bangkok", false),
+                        new NotificationProperties(
+                                "Asia/Bangkok",
+                                false,
+                                3,
+                                60,
+                                List.of(
+                                        Duration.ofMinutes(1),
+                                        Duration.ofMinutes(5),
+                                        Duration.ofMinutes(30)),
+                                200,
+                                20,
+                                new NotificationProperties.Mail(
+                                        false, "", "http://localhost:3000")),
                         Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

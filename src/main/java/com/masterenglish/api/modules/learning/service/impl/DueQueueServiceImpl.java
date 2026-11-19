@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,17 @@ public class DueQueueServiceImpl implements DueQueueService {
         this.savedWordRepository = savedWordRepository;
         this.vocabulary = vocabulary;
         this.clock = clock;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, Long> countDueCards(Set<UUID> userIds, Instant asOf) {
+        if (userIds.isEmpty()) return Map.of();
+        return progressRepository.countEligibleDueByUser(userIds, asOf).stream()
+                .collect(
+                        Collectors.toMap(
+                                UserWordProgressRepository.DueCount::getUserId,
+                                UserWordProgressRepository.DueCount::getDueCount));
     }
 
     @Override

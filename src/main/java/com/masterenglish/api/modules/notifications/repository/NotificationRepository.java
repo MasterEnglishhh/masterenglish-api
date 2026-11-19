@@ -2,6 +2,8 @@ package com.masterenglish.api.modules.notifications.repository;
 
 import com.masterenglish.api.modules.notifications.entity.Notification;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -46,4 +48,46 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
                     + FEED
                     + " AND n.readAt IS NULL)")
     int markFeedRead(@Param("userId") UUID userId, @Param("now") Instant now);
+
+    @Query("SELECT n.dedupeKey FROM Notification n WHERE n.dedupeKey IN :keys")
+    List<String> findExistingDedupeKeys(@Param("keys") Collection<String> keys);
+
+    @Query(
+            """
+            SELECT n.userId AS userId, max(n.createdAt) AS lastCreatedAt FROM Notification n
+            WHERE n.reminderRuleId = :ruleId AND n.userId IN :userIds
+            GROUP BY n.userId
+            """)
+    List<LastReminder> findLastReminders(
+            @Param("ruleId") UUID ruleId, @Param("userIds") Collection<UUID> userIds);
+
+    interface LastReminder {
+        UUID getUserId();
+
+        Instant getLastCreatedAt();
+    }
+
+    /** Inserts a USER notification unless (user_id, dedupe_key) already exists; returns 0 or 1. */
+    @Modifying
+    @Query(
+            value =
+                    """
+                    INSERT INTO notifications
+                        (id, user_id, reminder_rule_id, type, visibility, title, body, target_url,
+                         dedupe_key, created_at)
+                    VALUES (:id, :userId, :ruleId, :type, 'USER', :title, :body, :targetUrl,
+                            :dedupeKey, :createdAt)
+                    ON CONFLICT (user_id, dedupe_key) DO NOTHING
+                    """,
+            nativeQuery = true)
+    int insertIfAbsent(
+            @Param("id") UUID id,
+            @Param("userId") UUID userId,
+            @Param("ruleId") UUID ruleId,
+            @Param("type") String type,
+            @Param("title") String title,
+            @Param("body") String body,
+            @Param("targetUrl") String targetUrl,
+            @Param("dedupeKey") String dedupeKey,
+            @Param("createdAt") Instant createdAt);
 }
