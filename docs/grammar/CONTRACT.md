@@ -25,10 +25,11 @@ Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5
 | `GET /api/v1/grammar/topics` | Đã triển khai |
 | `GET /api/v1/grammar/topics/{topicId}/lessons` | Đã triển khai |
 | `GET /api/v1/grammar/lessons/{lessonId}` | Đã triển khai |
-| `PUT /api/v1/grammar/lessons/{lessonId}/progress` | Chưa triển khai, chờ module `learning` |
+| `PUT /api/v1/grammar/lessons/{lessonId}/progress` | Đã triển khai (module `learning`, xem mục 4.4) |
+| `GET /api/v1/grammar/progress` | Đã triển khai (mở rộng, chờ FE duyệt) |
 | Validate snapshot khi duyệt và xuất bản | Đã triển khai |
 | Chiếu bản xuất bản vào `grammar_topics` và `grammar_lessons` | Đã triển khai |
-| Bảng `lesson_progress` | Chưa triển khai, chờ migration sau |
+| Bảng `lesson_progress` | Đã triển khai (migration V12) |
 | API quản trị tạo và sửa bản nháp grammar | Chưa triển khai, chờ duyệt (xem mục 7) |
 | Bộ lọc `domain=GRAMMAR` ở danh sách quản trị | Chưa triển khai, chờ duyệt |
 
@@ -77,13 +78,21 @@ Phản hồi `GrammarLessonResponse`:
 { "id": "uuid", "topicId": "uuid", "title": "Definite article", "body": { "blocks": [] }, "estimatedMinutes": 5 }
 ```
 
-### 4.4. Tiến độ (chưa triển khai)
+### 4.4. Tiến độ bài học
 
 `PUT /api/v1/grammar/lessons/{lessonId}/progress`, body `{"state": "IN_PROGRESS" | "COMPLETED"}`.
 
-Chưa triển khai vì tiến độ thuộc module `learning`. Khi làm, các trường `state` và `hasNewerRevision` sẽ được thêm vào các phản hồi bài học.
+- Chỉ ghi khi bài học đang hiển thị. `404 RESOURCE_NOT_FOUND` nếu không hiển thị; `400 VALIDATION_ERROR` nếu `state` khác hai giá trị trên.
+- `COMPLETED` ghi `completed_at` và ghim `lastCompletedRevisionId` là bản đang xuất bản tại thời điểm đó.
+- `IN_PROGRESS` tạo dòng nếu chưa có. Một dòng đã `COMPLETED` không bao giờ bị hạ về `IN_PROGRESS`.
+- Gọi lại an toàn: lần gọi sau không đổi bản ghi đã hoàn thành, kể cả khi bài học đã có revision mới.
+- Phản hồi `200` là `LessonProgressResponse`: `{ "lessonId": "uuid", "state": "COMPLETED", "completedAt": "2026-11-21T08:00:00Z", "lastCompletedRevisionId": "uuid" }`. `completedAt` và `lastCompletedRevisionId` là `null` khi `IN_PROGRESS`.
 
-**[cần duyệt]** Có tự tạo `IN_PROGRESS` khi học viên chỉ mở bài hay không. Bản nháp cũ chỉ tạo khi gọi PUT.
+`GET /api/v1/grammar/progress` trả mảng `LessonProgressResponse` của chính người học, sắp theo `updatedAt` giảm dần. Endpoint này không có trong bản nháp cũ; **[cần FE duyệt]**.
+
+Chưa triển khai: trường `hasNewerRevision` trong phản hồi bài học và trường `state` trong `GET /lessons/{lessonId}`. Thêm các trường này sẽ làm module `grammar` phụ thuộc `learning`, nên cần duyệt riêng.
+
+**[cần duyệt]** Có tự tạo `IN_PROGRESS` khi học viên chỉ mở bài hay không. Hiện tại chỉ PUT mới tạo dòng.
 
 ## 5. Quy tắc nội dung
 

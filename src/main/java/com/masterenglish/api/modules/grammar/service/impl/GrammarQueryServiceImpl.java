@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
@@ -14,6 +15,7 @@ import com.masterenglish.api.modules.grammar.repository.GrammarTopicRepository;
 import com.masterenglish.api.modules.grammar.service.GrammarQueryService;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,6 +79,19 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
                 lesson.getTitle(),
                 body(lesson),
                 lesson.getEstimatedMinutes());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<PublishedLessonRef> findPublishedLesson(UUID lessonId) {
+        return lessons.findVisibleById(lessonId)
+                .map(l -> new PublishedLessonRef(l.getId(), l.getPublishedRevisionId()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isVisibleTopic(UUID topicId) {
+        return topics.findVisibleTopicById(topicId).isPresent();
     }
 
     private Map<String, Object> body(GrammarLesson lesson) {
