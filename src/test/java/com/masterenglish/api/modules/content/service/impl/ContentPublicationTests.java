@@ -31,7 +31,8 @@ class ContentPublicationTests {
                         events,
                         new ObjectMapper());
 
-        for (String type : new String[] {"QUESTION", "QUESTION_GROUP", "PRACTICE_SET"}) {
+        // QUESTION is validated now (practice module); these types still have no validator.
+        for (String type : new String[] {"QUESTION_GROUP", "PRACTICE_SET"}) {
             UUID itemId = UUID.randomUUID();
             ContentItem item = new ContentItem(itemId, type, UUID.randomUUID(), null, null);
             ContentRevision revision =

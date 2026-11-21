@@ -22,7 +22,7 @@ class ContentPublication {
     // Types with a snapshot validator registered in another module. Add a type here when its module
     // starts validating, so publication of unvalidated types fails with 400 instead of 500.
     private static final Set<String> VALIDATED_TYPES =
-            Set.of("WORD", "DECK", "GRAMMAR_TOPIC", "GRAMMAR_LESSON");
+            Set.of("WORD", "DECK", "GRAMMAR_TOPIC", "GRAMMAR_LESSON", "QUESTION");
 
     private final ContentSnapshots snapshots;
     private final ContentSourceLinkRepository sourceLinks;
