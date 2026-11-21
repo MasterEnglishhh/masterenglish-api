@@ -424,6 +424,35 @@ class PracticeIntegrationTests {
 
     // ---- fixtures -------------------------------------------------------------------------
 
+    @Test
+    void republishingTheSameSnapshotKeepsOptionIds() {
+        UUID topic = publishTopic();
+        UUID item = publishItem("QUESTION");
+        String snapshot = snapshot(topic, "Stable option ids " + suffix(), "yes", "no");
+        events.publishEvent(
+                new RevisionPublished(item, currentRevision(item), "QUESTION", snapshot));
+        List<UUID> first = optionIds(item);
+        assertThat(first).hasSize(2);
+
+        UUID revision = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO content_revisions (id, content_item_id, version_no, snapshot, status, created_by)"
+                        + " VALUES (?, ?, 2, '{}'::jsonb, 'DRAFT', ?)",
+                revision,
+                item,
+                adminOnly.getId());
+        jdbc.update(
+                "UPDATE content_revisions SET status = 'PUBLISHED', reviewed_by = ?, reviewed_at = now(),"
+                        + " published_at = now() WHERE id = ?",
+                adminOnly.getId(),
+                revision);
+        jdbc.update(
+                "UPDATE content_items SET published_revision_id = ? WHERE id = ?", revision, item);
+        events.publishEvent(new RevisionPublished(item, revision, "QUESTION", snapshot));
+
+        assertThat(optionIds(item)).containsExactlyElementsOf(first);
+    }
+
     private User learnerAccount(String email, Role learnerRole) {
         User account =
                 new User(email, passwordEncoder.encode("Password123!@#"), "Learner", "Practice");
@@ -480,25 +509,40 @@ class PracticeIntegrationTests {
                         item, revision, "QUESTION", snapshot(topic, prompt, correct, wrong)));
     }
 
+    /** Envelope as content stores a published QUESTION revision (SCHEMA section 4). */
     private String snapshot(UUID topic, String prompt, String correct, String wrong) {
+        UUID correctId = UUID.randomUUID();
+        UUID wrongId = UUID.randomUUID();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("category", "GRAMMAR");
+        data.put("part_number", null);
+        data.put("question_type_code", "SINGLE_CHOICE");
+        data.put("practice_mode", "STANDARD");
+        data.put("prompt", prompt);
+        data.put("group", null);
+        data.put(
+                "options",
+                List.of(
+                        Map.of("id", correctId.toString(), "position", 1, "body", correct),
+                        Map.of("id", wrongId.toString(), "position", 2, "body", wrong)));
+        data.put("answer_key", Map.of("correctOptionId", correctId.toString()));
+        data.put("explanation", "Why: " + prompt);
+        data.put("materials", List.of());
+        data.put("topic_ids", List.of(topic.toString()));
+        data.put("word_sense_ids", List.of());
         try {
             return mapper.writeValueAsString(
-                    Map.of(
-                            "category",
-                            "GRAMMAR",
-                            "prompt",
-                            prompt,
-                            "explanation",
-                            "Why: " + prompt,
-                            "topic_ids",
-                            List.of(topic.toString()),
-                            "options",
-                            List.of(
-                                    Map.of("body", correct, "is_correct", true),
-                                    Map.of("body", wrong, "is_correct", false))));
+                    Map.of("schema_version", 1, "content_type", "QUESTION", "data", data));
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private List<UUID> optionIds(UUID question) {
+        return jdbc.queryForList(
+                "SELECT id FROM question_options WHERE question_id = ? ORDER BY position",
+                UUID.class,
+                question);
     }
 
     private UUID publishItem(String type) {

@@ -12,4 +12,7 @@ public interface QuestionOptionRepository extends JpaRepository<QuestionOption, 
     List<QuestionOption> findByQuestionIdOrderByPositionAsc(UUID questionId);
 
     void deleteByQuestionId(UUID questionId);
+
+    /** True when the option id is already used by a different question. */
+    boolean existsByIdAndQuestionIdNot(UUID id, UUID questionId);
 }

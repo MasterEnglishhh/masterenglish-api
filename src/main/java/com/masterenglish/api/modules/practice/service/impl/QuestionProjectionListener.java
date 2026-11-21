@@ -50,14 +50,19 @@ public class QuestionProjectionListener {
         if (!QUESTION.equals(event.type())) {
             return;
         }
+        // Content stores the envelope {schema_version, content_type, data}; the fields live in
+        // data.
         JsonNode root = root(event.snapshot());
+        JsonNode data = root.has("data") ? root.path("data") : root;
         UUID id = event.itemId();
         UUID revisionId = event.revisionId();
-        String type = root.path("question_type").asText("SINGLE_CHOICE");
-        String mode = root.path("practice_mode").asText("STANDARD");
-        String difficulty = root.path("difficulty").asText("MEDIUM");
-        String prompt = root.path("prompt").asText();
-        String explanation = root.path("explanation").asText();
+        String type = data.path("question_type_code").asText("SINGLE_CHOICE");
+        String mode = data.path("practice_mode").asText("STANDARD");
+        String difficulty = data.path("difficulty").asText("MEDIUM");
+        String prompt = data.path("prompt").asText();
+        String explanation = data.path("explanation").asText();
+        UUID correctOptionId =
+                UUID.fromString(data.path("answer_key").path("correctOptionId").asText());
         var now = clock.instant();
 
         questions
@@ -87,22 +92,24 @@ public class QuestionProjectionListener {
         // Delete before inserting: the unique (question, position) and primary keys would clash.
         questionOptions.deleteByQuestionId(id);
         questionOptions.flush();
+        // Option ids come from the revision, so re-publishing keeps them stable.
         List<QuestionOption> options = new ArrayList<>();
-        for (JsonNode option : root.path("options")) {
+        for (JsonNode option : data.path("options")) {
+            UUID optionId = UUID.fromString(option.path("id").asText());
             options.add(
                     new QuestionOption(
-                            UUID.randomUUID(),
+                            optionId,
                             id,
-                            options.size() + 1,
+                            option.path("position").asInt(),
                             option.path("body").asText(),
-                            option.path("is_correct").asBoolean()));
+                            optionId.equals(correctOptionId)));
         }
         questionOptions.saveAll(options);
 
         questionTopics.deleteByIdQuestionId(id);
         questionTopics.flush();
         List<QuestionTopic> topics = new ArrayList<>();
-        for (JsonNode topic : root.path("topic_ids")) {
+        for (JsonNode topic : data.path("topic_ids")) {
             topics.add(new QuestionTopic(id, UUID.fromString(topic.asText())));
         }
         questionTopics.saveAll(topics);
