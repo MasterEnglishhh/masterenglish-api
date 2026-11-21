@@ -302,7 +302,7 @@ Cùng thứ tự khóa.
 
 ### 6.1. Envelope publish (SCHEMA §4)
 
-Đã theo envelope này từ A5 (21/11/2026): validator nhận `data` và kiểm theo đúng các trường trên, không trả thêm trường lạ; projection đọc envelope đã lưu, bóc `data`, giữ `options[].id`, lấy đáp án từ `answer_key`. Test: `QuestionSnapshotValidatorTests`, `PracticeIntegrationTests` (fixture envelope, và `republishingTheSameSnapshotKeepsOptionIds`). Chặn còn lại: `QUESTION` chưa có trong `VALIDATED_TYPES` của content, xem mục 16.
+Đã theo envelope này từ A5 (21/11/2026): validator nhận `data` và kiểm theo đúng các trường trên, không trả thêm trường lạ; projection đọc envelope đã lưu, bóc `data`, giữ `options[].id`, lấy đáp án từ `answer_key`. Test: `QuestionSnapshotValidatorTests`, `PracticeIntegrationTests` (fixture envelope, và `republishingTheSameSnapshotKeepsOptionIds`). Bước 2 (21/11/2026): `QUESTION` đã vào `VALIDATED_TYPES`, nên publish đi qua pipeline thật. `question_type_code`, `practice_mode`, `difficulty` bắt buộc khi publish; draft có thể thiếu. Không còn mặc định ngầm. Test: `QuestionPublicationIntegrationTests` (publish hợp lệ, dữ liệu sai, nguồn sai, topic và option id sai, projection lỗi làm rollback).
 
 ```json
 {
@@ -775,7 +775,7 @@ Theo thứ tự phụ thuộc:
 4. Quy ước idempotency giữa attempt và vocabulary (mục 14.2) chưa thống nhất.
 5. Chi phí lazy cleanup khi có nhiều bài bỏ dở. Cần đo trước khi đóng Giai đoạn 2.
 6. Chưa có test API start và resume cho backend (`checks/README.md`). Phải có ở Giai đoạn 2.
-7. **Cần duyệt riêng (module content):** `QUESTION` chưa nằm trong `VALIDATED_TYPES` của `modules/content/service/impl/ContentPublication.java`. Vì vậy publish câu hỏi qua đường thật bị 400 `Unsupported content type`. Validator và projection chỉ chạy được khi gọi trực tiếp (test). Sửa một dòng ở content là thay đổi module khác, nên không làm trong A5.
+7. ~~`QUESTION` chưa nằm trong `VALIDATED_TYPES`~~: đã xử lý ở bước 2 (21/11/2026), được người phụ trách duyệt. Publish câu hỏi đi qua pipeline thật và được kiểm bằng `QuestionPublicationIntegrationTests`.
 
 ## 17. Trạng thái thiết kế
 
