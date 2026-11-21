@@ -56,9 +56,10 @@ public class QuestionProjectionListener {
         JsonNode data = root.has("data") ? root.path("data") : root;
         UUID id = event.itemId();
         UUID revisionId = event.revisionId();
-        String type = data.path("question_type_code").asText("SINGLE_CHOICE");
-        String mode = data.path("practice_mode").asText("STANDARD");
-        String difficulty = data.path("difficulty").asText("MEDIUM");
+        // Required fields were checked at publication; no defaults here.
+        String type = data.path("question_type_code").asText();
+        String mode = data.path("practice_mode").asText();
+        String difficulty = data.path("difficulty").asText();
         String prompt = data.path("prompt").asText();
         String explanation = data.path("explanation").asText();
         UUID correctOptionId =

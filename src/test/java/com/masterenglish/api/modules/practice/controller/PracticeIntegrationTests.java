@@ -518,6 +518,7 @@ class PracticeIntegrationTests {
         data.put("part_number", null);
         data.put("question_type_code", "SINGLE_CHOICE");
         data.put("practice_mode", "STANDARD");
+        data.put("difficulty", "MEDIUM");
         data.put("prompt", prompt);
         data.put("group", null);
         data.put(

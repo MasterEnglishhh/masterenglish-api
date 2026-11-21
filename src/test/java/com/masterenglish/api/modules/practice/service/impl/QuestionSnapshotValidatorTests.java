@@ -50,15 +50,25 @@ class QuestionSnapshotValidatorTests {
     }
 
     @Test
-    void acceptsOmittedOptionalFieldsWithDatabaseDefaults() {
-        Map<String, Object> data = valid();
-        data.remove("question_type_code");
-        data.remove("practice_mode");
-        data.remove("difficulty");
-        EventReply<Void> reply = new EventReply<>();
-        validator.on(event("QUESTION", data, reply));
+    void requiresTypeModeAndDifficultyAtPublication() {
+        Map<String, Object> noType = valid();
+        noType.remove("question_type_code");
+        assertRejected(noType, "question_type_code là bắt buộc khi publish.");
 
-        assertThat(reply.get("SnapshotValidationRequested")).isNull();
+        Map<String, Object> noMode = valid();
+        noMode.remove("practice_mode");
+        assertRejected(noMode, "practice_mode là bắt buộc khi publish.");
+
+        Map<String, Object> noDifficulty = valid();
+        noDifficulty.remove("difficulty");
+        assertRejected(noDifficulty, "difficulty là bắt buộc khi publish.");
+    }
+
+    @Test
+    void nonTextDifficultyIsRejectedWithoutThrowingAnUnexpectedError() {
+        Map<String, Object> data = valid();
+        data.put("difficulty", 3);
+        assertRejected(data, "difficulty là bắt buộc khi publish.");
     }
 
     @Test
@@ -211,6 +221,7 @@ class QuestionSnapshotValidatorTests {
         data.put("part_number", null);
         data.put("question_type_code", "SINGLE_CHOICE");
         data.put("practice_mode", "STANDARD");
+        data.put("difficulty", "MEDIUM");
         data.put("prompt", "She ___ to school every day.");
         data.put("group", null);
         data.put("options", List.of(option(correctId, 1, "goes"), option(wrongId, 2, "go")));

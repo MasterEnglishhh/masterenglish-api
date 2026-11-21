@@ -82,16 +82,18 @@ public class QuestionSnapshotValidator {
         requireAbsentOrEmptyArray(data, "materials", "materials phải là mảng rỗng trong M04.");
         requireAbsentOrEmptyArray(
                 data, "word_sense_ids", "word_sense_ids phải là mảng rỗng trong M04.");
-        if (data.hasNonNull("question_type_code")
-                && !"SINGLE_CHOICE".equals(text(data, "question_type_code"))) {
+        // Required at publication (drafts may omit them). No silent defaults: a missing value is an
+        // error.
+        requireText(data, "question_type_code", "question_type_code là bắt buộc khi publish.");
+        if (!"SINGLE_CHOICE".equals(text(data, "question_type_code"))) {
             throw fail("question_type_code chỉ nhận SINGLE_CHOICE.");
         }
-        String mode = data.hasNonNull("practice_mode") ? text(data, "practice_mode") : "STANDARD";
-        if (!PRACTICE_MODES.contains(mode)) {
+        requireText(data, "practice_mode", "practice_mode là bắt buộc khi publish.");
+        if (!PRACTICE_MODES.contains(text(data, "practice_mode"))) {
             throw fail("practice_mode không hợp lệ.");
         }
-        String difficulty = data.hasNonNull("difficulty") ? text(data, "difficulty") : "MEDIUM";
-        if (!DIFFICULTIES.contains(difficulty)) {
+        requireText(data, "difficulty", "difficulty là bắt buộc khi publish.");
+        if (!DIFFICULTIES.contains(text(data, "difficulty"))) {
             throw fail("difficulty chỉ nhận EASY, MEDIUM hoặc HARD.");
         }
         plainText(data, "prompt", MAX_PROMPT);
@@ -169,6 +171,13 @@ public class QuestionSnapshotValidator {
             if (!allowed.contains(name)) {
                 throw fail("Unsupported " + label + ": " + name);
             }
+        }
+    }
+
+    private static void requireText(JsonNode node, String field, String message) {
+        JsonNode value = node.path(field);
+        if (!value.isTextual() || value.asText().isBlank()) {
+            throw fail(message);
         }
     }
 
