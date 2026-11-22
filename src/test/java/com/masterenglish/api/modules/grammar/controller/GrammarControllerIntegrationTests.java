@@ -89,9 +89,9 @@ class GrammarControllerIntegrationTests {
 
         mockMvc.perform(get("/api/v1/grammar/topics").with(user(UserPrincipal.create(learner))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].id").value(earlier.toString()))
-                .andExpect(jsonPath("$[1].id").value(later.toString()));
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].id").value(earlier.toString()))
+                .andExpect(jsonPath("$.items[1].id").value(later.toString()));
     }
 
     @Test
@@ -148,6 +148,74 @@ class GrammarControllerIntegrationTests {
                         get("/api/v1/grammar/lessons/" + UUID.randomUUID())
                                 .with(user(UserPrincipal.create(learner))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void topicListReturnsAPageWithDefaults() throws Exception {
+        UUID first = publishTopic("pd-a-" + suffix(), "Pd A", 1);
+        publishTopic("pd-b-" + suffix(), "Pd B", 2);
+        publishTopic("pd-c-" + suffix(), "Pd C", 3);
+
+        mockMvc.perform(get("/api/v1/grammar/topics").with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(3))
+                .andExpect(jsonPath("$.items[0].id").value(first.toString()))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalItems").value(3))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.hasNext").value(false));
+    }
+
+    @Test
+    void topicListPagesAndReportsHasNext() throws Exception {
+        publishTopic("pn-a-" + suffix(), "Pn A", 1);
+        publishTopic("pn-b-" + suffix(), "Pn B", 2);
+        publishTopic("pn-c-" + suffix(), "Pn C", 3);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics?page=0&size=2")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true));
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics?page=1&size=2")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].name").value("Pn C"))
+                .andExpect(jsonPath("$.hasNext").value(false));
+    }
+
+    @Test
+    void topicListSortsByAnAllowedFieldAndDirection() throws Exception {
+        publishTopic("sd-a-" + suffix(), "Sd A", 1);
+        publishTopic("sd-b-" + suffix(), "Sd B", 2);
+        publishTopic("sd-c-" + suffix(), "Sd C", 3);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics?sortBy=name&sortDirection=desc")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].name").value("Sd C"))
+                .andExpect(jsonPath("$.items[2].name").value("Sd A"));
+    }
+
+    @Test
+    void topicListRejectsInvalidPagingWithProblemDetail() throws Exception {
+        for (String query :
+                new String[] {
+                    "page=-1", "size=0", "size=101", "sortBy=description", "sortDirection=up"
+                }) {
+            mockMvc.perform(
+                            get("/api/v1/grammar/topics?" + query)
+                                    .with(user(UserPrincipal.create(learner))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
     }
 
     /** Publishes a topic the same way content publication does: item, revision, then projection. */

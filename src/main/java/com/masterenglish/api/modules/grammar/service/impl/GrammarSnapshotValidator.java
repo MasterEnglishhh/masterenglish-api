@@ -6,6 +6,7 @@ import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.common.events.ContentEvents.SnapshotValidationRequested;
 import com.masterenglish.api.modules.grammar.repository.GrammarTopicRepository;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -31,6 +32,8 @@ public class GrammarSnapshotValidator {
     private static final int MAX_ROWS = 100;
     private static final int MAX_CELLS = 20;
     private static final int MAX_BODY_CHARS = 100_000;
+    private static final int MAX_BODY_BYTES = 1024 * 1024;
+    private static final int MAX_BODY_DEPTH = 16;
     private static final int MAX_POSITION = 100_000;
     private static final int MAX_ESTIMATED_MINUTES = 600;
 
@@ -114,17 +117,36 @@ public class GrammarSnapshotValidator {
         if (!body.isObject()) {
             fail("body must be an object.");
         }
+        if (depth(body) > MAX_BODY_DEPTH) {
+            fail("body nesting must be at most " + MAX_BODY_DEPTH + " levels.");
+        }
+        String json = body.toString();
+        if (json.codePointCount(0, json.length()) > MAX_BODY_CHARS) {
+            fail("body must be at most " + MAX_BODY_CHARS + " characters.");
+        }
+        if (json.getBytes(StandardCharsets.UTF_8).length > MAX_BODY_BYTES) {
+            fail("body must be at most 1 MiB in UTF-8.");
+        }
         onlyFields(body, "blocks");
         JsonNode blocks = body.path("blocks");
         if (!blocks.isArray() || blocks.size() < 1 || blocks.size() > MAX_BLOCKS) {
             fail("body.blocks must contain 1 to " + MAX_BLOCKS + " blocks.");
         }
-        if (body.toString().length() >= MAX_BODY_CHARS) {
-            fail("body is too large.");
-        }
         for (JsonNode block : blocks) {
             validateBlock(block);
         }
+    }
+
+    /** Container levels: a scalar is 0, and a container is one more than its deepest child. */
+    private static int depth(JsonNode node) {
+        if (!node.isContainerNode()) {
+            return 0;
+        }
+        int deepest = 0;
+        for (JsonNode child : node) {
+            deepest = Math.max(deepest, depth(child));
+        }
+        return deepest + 1;
     }
 
     private void validateBlock(JsonNode block) {

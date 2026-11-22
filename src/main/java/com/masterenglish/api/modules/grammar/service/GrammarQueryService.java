@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.grammar.service;
 
+import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
@@ -7,10 +8,11 @@ import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 public interface GrammarQueryService {
 
-    List<GrammarTopicResponse> listTopics();
+    PageResponse<GrammarTopicResponse> listTopics(Pageable pageable);
 
     List<GrammarLessonSummaryResponse> listLessons(UUID topicId);
 

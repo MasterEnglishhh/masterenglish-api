@@ -154,6 +154,83 @@ class GrammarSnapshotValidatorTests {
         assertRejected(LESSON, lesson, "body.blocks must contain 1 to 100 blocks.");
     }
 
+    @Test
+    void lessonRejectsMediaBlocks() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        blocks(lesson).removeAll();
+        blocks(lesson).addObject().put("type", "media").put("media_id", "img-1");
+
+        assertRejected(LESSON, lesson, "Unsupported block type: media");
+    }
+
+    @Test
+    void lessonRejectsHtmlInTableCells() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        blocks(lesson).removeAll();
+        blocks(lesson).addObject().put("type", "table").putArray("rows").addArray().add("<b>x</b>");
+
+        assertRejected(LESSON, lesson, "HTML is not allowed in grammar content.");
+    }
+
+    @Test
+    void lessonRejectsUnknownFieldsInBody() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        ((ObjectNode) lesson.path("body")).put("media", "img-1");
+
+        assertRejected(LESSON, lesson, "Unsupported snapshot field: media");
+    }
+
+    @Test
+    void lessonRejectsUnknownFieldsInsideABlock() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        ((ObjectNode) blocks(lesson).get(0)).put("color", "red");
+
+        assertRejected(LESSON, lesson, "Unsupported snapshot field: color");
+    }
+
+    @Test
+    void lessonAcceptsBodyBelowTheCharacterLimit() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        blocks(lesson).removeAll();
+        blocks(lesson).addObject().put("type", "paragraph").put("text", "a".repeat(50_000));
+        blocks(lesson).addObject().put("type", "paragraph").put("text", "b".repeat(40_000));
+        EventReply<Void> reply = new EventReply<>();
+
+        validator.on(new SnapshotValidationRequested(UUID.randomUUID(), LESSON, lesson, reply));
+
+        assertThat(reply.get(REQUEST)).isNull();
+    }
+
+    @Test
+    void lessonRejectsBodyOverOneHundredThousandCharacters() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        blocks(lesson).removeAll();
+        blocks(lesson).addObject().put("type", "paragraph").put("text", "a".repeat(50_000));
+        blocks(lesson).addObject().put("type", "paragraph").put("text", "b".repeat(50_000));
+
+        assertRejected(LESSON, lesson, "body must be at most 100000 characters.");
+    }
+
+    @Test
+    void lessonRejectsNestingDeeperThanSixteenLevels() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        ObjectNode deep = mapper.createObjectNode();
+        JsonNode level = deep;
+        for (int i = 0; i < 17; i++) {
+            level = ((ObjectNode) level).putObject("n");
+        }
+        ((ObjectNode) lesson.path("body")).set("extra", deep);
+
+        assertRejected(LESSON, lesson, "body nesting must be at most 16 levels.");
+    }
+
     private void assertRejected(String type, JsonNode data, String message) {
         EventReply<Void> reply = new EventReply<>();
         SnapshotValidationRequested event =

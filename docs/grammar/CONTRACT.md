@@ -42,13 +42,14 @@ Không có token: `401`. Có token nhưng không có vai trò học viên: `403`
 `GET /api/v1/grammar/topics`
 
 - Chỉ trả chủ điểm đang hiển thị (đã xuất bản, chưa lưu trữ, chưa bị thu hồi quyền truy cập).
-- Sắp theo `sortOrder` tăng dần, rồi theo `name`.
-- Hiện tại trả mảng, không phân trang. **Đã chốt (Chặng B):** chuyển sang `PageResponse<T>` (`items`, `page`, `pageSize`, `totalItems`, `totalPages`, `hasNext`), mặc định 20, tối đa 100, sắp theo `sort_order ASC, id ASC`. Đây là thay đổi hình dạng phản hồi, FE cần đồng bộ.
+- Mặc định sắp theo `sortOrder` tăng dần, rồi theo `id`.
+- Trả `PageResponse<T>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Mặc định `page` 0 và `size` 20, tối đa 100. `sortBy` nhận `sortOrder`, `name`, `id` (mặc định `sortOrder`). `sortDirection` nhận `asc` hoặc `desc` (mặc định `asc`). `id` luôn là tie-breaker. **Đã triển khai.** Hình dạng phản hồi đổi từ mảng sang trang, FE cần đồng bộ. Trường kích thước trang là `size`, khớp `common/api/PageResponse`.
+- Phân trang hiện làm trong bộ nhớ trên toàn bộ chủ điểm hiển thị (shortcut trong `GrammarQueryServiceImpl`, nâng cấp sang SQL khi số chủ điểm lớn).
 
-Phản hồi `GrammarTopicResponse[]`:
+Phản hồi `PageResponse<GrammarTopicResponse>`:
 
 ```json
-[{ "id": "uuid", "slug": "articles", "name": "Articles", "description": "A và an", "difficulty": "BASIC", "sortOrder": 1 }]
+{ "items": [{ "id": "uuid", "slug": "articles", "name": "Articles", "description": "A và an", "difficulty": "BASIC", "sortOrder": 1 }], "page": 0, "size": 20, "totalItems": 1, "totalPages": 1, "hasNext": false }
 ```
 
 ### 4.2. Bài học của chủ điểm
@@ -121,7 +122,7 @@ Trường khác bị từ chối với thông báo `Unsupported snapshot field: 
 | `position` | Bắt buộc. Số nguyên từ 0 đến 100000. Lưu vào `sort_order`. |
 | `body_schema_version` | Tùy chọn. Chỉ nhận `1`. |
 | `estimated_minutes` | Tùy chọn. Từ 1 đến 600. |
-| `body` | Bắt buộc. Chỉ có khóa `blocks`. Độ dài chuỗi JSON của `body` phải dưới 100000 ký tự. |
+| `body` | Bắt buộc. Chỉ có khóa `blocks`. Chuỗi JSON của `body` tối đa 100.000 ký tự và 1 MiB theo UTF-8. Độ sâu lồng tối đa 16 mức, tính `body` là mức 1. |
 
 ### 5.3. Khối nội dung (`body.blocks`)
 
@@ -135,7 +136,9 @@ Trường khác bị từ chối với thông báo `Unsupported snapshot field: 
 | `example` | `example_en` (bắt buộc), `example_vi` (tùy chọn) | Tối đa 10000 ký tự mỗi trường |
 | `table` | `rows`: từ 1 đến 100 hàng, mỗi hàng từ 1 đến 20 ô | Mỗi ô là chuỗi tối đa 500 ký tự |
 
-Mọi chuỗi đều không được chứa thẻ HTML. **Đã chốt:** giữ nguyên 5 loại khối trên làm allowlist của `body_schema_version = 1`. Chưa có khối `media` vì module Media chưa có API. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` của bài học phải rỗng. Guard bổ sung (Chặng B): tổng JSON `body` tối đa 1 MiB theo UTF-8 và 100.000 ký tự; độ sâu lồng tối đa 16; chỉ nhận field theo allowlist; từ chối HTML thô.
+Mọi chuỗi đều không được chứa thẻ HTML. **Đã chốt:** giữ nguyên 5 loại khối trên làm allowlist của `body_schema_version = 1`. Chưa có khối `media` vì module Media chưa có API. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` của bài học phải rỗng. Ràng buộc này không kiểm tra được trong `modules/grammar`: sự kiện `SnapshotValidationRequested` không mang thông tin media của revision, nên kiểm tra thuộc module `content`, ngoài phạm vi này.
+
+Guard đã triển khai: tổng JSON `body` tối đa 100.000 ký tự và 1 MiB theo UTF-8. Giới hạn 1 MiB không bao giờ kích hoạt trước giới hạn ký tự, vì 100.000 ký tự UTF-8 tối đa 400 KB, nên giữ làm chốt chặn phòng thủ. Độ sâu lồng tối đa 16. Chỉ nhận field theo allowlist. Từ chối HTML thô.
 
 ### 5.4. Lỗi
 
@@ -165,11 +168,11 @@ Bản nháp chỉ cần đủ trường khi xuất bản. Duyệt và xuất b�
 
 Người dùng đã chốt sáu quyết định dưới đây. Trạng thái ghi tình trạng của code tại thời điểm cập nhật.
 
-1. **Khối nội dung và giới hạn `body`.** Trạng thái: đã chốt, một phần đã triển khai. Giữ 5 loại khối làm allowlist, không thêm `media`, và `revision_media_refs` của lesson v1 phải rỗng. Guard còn thiếu (1 MiB UTF-8, độ sâu lồng 16, allowlist field, từ chối HTML thô) và ràng buộc `revision_media_refs` rỗng là việc của Chặng B.
+1. **Khối nội dung và giới hạn `body`.** Trạng thái: đã triển khai trong `modules/grammar`. Giữ 5 loại khối làm allowlist, không thêm `media`. Ràng buộc `revision_media_refs` rỗng cho lesson v1 không kiểm tra được ở `grammar`, xem mục 5.3.
 2. **Không tự tạo `IN_PROGRESS` khi mở bài.** Trạng thái: khớp triển khai.
 3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress` của module `learning`. Trạng thái: chưa triển khai.
 4. **`difficulty`** chỉ nhận `BASIC`, `INTERMEDIATE`, `ADVANCED`. Trạng thái: khớp bảng `grammar_topics` (V10) và validator.
-5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: chưa triển khai (Chặng B). Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
+5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: đã triển khai. Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
 6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: chưa triển khai (Chặng B).
 
 Phạm vi triển khai: tổng hợp tiến độ (quyết định 3) thuộc phạm vi module `learning`. Draft quản trị (§7) và bộ lọc `domain=GRAMMAR` (quyết định 6) thuộc phạm vi `admin`/`content`. Các phần này nằm ngoài phạm vi tự triển khai của `modules/grammar`.
