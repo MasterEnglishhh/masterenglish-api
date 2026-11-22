@@ -231,6 +231,40 @@ class GrammarSnapshotValidatorTests {
         assertRejected(LESSON, lesson, "body nesting must be at most 16 levels.");
     }
 
+    @Test
+    void lessonAcceptsComparisonSymbolsInText() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        blocks(lesson).removeAll();
+        blocks(lesson).addObject().put("type", "paragraph").put("text", "x < y and A < B");
+        EventReply<Void> reply = new EventReply<>();
+
+        validator.on(new SnapshotValidationRequested(UUID.randomUUID(), LESSON, lesson, reply));
+
+        assertThat(reply.get(REQUEST)).isNull();
+    }
+
+    @Test
+    void lessonRejectsHtmlTagsAndCommentsEvenWithoutAttributes() {
+        String[] markup = {
+            "<b>x</b>",
+            "<script>alert(1)</script>",
+            "<img src=x>",
+            "<br/>",
+            "</div>",
+            "<!-- note -->",
+            "<!DOCTYPE html>"
+        };
+        for (String html : markup) {
+            UUID topicId = publishedTopic();
+            ObjectNode lesson = lesson(topicId);
+            blocks(lesson).removeAll();
+            blocks(lesson).addObject().put("type", "paragraph").put("text", html);
+
+            assertRejected(LESSON, lesson, "HTML is not allowed in grammar content.");
+        }
+    }
+
     private void assertRejected(String type, JsonNode data, String message) {
         EventReply<Void> reply = new EventReply<>();
         SnapshotValidationRequested event =

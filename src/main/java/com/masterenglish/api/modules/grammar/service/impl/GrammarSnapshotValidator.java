@@ -24,7 +24,11 @@ public class GrammarSnapshotValidator {
     static final String LESSON = "GRAMMAR_LESSON";
 
     private static final Pattern SLUG = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
-    private static final Pattern HTML = Pattern.compile("<\\s*/?\\s*[a-zA-Z!]");
+    // Matches tags, comments and doctype only; comparison symbols such as "x < y" pass.
+    private static final Pattern HTML =
+            Pattern.compile(
+                    "</?[a-zA-Z][a-zA-Z0-9-]*(?:\\s[^>]*|/)?>|<!--|<!doctype",
+                    Pattern.CASE_INSENSITIVE);
     private static final Set<String> DIFFICULTIES = Set.of("BASIC", "INTERMEDIATE", "ADVANCED");
     private static final Set<String> BLOCK_TYPES =
             Set.of("heading", "paragraph", "note", "example", "table");

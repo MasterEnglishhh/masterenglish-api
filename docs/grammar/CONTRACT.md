@@ -43,7 +43,7 @@ Không có token: `401`. Có token nhưng không có vai trò học viên: `403`
 
 - Chỉ trả chủ điểm đang hiển thị (đã xuất bản, chưa lưu trữ, chưa bị thu hồi quyền truy cập).
 - Mặc định sắp theo `sortOrder` tăng dần, rồi theo `id`.
-- Trả `PageResponse<T>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Mặc định `page` 0 và `size` 20, tối đa 100. `sortBy` nhận `sortOrder`, `name`, `id` (mặc định `sortOrder`). `sortDirection` nhận `asc` hoặc `desc` (mặc định `asc`). `id` luôn là tie-breaker. **Đã triển khai.** Hình dạng phản hồi đổi từ mảng sang trang, FE cần đồng bộ. Trường kích thước trang là `size`, khớp `common/api/PageResponse`.
+- Trả `PageResponse<T>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Mặc định `page` 0 và `size` 20, tối đa 100. `sortBy` nhận `sortOrder`, `name`, `id` (mặc định `sortOrder`). `sortDirection` nhận `asc` hoặc `desc` (mặc định `asc`). `id` luôn là tie-breaker. **Đã triển khai.** Hình dạng phản hồi đổi từ mảng sang trang, FE cần đồng bộ. Trường kích thước trang là `size`, khớp `common/api/PageResponse`. Tài liệu SRS v5.0 ghi `pageSize`; code giữ `size` và không đổi module `common` để khớp SRS. FE dùng `size`.
 - Phân trang hiện làm trong bộ nhớ trên toàn bộ chủ điểm hiển thị (shortcut trong `GrammarQueryServiceImpl`, nâng cấp sang SQL khi số chủ điểm lớn).
 
 Phản hồi `PageResponse<GrammarTopicResponse>`:
@@ -136,13 +136,15 @@ Trường khác bị từ chối với thông báo `Unsupported snapshot field: 
 | `example` | `example_en` (bắt buộc), `example_vi` (tùy chọn) | Tối đa 10000 ký tự mỗi trường |
 | `table` | `rows`: từ 1 đến 100 hàng, mỗi hàng từ 1 đến 20 ô | Mỗi ô là chuỗi tối đa 500 ký tự |
 
-Mọi chuỗi đều không được chứa thẻ HTML. **Đã chốt:** giữ nguyên 5 loại khối trên làm allowlist của `body_schema_version = 1`. Chưa có khối `media` vì module Media chưa có API. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` của bài học phải rỗng. Ràng buộc này không kiểm tra được trong `modules/grammar`: sự kiện `SnapshotValidationRequested` không mang thông tin media của revision, nên kiểm tra thuộc module `content`, ngoài phạm vi này.
+Mọi chuỗi đều không được chứa thẻ HTML: thẻ mở, thẻ đóng, thẻ tự đóng, comment `<!--` và `<!DOCTYPE`. Ký hiệu so sánh như `x < y` được phép. **Đã chốt:** giữ nguyên 5 loại khối trên làm allowlist của `body_schema_version = 1`. Chưa có khối `media` vì module Media chưa có API. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` của bài học phải rỗng. Ràng buộc này không kiểm tra được trong `modules/grammar`: sự kiện `SnapshotValidationRequested` không mang thông tin media của revision, nên kiểm tra thuộc module `content`, ngoài phạm vi này.
 
 Guard đã triển khai: tổng JSON `body` tối đa 100.000 ký tự và 1 MiB theo UTF-8. Giới hạn 1 MiB không bao giờ kích hoạt trước giới hạn ký tự, vì 100.000 ký tự UTF-8 tối đa 400 KB, nên giữ làm chốt chặn phòng thủ. Độ sâu lồng tối đa 16. Chỉ nhận field theo allowlist. Từ chối HTML thô.
 
 ### 5.4. Lỗi
 
-Mọi lỗi kiểm tra dữ liệu trả `400 VALIDATION_ERROR` với thông báo tiếng Việt, cụ thể theo trường. Loại nội dung không có validator (ví dụ `QUESTION`) cũng trả `400`.
+Mọi lỗi kiểm tra dữ liệu trả `400 VALIDATION_ERROR` theo ProblemDetail (RFC 7807), cụ thể theo trường. Thông báo lỗi hiện dùng tiếng Anh, theo quy ước code hiện có. Đổi sang tiếng Việt là quyết định chung của dự án, chưa áp dụng cho module này. Loại nội dung không có validator (ví dụ `QUESTION`) cũng trả `400`.
+
+Kiểm thử trong `modules/grammar` xác nhận mã lỗi `VALIDATION_ERROR` ở tầng validator. Chưa có ca HTTP publish trong `modules/grammar`, vì endpoint publish nằm ở `admin`/`content`.
 
 ## 6. Luồng xuất bản
 
@@ -180,3 +182,11 @@ Phạm vi triển khai: tổng hợp tiến độ (quyết định 3) thuộc ph
 Thứ tự khóa khi bắt đầu luyện tập có chủ điểm (`AttemptServiceImpl.start`) giữ nguyên code: khóa user, idempotency, khóa topic `FOR SHARE` theo id tăng dần qua `GrammarEvents.lockPublishedTopics`, settle bài quá hạn và giới hạn 5 bài mở, rồi chọn câu. Facade khóa nằm trong `grammar`, caller nằm ở cụm results chưa merge.
 
 Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) được ghi ở mục 2.4 của tài liệu practice. Mục 2.4 hiện nằm ở nhánh `wip/m05-results-local`, chưa có trên nhánh này.
+
+## 9. Bàn giao
+
+- **`learning`:** tổng hợp tiến độ theo chủ điểm (`completedLessonCount`, `totalLessonCount`, `hasUpdate`) nằm trong `GET /api/v1/grammar/progress`. `grammar` cần cung cấp public facade đếm bài đã xuất bản theo chủ điểm, và `learning` đọc qua facade đó. Facade chưa có. Vì facade đặt trong `common/events`, cần duyệt riêng, ngoài phạm vi module `grammar`.
+- **`admin`/`content`:** API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`). `AdminContentController` hiện chỉ có `/words` và `/decks`. Cần sự kiện tạo bản nháp trong `common/events` và handler ở `content`.
+- **`content` (kiểm tra `revision_media_refs`):** lesson v1 phải có tập `revision_media_refs` rỗng khi xuất bản. `SnapshotValidationRequested` không mang thông tin media nên `grammar` không kiểm tra được. `content` cần kiểm tra trước khi phát sự kiện.
+- **Frontend:** `GET /api/v1/grammar/topics` trả `PageResponse<GrammarTopicResponse>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Phản hồi cũ là mảng, FE cần cập nhật. Trường kích thước là `size`, không phải `pageSize` như SRS v5.0.
+- **Ghi nhận checkpoint:** `GrammarPracticeControllerIntegrationTests.java` nằm trong `modules/practice/controller` theo đường dẫn. `GrammarPracticeController` đã có trên nhánh từ `9ea157d`. Commit checkpoint `6d733df` giữ nguyên, không viết lại lịch sử.
