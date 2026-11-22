@@ -59,6 +59,9 @@ class ContentPublication {
         if ("DECK".equals(type)) {
             recordDeckDependencies(revision.getId(), data.path("members"));
         }
+        if ("GRAMMAR_LESSON".equals(type)) {
+            recordLessonDependency(revision.getId(), data);
+        }
     }
 
     void revisionPublished(ContentItem item, ContentRevision revision) {
@@ -76,6 +79,13 @@ class ContentPublication {
             String relationKey = "deck_member:" + member.path("word_sense_id").asText();
             dependencies.save(new RevisionDependency(revisionId, relationKey, pinnedRevision));
         }
+    }
+
+    /** A lesson pins the topic revision it was validated against, so the pin stays on record. */
+    private void recordLessonDependency(UUID revisionId, JsonNode data) {
+        UUID topicId = UUID.fromString(data.path("topic_id").asText());
+        UUID pinnedRevision = UUID.fromString(data.path("pinned_topic_revision_id").asText());
+        dependencies.save(new RevisionDependency(revisionId, "topic:" + topicId, pinnedRevision));
     }
 
     private void captureSources(UUID revisionId) {

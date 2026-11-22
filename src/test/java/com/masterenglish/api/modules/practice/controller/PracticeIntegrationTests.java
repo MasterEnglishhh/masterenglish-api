@@ -109,6 +109,26 @@ class PracticeIntegrationTests {
     }
 
     @Test
+    void revokedQuestionIsNeitherCountedNorDrawn() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Revoke kept", "a", "b");
+        UUID revoked = publishQuestion(topic, "Revoke gone", "a", "b");
+        revoke(revoked);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics/" + topic + "/exercises")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.availableQuestions").value(1));
+
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), null, topic, 201);
+        assertThat(attempt.path("totalCount").asInt()).isEqualTo(1);
+        for (JsonNode question : attempt.path("questions")) {
+            assertThat(question.path("prompt").asText()).isNotEqualTo("Revoke gone");
+        }
+    }
+
+    @Test
     void startingAttemptSealsQuestionsWithoutRevealingAnswers() throws Exception {
         UUID topic = publishTopic();
         publishQuestion(topic, "Seal one", "right-1", "wrong-1");
@@ -573,6 +593,13 @@ class PracticeIntegrationTests {
     private UUID currentRevision(UUID item) {
         return jdbc.queryForObject(
                 "SELECT published_revision_id FROM content_items WHERE id = ?", UUID.class, item);
+    }
+
+    private void revoke(UUID item) {
+        jdbc.update(
+                "UPDATE content_items SET access_revoked_at = now(), access_revoke_reason = 'test'"
+                        + " WHERE id = ?",
+                item);
     }
 
     private void archive(UUID item) {

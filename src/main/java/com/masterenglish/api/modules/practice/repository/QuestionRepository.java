@@ -28,7 +28,7 @@ public interface QuestionRepository extends JpaRepository<Question, UUID> {
                     SELECT picked.question_id AS questionId, picked.topic_id AS topicId FROM (
                         SELECT DISTINCT ON (q.id) q.id AS question_id, qt.topic_id AS topic_id
                         FROM questions q
-                        JOIN content_items ci ON ci.id = q.id AND ci.is_archived = false
+                        JOIN catalog_visible_items ci ON ci.id = q.id
                             AND ci.published_revision_id = q.published_revision_id
                         JOIN question_topics qt ON qt.question_id = q.id
                         WHERE qt.topic_id IN (:topicIds)
@@ -45,7 +45,7 @@ public interface QuestionRepository extends JpaRepository<Question, UUID> {
             value =
                     """
                     SELECT count(DISTINCT q.id) FROM questions q
-                    JOIN content_items ci ON ci.id = q.id AND ci.is_archived = false
+                    JOIN catalog_visible_items ci ON ci.id = q.id
                         AND ci.published_revision_id = q.published_revision_id
                     JOIN question_topics qt ON qt.question_id = q.id
                     WHERE qt.topic_id = :topicId

@@ -96,6 +96,27 @@ class GrammarPublicationIntegrationTests {
     }
 
     @Test
+    void lessonRecordsItsPinnedTopicRevisionAndKeepsEachRevisionsPin() {
+        UUID topicId = UUID.randomUUID();
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID topicRevision = publish(topicId, TOPIC, topicSnapshot("pin-" + suffix, "Pinned"));
+        UUID lessonId = UUID.randomUUID();
+        UUID first =
+                publish(
+                        lessonId,
+                        LESSON,
+                        lessonSnapshot(topicId, topicRevision, "pin-lesson", "First pin."));
+        UUID second =
+                publish(
+                        lessonId,
+                        LESSON,
+                        lessonSnapshot(topicId, topicRevision, "pin-lesson", "Second pin."));
+
+        assertThat(pinnedTopicRevision(first, topicId)).isEqualTo(topicRevision);
+        assertThat(pinnedTopicRevision(second, topicId)).isEqualTo(topicRevision);
+    }
+
+    @Test
     void lessonWithHtmlIsRejectedAndNotProjected() {
         UUID topicId = UUID.randomUUID();
         UUID topicRevision = publish(topicId, TOPIC, topicSnapshot("articles-c", "Articles"));
@@ -187,6 +208,15 @@ class GrammarPublicationIntegrationTests {
         var inReview = authoringService.submitForReview(draft, adminId);
         var approved = authoringService.approve(inReview.getId(), adminId, "Content verified");
         return authoringService.publish(approved.getId(), adminId).getId();
+    }
+
+    private UUID pinnedTopicRevision(UUID lessonRevision, UUID topicId) {
+        return jdbc.queryForObject(
+                "SELECT child_revision_id FROM revision_dependencies"
+                        + " WHERE parent_revision_id = ? AND relation_key = ?",
+                UUID.class,
+                lessonRevision,
+                "topic:" + topicId);
     }
 
     private static String topicSnapshot(String slug, String name) {

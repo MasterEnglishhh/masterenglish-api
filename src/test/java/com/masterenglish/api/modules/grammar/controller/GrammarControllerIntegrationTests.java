@@ -218,6 +218,30 @@ class GrammarControllerIntegrationTests {
         }
     }
 
+    @Test
+    void lessonDetailIsNotFoundWhenItsTopicIsArchived() throws Exception {
+        UUID topic = publishTopic("arc-" + suffix(), "Archived parent", 1);
+        UUID lesson = publishLesson(topic, "Child lesson", 1, "{\"blocks\":[]}");
+        archive(topic);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/lessons/" + lesson)
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void lessonDetailIsNotFoundWhenItsTopicAccessIsRevoked() throws Exception {
+        UUID topic = publishTopic("rev-" + suffix(), "Revoked parent", 1);
+        UUID lesson = publishLesson(topic, "Child lesson", 1, "{\"blocks\":[]}");
+        revoke(topic);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/lessons/" + lesson)
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isNotFound());
+    }
+
     /** Publishes a topic the same way content publication does: item, revision, then projection. */
     private UUID publishTopic(String slug, String name, int sortOrder) {
         UUID item = publishItem("GRAMMAR_TOPIC");
@@ -275,6 +299,13 @@ class GrammarControllerIntegrationTests {
     private UUID currentRevision(UUID item) {
         return jdbc.queryForObject(
                 "SELECT published_revision_id FROM content_items WHERE id = ?", UUID.class, item);
+    }
+
+    private void revoke(UUID item) {
+        jdbc.update(
+                "UPDATE content_items SET access_revoked_at = now(), access_revoke_reason = 'test'"
+                        + " WHERE id = ?",
+                item);
     }
 
     private void archive(UUID item) {

@@ -265,6 +265,34 @@ class GrammarSnapshotValidatorTests {
         }
     }
 
+    @Test
+    void topicWithoutDifficultyIsAccepted() {
+        ObjectNode topic = topic();
+        topic.putNull("difficulty");
+        EventReply<Void> reply = new EventReply<>();
+
+        validator.on(new SnapshotValidationRequested(UUID.randomUUID(), TOPIC, topic, reply));
+
+        assertThat(reply.get(REQUEST)).isNull();
+    }
+
+    @Test
+    void topicRejectsNegativeSortOrder() {
+        ObjectNode topic = topic();
+        topic.put("sort_order", -1);
+
+        assertRejected(TOPIC, topic, "sort_order must be an integer from 0 to 2147483647.");
+    }
+
+    @Test
+    void lessonRejectsNonPositiveEstimatedMinutes() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        lesson.put("estimated_minutes", 0);
+
+        assertRejected(LESSON, lesson, "estimated_minutes must be an integer from 1 to 600.");
+    }
+
     private void assertRejected(String type, JsonNode data, String message) {
         EventReply<Void> reply = new EventReply<>();
         SnapshotValidationRequested event =
