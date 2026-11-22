@@ -43,7 +43,7 @@ Không có token: `401`. Có token nhưng không có vai trò học viên: `403`
 
 - Chỉ trả chủ điểm đang hiển thị (đã xuất bản, chưa lưu trữ, chưa bị thu hồi quyền truy cập).
 - Sắp theo `sortOrder` tăng dần, rồi theo `name`.
-- Trả mảng, không phân trang. **[cần duyệt]** Dev dùng `PageResponse` cho danh sách lớn; danh sách chủ điểm có thể cần chuyển sang phân trang.
+- Hiện tại trả mảng, không phân trang. **Đã chốt (Chặng B):** chuyển sang `PageResponse<T>` (`items`, `page`, `pageSize`, `totalItems`, `totalPages`, `hasNext`), mặc định 20, tối đa 100, sắp theo `sort_order ASC, id ASC`. Đây là thay đổi hình dạng phản hồi, FE cần đồng bộ.
 
 Phản hồi `GrammarTopicResponse[]`:
 
@@ -92,7 +92,7 @@ Phản hồi `GrammarLessonResponse`:
 
 Chưa triển khai: trường `hasNewerRevision` trong phản hồi bài học và trường `state` trong `GET /lessons/{lessonId}`. Thêm các trường này sẽ làm module `grammar` phụ thuộc `learning`, nên cần duyệt riêng.
 
-**[cần duyệt]** Có tự tạo `IN_PROGRESS` khi học viên chỉ mở bài hay không. Hiện tại chỉ PUT mới tạo dòng.
+**Đã chốt:** không tự tạo `IN_PROGRESS` khi học viên chỉ mở bài. Chỉ PUT mới tạo dòng.
 
 ## 5. Quy tắc nội dung
 
@@ -135,7 +135,7 @@ Trường khác bị từ chối với thông báo `Unsupported snapshot field: 
 | `example` | `example_en` (bắt buộc), `example_vi` (tùy chọn) | Tối đa 10000 ký tự mỗi trường |
 | `table` | `rows`: từ 1 đến 100 hàng, mỗi hàng từ 1 đến 20 ô | Mỗi ô là chuỗi tối đa 500 ký tự |
 
-Mọi chuỗi đều không được chứa thẻ HTML. **[cần duyệt]** Danh mục khối trên là bộ tối thiểu đang triển khai. Chưa có khối audio hay ảnh vì module Media chưa có API.
+Mọi chuỗi đều không được chứa thẻ HTML. **Đã chốt:** giữ nguyên 5 loại khối trên làm allowlist của `body_schema_version = 1`. Chưa có khối `media` vì module Media chưa có API. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` của bài học phải rỗng. Guard bổ sung (Chặng B): tổng JSON `body` tối đa 1 MiB theo UTF-8 và 100.000 ký tự; độ sâu lồng tối đa 16; chỉ nhận field theo allowlist; từ chối HTML thô.
 
 ### 5.4. Lỗi
 
@@ -159,11 +159,21 @@ Mọi lỗi kiểm tra dữ liệu trả `400 VALIDATION_ERROR` với thông bá
 
 Bản nháp chỉ cần đủ trường khi xuất bản. Duyệt và xuất bản dùng các endpoint revision có sẵn.
 
-## 8. Câu hỏi còn lại [cần duyệt]
+**Phạm vi:** API tạo/sửa Draft và bộ lọc `domain=GRAMMAR` thuộc `admin`/`content`, ngoài phạm vi tự triển khai của `modules/grammar`.
 
-1. Danh mục khối nội dung (mục 5.3) và các trường của từng loại.
-2. Có tự tạo `IN_PROGRESS` khi học viên chỉ mở bài hay không (mục 4.4).
-3. Có cần tổng hợp tiến độ theo chủ điểm, ví dụ "3/8 bài", hay không.
-4. Danh sách `difficulty` và các giới hạn số có đúng ý không.
-5. Danh sách chủ điểm trả mảng hay `PageResponse`.
-6. Danh sách quản trị trả `domain = GRAMMAR` cho mục ngữ pháp; giao diện quản trị phải mở rộng bộ lọc.
+## 8. Quyết định đã chốt và trạng thái triển khai
+
+Người dùng đã chốt sáu quyết định dưới đây. Trạng thái ghi tình trạng của code tại thời điểm cập nhật.
+
+1. **Khối nội dung và giới hạn `body`.** Trạng thái: đã chốt, một phần đã triển khai. Giữ 5 loại khối làm allowlist, không thêm `media`, và `revision_media_refs` của lesson v1 phải rỗng. Guard còn thiếu (1 MiB UTF-8, độ sâu lồng 16, allowlist field, từ chối HTML thô) và ràng buộc `revision_media_refs` rỗng là việc của Chặng B.
+2. **Không tự tạo `IN_PROGRESS` khi mở bài.** Trạng thái: khớp triển khai.
+3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress` của module `learning`. Trạng thái: chưa triển khai.
+4. **`difficulty`** chỉ nhận `BASIC`, `INTERMEDIATE`, `ADVANCED`. Trạng thái: khớp bảng `grammar_topics` (V10) và validator.
+5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: chưa triển khai (Chặng B). Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
+6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: chưa triển khai (Chặng B).
+
+Phạm vi triển khai: tổng hợp tiến độ (quyết định 3) thuộc phạm vi module `learning`. Draft quản trị (§7) và bộ lọc `domain=GRAMMAR` (quyết định 6) thuộc phạm vi `admin`/`content`. Các phần này nằm ngoài phạm vi tự triển khai của `modules/grammar`.
+
+Thứ tự khóa khi bắt đầu luyện tập có chủ điểm (`AttemptServiceImpl.start`) giữ nguyên code: khóa user, idempotency, khóa topic `FOR SHARE` theo id tăng dần qua `GrammarEvents.lockPublishedTopics`, settle bài quá hạn và giới hạn 5 bài mở, rồi chọn câu. Facade khóa nằm trong `grammar`, caller nằm ở cụm results chưa merge.
+
+Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) được ghi ở mục 2.4 của tài liệu practice. Mục 2.4 hiện nằm ở nhánh `wip/m05-results-local`, chưa có trên nhánh này.
