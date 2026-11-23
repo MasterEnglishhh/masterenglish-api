@@ -1,5 +1,6 @@
 package com.masterenglish.api.common.error;
 
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
@@ -16,15 +17,24 @@ public enum ErrorCode {
     PASSWORD_REJECTED(HttpStatus.BAD_REQUEST),
     RESET_TOKEN_INVALID(HttpStatus.BAD_REQUEST),
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
-    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
+    NO_ELIGIBLE_QUESTIONS(HttpStatus.CONFLICT, "requestedCount", "availableCount"),
+    INSUFFICIENT_QUESTIONS(HttpStatus.CONFLICT, "requestedCount", "availableCount");
 
     private final HttpStatus httpStatus;
+    private final Set<String> detailKeys;
 
-    ErrorCode(HttpStatus httpStatus) {
+    ErrorCode(HttpStatus httpStatus, String... detailKeys) {
         this.httpStatus = httpStatus;
+        this.detailKeys = Set.of(detailKeys);
     }
 
     public HttpStatus getHttpStatus() {
         return httpStatus;
+    }
+
+    /** Fixed allowlist in code. A key not listed here must never be sent to the client. */
+    public boolean allowsDetail(String key) {
+        return key != null && detailKeys.contains(key);
     }
 }

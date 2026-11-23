@@ -13,11 +13,17 @@ import com.masterenglish.api.modules.content.entity.RevisionDependency;
 import com.masterenglish.api.modules.content.repository.ContentSourceLinkRepository;
 import com.masterenglish.api.modules.content.repository.ContentSourceRepository;
 import com.masterenglish.api.modules.content.repository.RevisionDependencyRepository;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 class ContentPublication {
+    // Types with a snapshot validator registered in another module. Add a type here when its module
+    // starts validating, so publication of unvalidated types fails with 400 instead of 500.
+    private static final Set<String> VALIDATED_TYPES =
+            Set.of("WORD", "DECK", "GRAMMAR_TOPIC", "GRAMMAR_LESSON", "QUESTION");
+
     private final ContentSnapshots snapshots;
     private final ContentSourceLinkRepository sourceLinks;
     private final ContentSourceRepository sources;
@@ -43,11 +49,18 @@ class ContentPublication {
     /** Runs inside the authoring transaction before the revision becomes immutable. */
     void prepare(ContentItem item, ContentRevision revision) {
         String type = item.getContentType();
+        if (!VALIDATED_TYPES.contains(type)) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Unsupported content type: " + type);
+        }
         JsonNode data = snapshots.data(revision.getSnapshot());
         contentEvents.validateSnapshot(item.getId(), type, data);
         captureSources(revision.getId());
         if ("DECK".equals(type)) {
             recordDeckDependencies(revision.getId(), data.path("members"));
+        }
+        if ("GRAMMAR_LESSON".equals(type)) {
+            recordLessonDependency(revision.getId(), data);
         }
     }
 
@@ -66,6 +79,13 @@ class ContentPublication {
             String relationKey = "deck_member:" + member.path("word_sense_id").asText();
             dependencies.save(new RevisionDependency(revisionId, relationKey, pinnedRevision));
         }
+    }
+
+    /** A lesson pins the topic revision it was validated against, so the pin stays on record. */
+    private void recordLessonDependency(UUID revisionId, JsonNode data) {
+        UUID topicId = UUID.fromString(data.path("topic_id").asText());
+        UUID pinnedRevision = UUID.fromString(data.path("pinned_topic_revision_id").asText());
+        dependencies.save(new RevisionDependency(revisionId, "topic:" + topicId, pinnedRevision));
     }
 
     private void captureSources(UUID revisionId) {

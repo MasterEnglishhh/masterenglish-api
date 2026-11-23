@@ -73,14 +73,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     ResponseEntity<Object> handleBusiness(BusinessException exception, HttpServletRequest request) {
-        return ResponseEntity.status(exception.getErrorCode().getHttpStatus())
-                .body(
-                        problem(
-                                exception.getErrorCode().getHttpStatus(),
-                                exception.getErrorCode(),
-                                exception.getMessage(),
-                                request,
-                                List.of()));
+        HttpStatus status = exception.getErrorCode().getHttpStatus();
+        ProblemDetail problem =
+                problem(
+                        status,
+                        exception.getErrorCode(),
+                        exception.getMessage(),
+                        request,
+                        List.of());
+        // Keys were checked against the ErrorCode allowlist when the exception was built.
+        exception.getDetails().forEach(problem::setProperty);
+        return ResponseEntity.status(status).body(problem);
     }
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
