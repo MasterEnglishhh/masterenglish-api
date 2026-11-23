@@ -10,4 +10,17 @@ public record AdminRevisionDto(
         int versionNo,
         String reviewNote,
         Instant publishedAt,
-        Instant updatedAt) {}
+        Instant updatedAt,
+        long version) {
+
+    public AdminRevisionDto(
+            UUID revisionId,
+            UUID contentItemId,
+            String status,
+            int versionNo,
+            String reviewNote,
+            Instant publishedAt,
+            Instant updatedAt) {
+        this(revisionId, contentItemId, status, versionNo, reviewNote, publishedAt, updatedAt, 0L);
+    }
+}

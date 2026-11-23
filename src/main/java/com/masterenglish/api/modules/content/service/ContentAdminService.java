@@ -4,9 +4,16 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.ContentEvents.AdminSource;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.DeckDraft;
+import com.masterenglish.api.common.events.ContentEvents.DraftEdit;
+import com.masterenglish.api.common.events.ContentEvents.GrammarDraft;
+import com.masterenglish.api.common.events.ContentEvents.ItemDetailView;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
+import com.masterenglish.api.common.events.ContentEvents.RevisionClone;
+import com.masterenglish.api.common.events.ContentEvents.RevisionHistoryView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
 import com.masterenglish.api.common.events.ContentEvents.SourceView;
+import com.masterenglish.api.common.events.ContentEvents.UpdateSource;
+import com.masterenglish.api.common.events.ContentEvents.ValidationView;
 import com.masterenglish.api.common.events.ContentEvents.WordDraft;
 import java.util.List;
 import java.util.UUID;
@@ -17,9 +24,26 @@ public interface ContentAdminService {
     PageResponse<ItemView> findContentItems(
             String search, String contentType, String status, Pageable pageable);
 
+    PageResponse<ItemView> findContentItems(
+            String domain, String search, String contentType, String status, Pageable pageable);
+
+    ItemDetailView getContentItemDetail(UUID itemId);
+
+    PageResponse<RevisionHistoryView> getRevisionHistory(UUID itemId, Pageable pageable);
+
     ItemView createWordDraft(WordDraft request, UUID actorId);
 
     ItemView createDeckDraft(DeckDraft request, UUID actorId);
+
+    ItemView createGrammarTopicDraft(GrammarDraft request, UUID actorId);
+
+    ItemView createGrammarLessonDraft(GrammarDraft request, UUID actorId);
+
+    RevisionView updateDraftRevision(DraftEdit request, UUID actorId);
+
+    RevisionView createRevisionFromPublished(RevisionClone request, UUID actorId);
+
+    ValidationView validateRevision(UUID revisionId);
 
     RevisionView submitRevision(UUID revisionId, UUID actorId);
 
@@ -31,9 +55,13 @@ public interface ContentAdminService {
 
     void archiveContentItem(UUID itemId, String reason, UUID actorId);
 
+    void unpublishContentItem(UUID itemId, String reason, UUID actorId);
+
     PageResponse<SourceView> findSources(String search, Pageable pageable);
 
     SourceView createSource(AdminSource request, UUID actorId);
+
+    SourceView updateSource(UpdateSource request, UUID actorId);
 
     PageResponse<AuditEntry> findAuditLogs(String search, String entityType, Pageable pageable);
 

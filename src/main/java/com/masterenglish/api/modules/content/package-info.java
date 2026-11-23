@@ -8,6 +8,7 @@
             "common::storage",
             "common::error",
             "common::security",
-            "common::pagination"
+            "common::pagination",
+            "common::validation"
         })
 package com.masterenglish.api.modules.content;

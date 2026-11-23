@@ -18,10 +18,21 @@ class ContentAdminEventHandler {
         event.reply()
                 .complete(
                         admin.findContentItems(
+                                event.domain(),
                                 event.search(),
                                 event.contentType(),
                                 event.status(),
                                 event.pageable()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetContentItemDetail event) {
+        event.reply().complete(admin.getContentItemDetail(event.itemId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetRevisionHistory event) {
+        event.reply().complete(admin.getRevisionHistory(event.itemId(), event.pageable()));
     }
 
     @EventListener
@@ -32,6 +43,31 @@ class ContentAdminEventHandler {
     @EventListener
     void on(ContentEvents.AdminCreateDeckDraft event) {
         event.reply().complete(admin.createDeckDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateGrammarTopicDraft event) {
+        event.reply().complete(admin.createGrammarTopicDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateGrammarLessonDraft event) {
+        event.reply().complete(admin.createGrammarLessonDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminUpdateDraftRevision event) {
+        event.reply().complete(admin.updateDraftRevision(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateRevisionFromPublished event) {
+        event.reply().complete(admin.createRevisionFromPublished(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminValidateRevision event) {
+        event.reply().complete(admin.validateRevision(event.revisionId()));
     }
 
     @EventListener
@@ -67,6 +103,12 @@ class ContentAdminEventHandler {
     }
 
     @EventListener
+    void on(ContentEvents.AdminUnpublishContentItem event) {
+        admin.unpublishContentItem(event.itemId(), event.reason(), event.actorId());
+        event.reply().complete(null);
+    }
+
+    @EventListener
     void on(ContentEvents.AdminFindSources event) {
         event.reply().complete(admin.findSources(event.search(), event.pageable()));
     }
@@ -74,6 +116,11 @@ class ContentAdminEventHandler {
     @EventListener
     void on(ContentEvents.AdminCreateSource event) {
         event.reply().complete(admin.createSource(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminUpdateSource event) {
+        event.reply().complete(admin.updateSource(event.request(), event.actorId()));
     }
 
     @EventListener

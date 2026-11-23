@@ -185,10 +185,11 @@
 *Yêu cầu quyền:* `CONTENT_ADMIN` hoặc `SYSTEM_ADMIN`
 
 #### `GET /api/v1/admin/content/items`
-- **Mô tả:** Danh sách nội dung (Từ vựng, Bộ thẻ) kèm phiên bản và trạng thái mới nhất.
+- **Mô tả:** Danh sách nội dung (Từ vựng, Bộ thẻ, Chủ điểm & Bài học ngữ pháp) kèm phiên bản và trạng thái mới nhất.
 - **Query params:**
+  - `domain`: `"GRAMMAR" | "VOCABULARY" | "ALL"` (tùy chọn). Khi `domain=GRAMMAR`, chỉ trả về các nội dung thuộc ngữ pháp (`GRAMMAR_TOPIC`, `GRAMMAR_LESSON`), không lẫn `WORD`/`DECK`/`QUESTION`. Nếu kết hợp xung đột (`domain=GRAMMAR&contentType=WORD`), trả về danh sách rỗng. Domain không hợp lệ trả về `400 Bad Request`.
   - `search`: `string` (tùy chọn).
-  - `contentType`: `"WORD" | "DECK" | "ALL"` (tùy chọn).
+  - `contentType`: `"WORD" | "DECK" | "GRAMMAR_TOPIC" | "GRAMMAR_LESSON" | "ALL"` (tùy chọn).
   - `status`: `"DRAFT" | "IN_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED" | "ALL"` (tùy chọn).
   - `page`, `size`: `integer`.
 - **Response:** `200 OK`
@@ -209,6 +210,84 @@
       "updatedAt": "2026-11-05T10:00:00Z",
       "level": "B2",
       "latestRevisionId": "28000000-0000-0000-0000-000000000001"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalItems": 1,
+  "totalPages": 1,
+  "hasNext": false
+}
+```
+
+#### `GET /api/v1/admin/content/items/{id}`
+- **Mô tả:** Đọc chi tiết một nội dung kèm revision hiện hành (DRAFT nếu đang mở, hoặc PUBLISHED), optimistic lock token `version` (của revision) và `itemVersion` (của content_item), dữ liệu snapshot payload và danh sách mã nguồn trích dẫn.
+- **Response:** `200 OK` (`AdminContentDetailDto`):
+```json
+{
+  "id": "18000000-0000-0000-0000-000000000001",
+  "revisionId": "28000000-0000-0000-0000-000000000002",
+  "contentType": "WORD",
+  "status": "DRAFT",
+  "versionNo": 2,
+  "version": 1,
+  "itemVersion": 1,
+  "data": {
+    "lemma": "resilient",
+    "language_code": "en",
+    "ipa": "/rɪˈzɪliənt/",
+    "senses": [
+      {
+        "id": "c2000000-0000-0000-0000-000000000001",
+        "sense_no": 1,
+        "part_of_speech": "ADJECTIVE",
+        "cefr_level": "B2",
+        "meaning_vi": "kiên cường",
+        "definition_en": "able to recover quickly",
+        "examples": []
+      }
+    ]
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Bản nháp v2",
+  "createdBy": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "reviewedBy": null,
+  "reviewedAt": null,
+  "reviewNote": null,
+  "publishedAt": null,
+  "createdAt": "2026-11-05T10:00:00Z",
+  "updatedAt": "2026-11-10T12:00:00Z"
+}
+```
+- **Lỗi:**
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Người dùng vai trò `LEARNER`.
+  - `404 Not Found`: Không tìm thấy nội dung với `id`.
+
+#### `GET /api/v1/admin/content/items/{id}/revisions`
+- **Mô tả:** Lấy danh sách lịch sử phân trang các bản sửa đổi (`revisions`) của nội dung, sắp xếp `versionNo DESC, id DESC`.
+- **Query params:**
+  - `page`: `integer` (mặc định 0).
+  - `size`: `integer` (mặc định 20, tối đa 100).
+- **Response:** `200 OK` (`PageResponse<AdminRevisionHistoryDto>`):
+```json
+{
+  "items": [
+    {
+      "revisionId": "28000000-0000-0000-0000-000000000002",
+      "contentItemId": "18000000-0000-0000-0000-000000000001",
+      "versionNo": 2,
+      "status": "DRAFT",
+      "version": 0,
+      "changeSummary": "Bắt đầu v2",
+      "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+      "createdBy": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "reviewNote": null,
+      "publishedAt": null,
+      "createdAt": "2026-11-10T12:00:00Z",
+      "updatedAt": "2026-11-10T12:00:00Z"
     }
   ],
   "page": 0,
@@ -253,6 +332,137 @@
 ```
 - **Response:** `201 Created` (`AdminContentItemDto`).
 
+#### `POST /api/v1/admin/content/grammar/topics`
+- **Mô tả:** Tạo bản thảo chủ điểm ngữ pháp mới (`GRAMMAR_TOPIC`) kèm revision DRAFT (versionNo = 1). Hỗ trợ lưu partial draft (không bắt buộc đủ toàn bộ các trường publish khi tạo draft).
+- **Request Body:**
+```json
+{
+  "data": {
+    "name": "Articles & Determiners",
+    "slug": "articles-and-determiners",
+    "description": "A, An, The usage",
+    "difficulty": "BASIC",
+    "sort_order": 1
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Khởi tạo chủ điểm mạo từ"
+}
+```
+- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`slug`, `name`, `description`, `difficulty`, `sort_order`), nguồn trích dẫn không tồn tại, hoặc dữ liệu lồng nhau sai quy chuẩn.
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Người dùng vai trò `LEARNER` hoặc thiếu token CSRF.
+
+#### `POST /api/v1/admin/content/grammar/lessons`
+- **Mô tả:** Tạo bản thảo bài học ngữ pháp mới (`GRAMMAR_LESSON`) kèm revision DRAFT (versionNo = 1). Hỗ trợ partial draft.
+- **Request Body:**
+```json
+{
+  "data": {
+    "topic_id": "18000000-0000-0000-0000-000000000001",
+    "pinned_topic_revision_id": "28000000-0000-0000-0000-000000000001",
+    "title": "Definite Article",
+    "slug": "definite-article",
+    "position": 1,
+    "body_schema_version": 1,
+    "estimated_minutes": 10,
+    "body": {
+      "blocks": [
+        { "type": "heading", "text": "Overview" },
+        { "type": "paragraph", "text": "The definite article 'the' is used..." }
+      ]
+    }
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Khởi tạo bài học mạo từ xác định"
+}
+```
+- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`topic_id`, `pinned_topic_revision_id`, `title`, `slug`, `position`, `body_schema_version`, `estimated_minutes`, `body`), body vượt trần 100.000 ký tự / 1 MiB UTF-8 / độ sâu 16 mức, chứa HTML, nguồn không tồn tại.
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Không đủ quyền hoặc thiếu token CSRF.
+
+#### `PUT /api/v1/admin/content/revisions/{id}`
+- **Mô tả:** Chỉnh sửa bản thảo revision với cơ chế CAS (`expectedVersion`).
+  - Cho phép sửa khi ở trạng thái `DRAFT`.
+  - Nếu sửa khi ở trạng thái `REJECTED` hoặc `APPROVED`, hệ thống tự động reset trạng thái về `DRAFT` và xóa thông tin duyệt trước đó (`reviewedBy`, `reviewedAt`, `reviewNote`).
+  - Bị chặn (`409 Conflict`) khi đang ở trạng thái `IN_REVIEW` hoặc `PUBLISHED`.
+  - Kiểm tra tính hợp lệ của nguồn trích dẫn (`sourceIds` không được rỗng khi xuất bản; các ID nguồn phải tồn tại).
+  - Kiểm tra quyền sở hữu sense và example (không được chuyển nghĩa/ví dụ sang từ khác).
+  - Đối với DECK, tự động kiểm tra nghĩa từ thuộc từ đã xuất bản, ghim đúng revision đã xuất bản và chuẩn hóa vị trí (`position`).
+- **Request Body:**
+```json
+{
+  "expectedVersion": 0,
+  "data": {
+    "lemma": "persevere",
+    "language_code": "en",
+    "senses": [
+      {
+        "id": "c2000000-0000-0000-0000-000000000002",
+        "sense_no": 1,
+        "part_of_speech": "VERB",
+        "cefr_level": "B2",
+        "meaning_vi": "kiên trì, bền chí",
+        "examples": []
+      }
+    ]
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Cập nhật nghĩa tiếng Việt"
+}
+```
+- **Response:** `200 OK` (`AdminRevisionDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Payload sai cấu trúc, trùng sense/example, hoặc chuyển quyền sở hữu nghĩa từ.
+  - `404 Not Found`: Revision không tồn tại hoặc nguồn không tồn tại.
+  - `409 Conflict`: `expectedVersion` bị cũ (stale version CAS) hoặc revision đang ở trạng thái không cho phép sửa (`IN_REVIEW`, `PUBLISHED`).
+
+#### `POST /api/v1/admin/content/items/{id}/revisions`
+- **Mô tả:** Khởi tạo bản thảo revision mới (`DRAFT`) từ bản đã xuất bản (`PUBLISHED`). Kế thừa toàn bộ snapshot và nguồn trích dẫn từ bản xuất bản, tăng `versionNo = max(versionNo) + 1`. Đảm bảo invariant mỗi nội dung chỉ có tối đa một revision mở.
+- **Request Body:**
+```json
+{
+  "baseRevisionId": "28000000-0000-0000-0000-000000000001",
+  "expectedItemVersion": 1,
+  "changeSummary": "Khởi tạo revision mới để chỉnh sửa nội dung"
+}
+```
+- **Response:** `201 Created` (`AdminRevisionDto`).
+- **Lỗi:**
+  - `404 Not Found`: Không tìm thấy nội dung hoặc baseRevisionId.
+  - `409 Conflict`: Nội dung đã có một revision mở chưa xuất bản, hoặc `expectedItemVersion` bị cũ (stale CAS).
+
+#### `POST /api/v1/admin/content/revisions/{id}/validate`
+- **Mô tả:** Xem trước và kiểm tra tính hợp lệ cấp xuất bản (publish-level validation) của revision mà hoàn toàn **không gây đột biến (read-only)**: không đổi trạng thái revision, không tăng version, không ghi log và không chiếu dữ liệu vào bảng nghiệp vụ.
+- **Ràng buộc nguồn trích dẫn:**
+  - Bản thảo phải liên kết ít nhất một nguồn trích dẫn (`sources`).
+  - Mọi nguồn liên kết phải ở trạng thái `ACTIVE` và có khai báo quyền hợp lệ (`licenseCode` hoặc `permissionNote`).
+  - Với nguồn ngoài (`sourceType = EXTERNAL`), bắt buộc phải có `attribution` không rỗng/null. Nếu thiếu, trả về lỗi tại trường `sources` với thông điệp `"Active source and declared permission required."`.
+  - Với nguồn tự biên soạn (`sourceType = SELF_AUTHORED`), trường `attribution` là tùy chọn.
+- **Request Body:** Không có.
+- **Response:** `200 OK` (`AdminValidationResponse`):
+```json
+{
+  "valid": true,
+  "errors": []
+}
+```
+Hoặc khi có lỗi:
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "field": "sources",
+      "message": "Published content needs a declared source."
+    }
+  ]
+}
+```
+
 #### `POST /api/v1/admin/content/revisions/{id}/submit`
 - **Mô tả:** Nộp bản thảo lên hàng đợi phê duyệt (`DRAFT` → `IN_REVIEW`).
 - **Response:** `200 OK`
@@ -290,7 +500,40 @@
 
 #### `POST /api/v1/admin/content/revisions/{id}/publish`
 - **Mô tả:** Xuất bản nội dung (`APPROVED` → `PUBLISHED`). Tự động chiếu dữ liệu snapshot vào các bảng nghiệp vụ (`words`, `word_senses`, `decks`, `deck_words`).
+- **Ràng buộc nguồn trích dẫn:** Nguồn liên kết phải `ACTIVE` và có giấy phép/ghi chú quyền hợp lệ; nguồn ngoài (`EXTERNAL`) bắt buộc phải có `attribution`. Nếu thiếu quyền hoặc attribution của nguồn ngoài, trả về `400 Bad Request` ("Active source and declared permission required.") và rollback nguyên tử toàn bộ giao dịch (không chiếu dữ liệu, không gán publishedRevisionId, không ghi source_snapshot và không tạo audit log giả).
 - **Response:** `200 OK` (`AdminRevisionDto`).
+
+#### `POST /api/v1/admin/content/items/{id}/unpublish`
+- **Mô tả:** Ngừng xuất bản nội dung đã từng phát hành (`is_archived = true`, `archived_at = now`). Phân biệt rõ với thao tác lưu trữ/thu hồi quyền (`archive`):
+  - **Cờ archive (`is_archived`):** Đặt thành `true` để ngừng cấp mới. Item bị loại khỏi các view phân phối (`catalog_visible_items`, `catalog_visible_senses`, `catalog_visible_deck_senses`), chặn xuất hiện trong catalog học tập, danh sách chọn bài học, hoặc làm nguồn dependency mới.
+  - **Cờ revoke (`access_revoked_at`):** Giữ nguyên (không ghi nhận và không xóa bỏ). Dữ liệu thẻ SRS và attempt trong quá khứ không bị sửa đổi. Phân biệt rõ: Practice attempt replay và loại trừ câu unpublish khỏi lượt cấp mới đã được đo lường trực tiếp qua test thực tế learner; hành vi đọc/trả lịch sử SRS chưa được đo trực tiếp (chỉ xác nhận dữ liệu snapshot không bị sửa). Không suy diễn rằng audio lịch sử được cấp khi `PublishedContentOperations` vẫn loại bỏ item lưu trữ.
+  - **Tính bất biến:** Không thay đổi con trỏ `published_revision_id`, không xóa/sửa dữ liệu chiếu (`words`, `word_senses`, `decks`, `grammar_lessons`), không sửa snapshot revision đã xuất bản.
+  - **Tính lũy thừa (Idempotency):** Gọi lặp lại nhiều lần không tạo thêm audit log và không gia hạn thời điểm `archived_at`.
+  - **Ghi log kiểm toán:** Ghi audit log với hành động `CONTENT_UNPUBLISHED` trong cùng transaction.
+  - **Bảo toàn thu hồi:** Nếu item đã bị `archive` (đã thu hồi quyền), việc unpublish không khôi phục quyền. Nếu gọi `unpublish` trước rồi gọi `archive`, `archive` vẫn thiết lập `access_revoked_at` để thu hồi quyền lịch sử.
+- **Yêu cầu quyền:** `CONTENT_ADMIN` hoặc `SYSTEM_ADMIN`.
+- **Request Body (tùy chọn):**
+```json
+{
+  "reason": "Tạm dừng phát hành để rà soát chương trình"
+}
+```
+- **Response:** `200 OK`
+```json
+{
+  "message": "Nội dung đã được ngừng xuất bản."
+}
+```
+- **Lỗi:**
+  - `401 Unauthorized`: Chưa xác thực.
+  - `403 Forbidden`: Người dùng vai trò `LEARNER` hoặc thiếu CSRF token.
+  - `404 Not Found`: Không tìm thấy nội dung với `id`.
+  - `409 Conflict`: Nội dung chưa từng được xuất bản (`publishedRevisionId` null, ví dụ bản thảo DRAFT/IN_REVIEW/APPROVED).
+- **Phạm vi kiểm tra lịch sử & Khoảng trống (Gap):**
+  - Đã kiểm tra thực tế learner: Lượt khởi tạo bài luyện tập mới (Practice new attempt) loại trừ câu đã unpublish; replay/submit/grade của attempt đã lưu trước unpublish hoạt động đúng từ snapshot; view `catalog_visible_items` loại bỏ item unpublish.
+  - Khoảng trống (Gap):
+    - Chưa đo lường trực tiếp luồng đọc/trả lịch sử thẻ SRS (chỉ mới xác nhận tính bất biến của dữ liệu bảng `word_reviews` và snapshot).
+    - Chưa có luồng riêng cho historical media direct stream (audio/ảnh lịch sử khi `PublishedContentOperations` vẫn loại bỏ archived item) hoặc candidate seal cạnh tranh (sẽ được mở trong chặng media/SRS chuyên biệt).
 
 #### `POST /api/v1/admin/content/items/{id}/archive`
 - **Mô tả:** Lưu trữ / ẩn nội dung (`archived = true`).
@@ -313,7 +556,7 @@
 - **Response:** `200 OK` (`PageResponse<ContentSourceDto>`).
 
 #### `POST /api/v1/admin/content/sources`
-- **Mô tả:** Thêm nguồn trích dẫn mới.
+- **Mô tả:** Thêm nguồn trích dẫn mới. Soạn thảo bản nháp (`DRAFT`) cho phép tạo hoặc liên kết nguồn chưa hoàn chỉnh attribution, nhưng khi xem trước (`validate`) hoặc xuất bản (`publish`), nguồn ngoài (`EXTERNAL`) bắt buộc phải có `attribution`.
 - **Request Body:**
 ```json
 {
@@ -328,6 +571,27 @@
 }
 ```
 - **Response:** `201 Created` (`ContentSourceDto`).
+
+#### `PUT /api/v1/admin/content/sources/{id}`
+- **Mô tả:** Cập nhật thông tin nguồn trích dẫn hoặc thay đổi trạng thái nguồn (`ACTIVE` / `ARCHIVED`). Việc sửa nguồn trích dẫn không làm thay đổi các snapshot nguồn (`source_snapshot`) đã được lưu trữ bất biến trong các revision đã xuất bản trước đây.
+- **Request Body:**
+```json
+{
+  "title": "Oxford Advanced Learner's Dictionary 10th - Updated",
+  "sourceType": "EXTERNAL",
+  "sourceUrl": "https://www.oxfordlearnersdictionaries.com",
+  "author": "Oxford University Press",
+  "licenseCode": "EDITORIAL_CITATION",
+  "licenseUrl": null,
+  "attribution": "Trích dẫn định nghĩa và ví dụ học thuật",
+  "permissionNote": "Đã gia hạn cấp phép",
+  "status": "ACTIVE"
+}
+```
+- **Response:** `200 OK` (`ContentSourceDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Thiếu trường bắt buộc hoặc trường không hợp lệ (status không thuộc ACTIVE|ARCHIVED, sourceType không thuộc SELF_AUTHORED|EXTERNAL, sourceUrl/licenseUrl không phải HTTP/HTTPS URL hợp lệ có host hoặc độ dài vượt quá giới hạn).
+  - `404 Not Found`: Nguồn không tồn tại.
 
 ---
 

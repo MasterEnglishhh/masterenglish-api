@@ -10,6 +10,7 @@ import com.masterenglish.api.modules.content.entity.ContentItem;
 import com.masterenglish.api.modules.content.entity.ContentRevision;
 import com.masterenglish.api.modules.content.entity.ContentSource;
 import com.masterenglish.api.modules.content.entity.RevisionDependency;
+import com.masterenglish.api.modules.content.repository.ContentRevisionRepository;
 import com.masterenglish.api.modules.content.repository.ContentSourceLinkRepository;
 import com.masterenglish.api.modules.content.repository.ContentSourceRepository;
 import com.masterenglish.api.modules.content.repository.RevisionDependencyRepository;
@@ -28,6 +29,7 @@ class ContentPublication {
     private final ContentSourceLinkRepository sourceLinks;
     private final ContentSourceRepository sources;
     private final RevisionDependencyRepository dependencies;
+    private final ContentRevisionRepository revisions;
     private final ContentEvents contentEvents;
     private final ObjectMapper mapper;
 
@@ -38,10 +40,23 @@ class ContentPublication {
             RevisionDependencyRepository dependencies,
             ContentEvents contentEvents,
             ObjectMapper mapper) {
+        this(snapshots, sourceLinks, sources, dependencies, null, contentEvents, mapper);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    ContentPublication(
+            ContentSnapshots snapshots,
+            ContentSourceLinkRepository sourceLinks,
+            ContentSourceRepository sources,
+            RevisionDependencyRepository dependencies,
+            ContentRevisionRepository revisions,
+            ContentEvents contentEvents,
+            ObjectMapper mapper) {
         this.snapshots = snapshots;
         this.sourceLinks = sourceLinks;
         this.sources = sources;
         this.dependencies = dependencies;
+        this.revisions = revisions;
         this.contentEvents = contentEvents;
         this.mapper = mapper;
     }
@@ -52,6 +67,12 @@ class ContentPublication {
         if (!VALIDATED_TYPES.contains(type)) {
             throw new BusinessException(
                     ErrorCode.VALIDATION_ERROR, "Unsupported content type: " + type);
+        }
+        if ("GRAMMAR_LESSON".equals(type)) {
+            if (hasRevisionMediaRefs(revision.getId())) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "Grammar lesson v1 must not reference media.");
+            }
         }
         JsonNode data = snapshots.data(revision.getSnapshot());
         contentEvents.validateSnapshot(item.getId(), type, data);
@@ -109,5 +130,12 @@ class ContentPublication {
             }
             link.captureSourceSnapshot(mapper.valueToTree(source).toString());
         }
+    }
+
+    private boolean hasRevisionMediaRefs(UUID revisionId) {
+        if (revisions == null) {
+            return false;
+        }
+        return revisions.hasRevisionMediaRefs(revisionId);
     }
 }

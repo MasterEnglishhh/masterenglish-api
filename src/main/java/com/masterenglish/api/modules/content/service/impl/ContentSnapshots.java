@@ -39,7 +39,14 @@ class ContentSnapshots {
     }
 
     JsonNode data(String snapshot) {
-        return dataOf(readObject(snapshot));
+        JsonNode data = dataOf(readObject(snapshot));
+        if (data instanceof ObjectNode object) {
+            object = object.deepCopy();
+            object.remove("schema_version");
+            object.remove("content_type");
+            return object;
+        }
+        return data;
     }
 
     private JsonNode readObject(String snapshot) {
@@ -53,7 +60,10 @@ class ContentSnapshots {
     }
 
     private static JsonNode dataOf(JsonNode root) {
-        return root.has("data") ? root.path("data") : root;
+        if (root.has("schema_version") && root.has("data")) {
+            return root.path("data");
+        }
+        return root;
     }
 
     private static BusinessException invalidSnapshot() {

@@ -128,6 +128,31 @@ public class ContentRevision {
         this.publishedAt = Instant.now();
     }
 
+    public void resetToDraft() {
+        if (!"REJECTED".equals(status) && !"APPROVED".equals(status) && !"DRAFT".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Cannot reset revision to DRAFT from status " + status);
+        }
+        this.status = "DRAFT";
+        this.reviewedBy = null;
+        this.reviewedAt = null;
+        this.reviewNote = null;
+    }
+
+    public void updateDraft(String snapshot, String changeSummary) {
+        if (!"DRAFT".equals(status) && !"REJECTED".equals(status) && !"APPROVED".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Cannot update revision in status " + status);
+        }
+        if ("REJECTED".equals(status) || "APPROVED".equals(status)) {
+            resetToDraft();
+        }
+        this.snapshot = snapshot != null ? snapshot : "{}";
+        if (changeSummary != null) {
+            this.changeSummary = changeSummary;
+        }
+    }
+
     private void requireStatus(String expected) {
         if (!expected.equals(status))
             throw new BusinessException(

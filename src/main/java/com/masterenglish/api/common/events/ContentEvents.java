@@ -129,8 +129,15 @@ public class ContentEvents {
 
     public PageResponse<ItemView> findContentItems(
             String search, String contentType, String status, Pageable pageable) {
+        return findContentItems(null, search, contentType, status, pageable);
+    }
+
+    public PageResponse<ItemView> findContentItems(
+            String domain, String search, String contentType, String status, Pageable pageable) {
         return events.request(
-                reply -> new AdminFindContentItems(search, contentType, status, pageable, reply));
+                reply ->
+                        new AdminFindContentItems(
+                                domain, search, contentType, status, pageable, reply));
     }
 
     public ItemView createWordDraft(WordDraft request, UUID actorId) {
@@ -139,6 +146,14 @@ public class ContentEvents {
 
     public ItemView createDeckDraft(DeckDraft request, UUID actorId) {
         return events.request(reply -> new AdminCreateDeckDraft(request, actorId, reply));
+    }
+
+    public ItemView createGrammarTopicDraft(GrammarDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateGrammarTopicDraft(request, actorId, reply));
+    }
+
+    public ItemView createGrammarLessonDraft(GrammarDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateGrammarLessonDraft(request, actorId, reply));
     }
 
     public RevisionView submitRevision(UUID revisionId, UUID actorId) {
@@ -161,6 +176,11 @@ public class ContentEvents {
 
     public void archiveContentItem(UUID itemId, String reason, UUID actorId) {
         events.<Void>request(reply -> new AdminArchiveContentItem(itemId, reason, actorId, reply));
+    }
+
+    public void unpublishContentItem(UUID itemId, String reason, UUID actorId) {
+        events.<Void>request(
+                reply -> new AdminUnpublishContentItem(itemId, reason, actorId, reply));
     }
 
     public PageResponse<SourceView> findSources(String search, Pageable pageable) {
@@ -209,6 +229,31 @@ public class ContentEvents {
         return events.request(reply -> new AdminCountPendingReviewRevisions(reply));
     }
 
+    public ItemDetailView getContentItemDetail(UUID itemId) {
+        return events.request(reply -> new AdminGetContentItemDetail(itemId, reply));
+    }
+
+    public PageResponse<RevisionHistoryView> getRevisionHistory(UUID itemId, Pageable pageable) {
+        return events.request(reply -> new AdminGetRevisionHistory(itemId, pageable, reply));
+    }
+
+    public RevisionView updateDraftRevision(DraftEdit request, UUID actorId) {
+        return events.request(reply -> new AdminUpdateDraftRevision(request, actorId, reply));
+    }
+
+    public RevisionView createRevisionFromPublished(RevisionClone request, UUID actorId) {
+        return events.request(
+                reply -> new AdminCreateRevisionFromPublished(request, actorId, reply));
+    }
+
+    public ValidationView validateRevision(UUID revisionId) {
+        return events.request(reply -> new AdminValidateRevision(revisionId, reply));
+    }
+
+    public SourceView updateSource(UpdateSource request, UUID actorId) {
+        return events.request(reply -> new AdminUpdateSource(request, actorId, reply));
+    }
+
     public record ItemView(
             UUID id,
             String title,
@@ -224,6 +269,25 @@ public class ContentEvents {
             String level,
             UUID latestRevisionId) {}
 
+    public record ItemDetailView(
+            UUID id,
+            UUID revisionId,
+            String contentType,
+            String status,
+            int versionNo,
+            long version,
+            long itemVersion,
+            Map<String, Object> data,
+            List<UUID> sourceIds,
+            String changeSummary,
+            UUID createdBy,
+            UUID reviewedBy,
+            Instant reviewedAt,
+            String reviewNote,
+            Instant publishedAt,
+            Instant createdAt,
+            Instant updatedAt) {}
+
     public record RevisionView(
             UUID revisionId,
             UUID contentItemId,
@@ -231,7 +295,68 @@ public class ContentEvents {
             int versionNo,
             String reviewNote,
             Instant publishedAt,
+            Instant updatedAt,
+            long version) {
+        public RevisionView(
+                UUID revisionId,
+                UUID contentItemId,
+                String status,
+                int versionNo,
+                String reviewNote,
+                Instant publishedAt,
+                Instant updatedAt) {
+            this(
+                    revisionId,
+                    contentItemId,
+                    status,
+                    versionNo,
+                    reviewNote,
+                    publishedAt,
+                    updatedAt,
+                    0L);
+        }
+    }
+
+    public record RevisionHistoryView(
+            UUID revisionId,
+            UUID contentItemId,
+            int versionNo,
+            String status,
+            long version,
+            String changeSummary,
+            List<UUID> sourceIds,
+            UUID createdBy,
+            UUID reviewedBy,
+            Instant reviewedAt,
+            String reviewNote,
+            Instant publishedAt,
+            Instant createdAt,
             Instant updatedAt) {}
+
+    public record ValidationView(
+            boolean valid, List<com.masterenglish.api.common.error.FieldViolation> errors) {}
+
+    public record DraftEdit(
+            UUID revisionId,
+            long expectedVersion,
+            Map<String, Object> data,
+            List<UUID> sourceIds,
+            String changeSummary) {}
+
+    public record RevisionClone(
+            UUID itemId, UUID baseRevisionId, Long expectedItemVersion, String changeSummary) {}
+
+    public record UpdateSource(
+            UUID sourceId,
+            String title,
+            String sourceType,
+            String sourceUrl,
+            String author,
+            String licenseCode,
+            String licenseUrl,
+            String attribution,
+            String permissionNote,
+            String status) {}
 
     public record SourceView(
             UUID id,
@@ -284,7 +409,11 @@ public class ContentEvents {
             String attribution,
             String permissionNote) {}
 
+    public record GrammarDraft(
+            Map<String, Object> data, List<UUID> sourceIds, String changeSummary) {}
+
     public record AdminFindContentItems(
+            String domain,
             String search,
             String contentType,
             String status,
@@ -296,6 +425,12 @@ public class ContentEvents {
 
     public record AdminCreateDeckDraft(
             DeckDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreateGrammarTopicDraft(
+            GrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreateGrammarLessonDraft(
+            GrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}
 
     public record AdminSubmitRevision(
             UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}
@@ -310,6 +445,9 @@ public class ContentEvents {
             UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}
 
     public record AdminArchiveContentItem(
+            UUID itemId, String reason, UUID actorId, EventReply<Void> reply) {}
+
+    public record AdminUnpublishContentItem(
             UUID itemId, String reason, UUID actorId, EventReply<Void> reply) {}
 
     public record AdminFindSources(
@@ -342,4 +480,20 @@ public class ContentEvents {
     public record AdminCountTotalContentItems(EventReply<Long> reply) {}
 
     public record AdminCountPendingReviewRevisions(EventReply<Long> reply) {}
+
+    public record AdminGetContentItemDetail(UUID itemId, EventReply<ItemDetailView> reply) {}
+
+    public record AdminGetRevisionHistory(
+            UUID itemId, Pageable pageable, EventReply<PageResponse<RevisionHistoryView>> reply) {}
+
+    public record AdminUpdateDraftRevision(
+            DraftEdit request, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminCreateRevisionFromPublished(
+            RevisionClone request, UUID actorId, EventReply<RevisionView> reply) {}
+
+    public record AdminValidateRevision(UUID revisionId, EventReply<ValidationView> reply) {}
+
+    public record AdminUpdateSource(
+            UpdateSource request, UUID actorId, EventReply<SourceView> reply) {}
 }
