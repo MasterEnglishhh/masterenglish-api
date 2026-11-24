@@ -33,6 +33,7 @@ import com.masterenglish.api.modules.notifications.repository.NotificationReposi
 import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -322,9 +323,9 @@ class DashboardControllerIntegrationTests {
                 totalCount,
                 correctCount,
                 score,
-                submittedAt.minusSeconds(120),
-                submittedAt,
-                submittedAt);
+                submittedAt.minusSeconds(120).atOffset(java.time.ZoneOffset.UTC),
+                submittedAt.atOffset(java.time.ZoneOffset.UTC),
+                submittedAt.atOffset(java.time.ZoneOffset.UTC));
 
         for (int pos = 1; pos <= totalCount; pos++) {
             UUID qId = publishQuestion(topicId, "Q" + pos);
@@ -353,7 +354,7 @@ class DashboardControllerIntegrationTests {
                     attemptId,
                     pos,
                     chosen,
-                    submittedAt);
+                    Timestamp.from(submittedAt));
         }
     }
 
