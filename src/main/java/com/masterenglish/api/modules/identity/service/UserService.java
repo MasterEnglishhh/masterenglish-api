@@ -5,6 +5,8 @@ import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequ
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
 import com.masterenglish.api.modules.identity.dto.response.LearningGoalResponse;
 import com.masterenglish.api.modules.identity.dto.response.UserProfileResponse;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public interface UserService {
@@ -18,4 +20,7 @@ public interface UserService {
     LearningGoalResponse findGoalByUserId(UUID userId);
 
     LearningGoalResponse updateGoal(UUID userId, UpdateLearningGoalRequest request);
+
+    /** Emails of ACTIVE users among the given IDs, for reminder delivery. */
+    Map<UUID, String> findActiveEmails(Set<UUID> userIds);
 }

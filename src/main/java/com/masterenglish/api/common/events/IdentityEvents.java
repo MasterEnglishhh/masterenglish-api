@@ -4,6 +4,8 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.security.RoleCode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
@@ -120,4 +122,11 @@ public class IdentityEvents {
     public record AdminCountTotalUsers(EventReply<Long> reply) {}
 
     public record AdminCountActiveUsers(EventReply<Long> reply) {}
+
+    /** Emails of the given users that are ACTIVE; other users are absent from the result. */
+    public Map<UUID, String> findActiveEmails(Set<UUID> userIds) {
+        return events.request(reply -> new ActiveEmailsRequested(Set.copyOf(userIds), reply));
+    }
+
+    public record ActiveEmailsRequested(Set<UUID> userIds, EventReply<Map<UUID, String>> reply) {}
 }

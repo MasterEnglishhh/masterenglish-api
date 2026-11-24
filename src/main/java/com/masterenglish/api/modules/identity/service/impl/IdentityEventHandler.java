@@ -1,19 +1,28 @@
 package com.masterenglish.api.modules.identity.service.impl;
 
+import com.masterenglish.api.common.events.IdentityEvents.ActiveEmailsRequested;
 import com.masterenglish.api.common.events.IdentityEvents.LockUser;
 import com.masterenglish.api.common.events.IdentityEvents.ResolveContentAdmin;
 import com.masterenglish.api.common.events.IdentityEvents.VerifyContentAdmin;
 import com.masterenglish.api.common.events.IdentityEvents.VerifyContentAuthor;
 import com.masterenglish.api.modules.identity.service.UserLockService;
+import com.masterenglish.api.modules.identity.service.UserService;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 @Component
 class IdentityEventHandler {
     private final UserLockService users;
+    private final UserService profiles;
 
-    IdentityEventHandler(UserLockService users) {
+    IdentityEventHandler(UserLockService users, UserService profiles) {
         this.users = users;
+        this.profiles = profiles;
+    }
+
+    @EventListener
+    void on(ActiveEmailsRequested event) {
+        event.reply().complete(profiles.findActiveEmails(event.userIds()));
     }
 
     @EventListener
