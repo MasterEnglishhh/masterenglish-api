@@ -7,6 +7,8 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleLessonView;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleTopicView;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
@@ -125,6 +127,36 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
     @Transactional(readOnly = true)
     public boolean isVisibleTopic(UUID topicId) {
         return topics.findVisibleTopicById(topicId).isPresent();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VisibleTopicView> listAllVisibleTopics() {
+        return topics.findVisibleTopics().stream()
+                .map(
+                        t ->
+                                new VisibleTopicView(
+                                        t.getId(),
+                                        t.getSlug(),
+                                        t.getName(),
+                                        t.getDifficulty(),
+                                        t.getSortOrder()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VisibleLessonView> listAllVisibleLessons() {
+        return lessons.findAllVisibleLessons().stream()
+                .map(
+                        l ->
+                                new VisibleLessonView(
+                                        l.getId(),
+                                        l.getTopicId(),
+                                        l.getTitle(),
+                                        l.getSortOrder(),
+                                        l.getEstimatedMinutes()))
+                .toList();
     }
 
     private Map<String, Object> body(GrammarLesson lesson) {

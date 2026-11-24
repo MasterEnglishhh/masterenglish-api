@@ -4,6 +4,9 @@ import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.IdentityEvents;
+import com.masterenglish.api.common.events.PracticeEvents.AttemptSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.OptionResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.QuestionResponse;
@@ -32,11 +35,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -176,6 +182,61 @@ public class PracticeServiceImpl implements PracticeService {
                                                 : percent(
                                                         s.getCorrectCount(), s.getQuestionCount())))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PracticeSummaryView getPracticeSummary(
+            UUID userId, Instant weaknessSince, String timezone) {
+        long submittedCount = attempts.countByUserIdAndStatus(userId, Attempt.SUBMITTED);
+        long inProgressCount = attempts.countByUserIdAndStatus(userId, Attempt.IN_PROGRESS);
+        Double avgScore = attempts.averageScoreByUserId(userId);
+        Integer avgRounded = avgScore == null ? null : (int) Math.round(avgScore);
+
+        List<AttemptSummaryView> recent =
+                attempts
+                        .findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(
+                                userId, Attempt.SUBMITTED)
+                        .stream()
+                        .map(
+                                a ->
+                                        new AttemptSummaryView(
+                                                a.getId(),
+                                                a.getSourceType(),
+                                                a.getTotalCount(),
+                                                a.getCorrectCount(),
+                                                a.getScore(),
+                                                a.getSubmittedAt()))
+                        .toList();
+
+        List<TopicAccuracyView> topicStats =
+                attempts.topicStatisticsSince(userId, weaknessSince).stream()
+                        .map(
+                                s ->
+                                        new TopicAccuracyView(
+                                                s.getTopicId(),
+                                                s.getAttemptCount(),
+                                                s.getQuestionCount(),
+                                                s.getCorrectCount(),
+                                                s.getQuestionCount() == 0
+                                                        ? null
+                                                        : percent(
+                                                                s.getCorrectCount(),
+                                                                s.getQuestionCount())))
+                        .toList();
+
+        Set<LocalDate> localDays =
+                attempts.findSubmittedLocalDays(userId, timezone).stream()
+                        .map(LocalDate::parse)
+                        .collect(Collectors.toSet());
+
+        return new PracticeSummaryView(
+                submittedCount,
+                inProgressCount,
+                avgRounded,
+                recent,
+                topicStats,
+                Set.copyOf(localDays));
     }
 
     private StartAttemptResult start(

@@ -59,6 +59,27 @@ public interface UserWordProgressRepository
         long getDueCount();
     }
 
+    @Query(
+            value =
+                    """
+                    SELECT ds.deck_id AS deckId, count(DISTINCT p.word_sense_id) AS dueCount
+                    FROM user_word_progress p
+                    JOIN catalog_visible_senses s ON s.word_sense_id=p.word_sense_id
+                    JOIN catalog_visible_deck_senses ds ON ds.word_sense_id=p.word_sense_id
+                    WHERE p.user_id=:userId AND p.due_at<=:now
+                    GROUP BY ds.deck_id
+                    ORDER BY dueCount DESC, ds.deck_id ASC
+                    """,
+            nativeQuery = true)
+    List<DueDeckCount> countEligibleDueByDeck(
+            @Param("userId") UUID userId, @Param("now") Instant now);
+
+    interface DueDeckCount {
+        UUID getDeckId();
+
+        long getDueCount();
+    }
+
     @Query(value = "SELECT count(*) " + ELIGIBLE, nativeQuery = true)
     long countEligibleDue(
             @Param("userId") UUID userId, @Param("deckId") UUID deckId, @Param("now") Instant now);

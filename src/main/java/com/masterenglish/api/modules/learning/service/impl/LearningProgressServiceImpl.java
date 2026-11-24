@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.learning.service.impl;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.common.events.LearningEvents.DueDeckCountView;
 import com.masterenglish.api.common.events.VocabularyEvents;
 import com.masterenglish.api.modules.learning.dto.response.LearningProgressResponse;
 import com.masterenglish.api.modules.learning.dto.response.ReviewHistoryItemDto;
@@ -13,8 +14,12 @@ import com.masterenglish.api.modules.learning.service.LearningProgressService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +77,26 @@ public class LearningProgressServiceImpl implements LearningProgressService {
                 reviewRepository.countByUserId(userId),
                 reviewRepository.countByUserIdAndReviewedAtGreaterThanEqual(
                         userId, now.minus(Duration.ofDays(7))));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DueDeckCountView> countDueCardsByDeck(UUID userId, Instant asOf) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        Objects.requireNonNull(asOf, "asOf must not be null");
+        return progressRepository.countEligibleDueByDeck(userId, asOf).stream()
+                .map(row -> new DueDeckCountView(row.getDeckId(), row.getDueCount()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<LocalDate> findReviewActivityLocalDays(UUID userId, String timezone) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        Objects.requireNonNull(timezone, "timezone must not be null");
+        return reviewRepository.findDistinctActivityLocalDays(userId, timezone).stream()
+                .map(LocalDate::parse)
+                .collect(Collectors.toSet());
     }
 
     private static ReviewHistoryItemDto historyItem(WordReview review, WordSenseCardDto card) {

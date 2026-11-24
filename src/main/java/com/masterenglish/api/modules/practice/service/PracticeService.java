@@ -1,9 +1,11 @@
 package com.masterenglish.api.modules.practice.service;
 
+import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
 import com.masterenglish.api.modules.practice.dto.response.TopicStatisticsResponse;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,4 +31,6 @@ public interface PracticeService {
     AttemptResponse submit(UUID userId, UUID attemptId);
 
     List<TopicStatisticsResponse> topicStatistics(UUID userId);
+
+    PracticeSummaryView getPracticeSummary(UUID userId, Instant weaknessSince, String timezone);
 }

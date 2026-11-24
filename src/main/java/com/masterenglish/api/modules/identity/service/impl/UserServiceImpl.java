@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.identity.service.impl;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.events.IdentityEvents.LearningGoalView;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -176,6 +178,21 @@ public class UserServiceImpl implements UserService {
                                 new BusinessException(
                                         ErrorCode.RESOURCE_NOT_FOUND,
                                         "Chưa thiết lập mục tiêu học tập."));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<LearningGoalView> findOptionalGoalByUserId(UUID userId) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        return goalRepository
+                .findById(userId)
+                .map(
+                        goal ->
+                                new LearningGoalView(
+                                        goal.getTargetScore(),
+                                        goal.getDailyMinutes(),
+                                        goal.getTargetDate(),
+                                        goal.getUpdatedAt()));
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.practice.repository;
 
 import com.masterenglish.api.modules.practice.entity.Attempt;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -79,4 +80,48 @@ public interface AttemptRepository extends JpaRepository<Attempt, UUID> {
                     """,
             nativeQuery = true)
     List<TopicStats> topicStatistics(@Param("userId") UUID userId);
+
+    @Query(
+            value =
+                    """
+                    SELECT s.topic_id AS topicId,
+                        count(DISTINCT a.id) AS attemptCount,
+                        count(*) AS questionCount,
+                        count(*) FILTER (WHERE o.is_correct) AS correctCount
+                    FROM attempts a
+                    JOIN attempt_question_snapshots s ON s.attempt_id = a.id
+                    LEFT JOIN attempt_answers ans ON ans.attempt_id = s.attempt_id
+                        AND ans.question_position = s.position
+                    LEFT JOIN attempt_snapshot_options o ON o.attempt_id = ans.attempt_id
+                        AND o.question_position = ans.question_position
+                        AND o.id = ans.selected_option_id
+                    WHERE a.user_id = :userId
+                      AND a.status = 'SUBMITTED'
+                      AND a.submitted_at >= :since
+                    GROUP BY s.topic_id
+                    ORDER BY s.topic_id
+                    """,
+            nativeQuery = true)
+    List<TopicStats> topicStatisticsSince(
+            @Param("userId") UUID userId, @Param("since") Instant since);
+
+    long countByUserIdAndStatus(UUID userId, String status);
+
+    List<Attempt> findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(UUID userId, String status);
+
+    @Query("SELECT avg(a.score) FROM Attempt a WHERE a.userId = :userId AND a.status = 'SUBMITTED'")
+    Double averageScoreByUserId(@Param("userId") UUID userId);
+
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT to_char((submitted_at AT TIME ZONE :timezone)::date, 'YYYY-MM-DD')
+                    FROM attempts
+                    WHERE user_id = :userId
+                      AND status = 'SUBMITTED'
+                      AND submitted_at IS NOT NULL
+                    """,
+            nativeQuery = true)
+    List<String> findSubmittedLocalDays(
+            @Param("userId") UUID userId, @Param("timezone") String timezone);
 }
