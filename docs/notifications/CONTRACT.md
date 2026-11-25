@@ -2,12 +2,13 @@
 
 Hợp đồng kỹ thuật cho module `notifications`. Ngày ban hành: 19/11/2026.
 
-Trạng thái:
+Trạng thái (nhánh `feat/m10-notification-complete` / PR #16):
 
-- Đã có: M10.01–M10.04 (feed, đánh dấu đã đọc, kênh nhận, giờ nhắc/múi giờ/quiet hours), M10.05
-  (scheduler nhắc thẻ đến hạn) và M10.08 (worker gửi email qua outbox).
-- Ngoài phạm vi: M10.06 nhắc mục tiêu hằng ngày, M10.07 thông báo nội dung mới, M10.09–M10.11,
-  chuyển email OTP/bảo mật sang outbox, browser push, bảng `system_settings`.
+- Đã triển khai: M10.01–M10.04 (feed + lọc `type`/`unreadOnly`, đếm chưa đọc, đánh dấu đã đọc 1/tất cả, kênh nhận, giờ nhắc/múi giờ/quiet hours), M10.05 (scheduler nhắc thẻ đến hạn `REVIEW_DUE`), M10.08 (worker gửi email qua outbox), M10.09 (`GET /api/v1/admin/notifications/deliveries`), M10.10 (`GET|PUT /api/v1/admin/notifications/rules` + `audit_logs`), M10.11 (`GET /api/v1/notifications/reminders/history` & `GET /api/v1/admin/notifications/history`).
+- Bị chặn / Chờ xác nhận nghiệp vụ & Flyway baseline:
+  - M10.06 (`DAILY_GOAL` – nhắc mục tiêu/lịch học hằng ngày): phụ thuộc schema `study_sessions` + `study_schedules` và bản ghi seed `reminder_rules('DAILY_GOAL')` + chốt quy tắc kích hoạt; chưa thể tạo migration mới khi chưa truy cập `flyway_schema_history` trên DB dùng chung.
+  - M10.07 (`CONTENT_NEW` – thông báo nội dung mới): `ContentEvents.RevisionPublished` đã được phát sau bước duyệt/publish (và chặn item archived/revoked), nhưng chưa có quyết định nghiệp vụ được phê duyệt cho loại nội dung kích hoạt, điều kiện lần publish đầu vs tái xuất bản, nhóm người nhận, kênh gửi (`IN_APP`/`EMAIL`) và seed rule `CONTENT_NEW`.
+- Ngoài phạm vi M10: chuyển email OTP/bảo mật sang outbox, browser push, bảng `system_settings`.
 
 ## 1. Dữ liệu
 
@@ -54,12 +55,18 @@ Thông báo chỉ có kênh `EMAIL` (người học tắt in-app) không xuất 
 
 | Mã | Method và path | Kết quả |
 |---|---|---|
-| M10.01 | `GET /api/v1/notifications?page=0&size=20` | `200 PageResponse<NotificationResponse>` |
+| M10.01 | `GET /api/v1/notifications?type=&unreadOnly=&page=0&size=20` | `200 PageResponse<NotificationResponse>` |
 | M10.01 | `GET /api/v1/notifications/unread-count` | `200 {"count": 3}` |
 | M10.02 | `POST /api/v1/notifications/{id}/read` | `204` |
 | M10.02 | `POST /api/v1/notifications/read-all` | `204` |
 | M10.03–04 | `GET /api/v1/notifications/preferences` | `200 NotificationPreferencesResponse` |
 | M10.03–04 | `PUT /api/v1/notifications/preferences` | `200 NotificationPreferencesResponse` |
+| M10.11 | `GET /api/v1/notifications/reminders/history` | `200 PageResponse<ReminderHistoryResponse>` |
+| M10.09 | `GET /api/v1/admin/notifications/deliveries` (`SYSTEM_ADMIN`) | `200 PageResponse<AdminNotificationDeliveryDto>` |
+| M10.10 | `GET /api/v1/admin/notifications/rules` (`SYSTEM_ADMIN`) | `200 List<ReminderRuleDto>` |
+| M10.10 | `GET /api/v1/admin/notifications/rules/{ruleId}` (`SYSTEM_ADMIN`) | `200 ReminderRuleDto` |
+| M10.10 | `PUT /api/v1/admin/notifications/rules/{ruleId}` (`SYSTEM_ADMIN`) | `200 ReminderRuleDto` (+ `audit_logs`) |
+| M10.11 | `GET /api/v1/admin/notifications/history` (`SYSTEM_ADMIN`) | `200 PageResponse<AdminReminderHistoryDto>` |
 
 ### 3.1. Feed
 
