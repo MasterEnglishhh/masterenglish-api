@@ -43,6 +43,7 @@ class SharedValidationTests {
     @Test
     void acceptsNamedZonesUsedForLocalDayAndReminderScheduling() {
         assertThat(VALIDATOR.validate(new Zone("Asia/Ho_Chi_Minh"))).isEmpty();
+        assertThat(VALIDATOR.validate(new Zone("Asia/Saigon"))).isEmpty();
         assertThat(VALIDATOR.validate(new Zone("UTC"))).isEmpty();
         assertThat(VALIDATOR.validate(new Zone(null))).isEmpty();
     }
@@ -50,7 +51,15 @@ class SharedValidationTests {
     @Test
     void rejectsOffsetsTyposAndUnnormalizedZoneNames() {
         for (String value :
-                new String[] {"+07:00", "GMT+07:00", "Unknown/City", " Asia/Ho_Chi_Minh", ""}) {
+                new String[] {
+                    "+07:00",
+                    "UTC+07:00",
+                    "GMT+07:00",
+                    "SystemV/AST4",
+                    "Unknown/City",
+                    " Asia/Ho_Chi_Minh",
+                    ""
+                }) {
             assertThat(VALIDATOR.validate(new Zone(value))).as(value).hasSize(1);
         }
     }

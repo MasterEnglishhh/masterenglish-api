@@ -156,13 +156,27 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
                     + " AND n.readAt IS NULL)")
     int markFeedRead(@Param("userId") UUID userId, @Param("now") Instant now);
 
-    @Query("SELECT n.dedupeKey FROM Notification n WHERE n.dedupeKey IN :keys")
-    List<String> findExistingDedupeKeys(@Param("keys") Collection<String> keys);
+    @Query(
+            """
+            SELECT n.userId AS userId, n.dedupeKey AS dedupeKey
+            FROM Notification n
+            WHERE n.userId IN :userIds AND n.dedupeKey IN :keys
+            """)
+    List<UserDedupeKey> findExistingDedupeKeys(
+            @Param("userIds") Collection<UUID> userIds, @Param("keys") Collection<String> keys);
+
+    interface UserDedupeKey {
+        UUID getUserId();
+
+        String getDedupeKey();
+    }
 
     @Query(
             """
             SELECT n.userId AS userId, max(n.createdAt) AS lastCreatedAt FROM Notification n
-            WHERE n.reminderRuleId = :ruleId AND n.userId IN :userIds
+            WHERE n.visibility = com.masterenglish.api.modules.notifications.entity.NotificationVisibility.USER
+              AND n.reminderRuleId = :ruleId
+              AND n.userId IN :userIds
             GROUP BY n.userId
             """)
     List<LastReminder> findLastReminders(

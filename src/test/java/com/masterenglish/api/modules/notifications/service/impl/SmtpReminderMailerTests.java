@@ -34,7 +34,7 @@ class SmtpReminderMailerTests {
                 List.of(Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(30)),
                 200,
                 20,
-                new NotificationProperties.Mail(true, from, "https://app.example.test"));
+                new NotificationProperties.Mail(true, from, "https://app.example.test", ""));
     }
 
     @SuppressWarnings("unchecked")
@@ -133,5 +133,67 @@ class SmtpReminderMailerTests {
         assertThat(msg.getTo()).containsExactly("learner@example.test");
         assertThat(msg.getSubject()).isEqualTo("Nhắc ôn tập");
         assertThat(msg.getText()).isEqualTo("Nội dung");
+    }
+
+    @Test
+    @DisplayName("SMTP 5xx và địa chỉ bị từ chối vĩnh viễn đánh dấu permanent; 4xx giữ retryable")
+    void classifiesSmtp5xxAsPermanentAnd4xxAsRetryable() throws Exception {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        var mailer = new SmtpReminderMailer(provider(sender), properties("noreply@example.test"));
+
+        var invalidAddressCause =
+                new jakarta.mail.SendFailedException(
+                        "550 5.1.1 User unknown",
+                        null,
+                        new jakarta.mail.Address[0],
+                        new jakarta.mail.Address[0],
+                        new jakarta.mail.Address[] {
+                            new jakarta.mail.internet.InternetAddress("bounced@example.test")
+                        });
+        doThrow(new MailSendException("delivery failed", invalidAddressCause))
+                .when(sender)
+                .send(any(SimpleMailMessage.class));
+        assertThatThrownBy(() -> mailer.send("bounced@example.test", "Subj", "Body"))
+                .isInstanceOfSatisfying(
+                        ReminderMailException.class,
+                        ex -> {
+                            assertThat(ex.getFailureCode()).isEqualTo("MAIL_SEND_FAILED");
+                            assertThat(ex.isPermanent()).isTrue();
+                        });
+
+        doThrow(new MailSendException("smtp 550", new FakeSmtpCodeException(550)))
+                .when(sender)
+                .send(any(SimpleMailMessage.class));
+        assertThatThrownBy(() -> mailer.send("bounced@example.test", "Subj", "Body"))
+                .isInstanceOfSatisfying(
+                        ReminderMailException.class,
+                        ex -> {
+                            assertThat(ex.getFailureCode()).isEqualTo("MAIL_SEND_FAILED");
+                            assertThat(ex.isPermanent()).isTrue();
+                        });
+
+        doThrow(new MailSendException("smtp 421", new FakeSmtpCodeException(421)))
+                .when(sender)
+                .send(any(SimpleMailMessage.class));
+        assertThatThrownBy(() -> mailer.send("temp@example.test", "Subj", "Body"))
+                .isInstanceOfSatisfying(
+                        ReminderMailException.class,
+                        ex -> {
+                            assertThat(ex.getFailureCode()).isEqualTo("MAIL_SEND_FAILED");
+                            assertThat(ex.isPermanent()).isFalse();
+                        });
+    }
+
+    private static final class FakeSmtpCodeException extends Exception {
+        private final int returnCode;
+
+        FakeSmtpCodeException(int returnCode) {
+            this.returnCode = returnCode;
+        }
+
+        @SuppressWarnings("unused")
+        public int getReturnCode() {
+            return returnCode;
+        }
     }
 }

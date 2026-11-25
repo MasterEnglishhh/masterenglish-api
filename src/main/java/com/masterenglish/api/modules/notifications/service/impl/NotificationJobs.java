@@ -31,6 +31,10 @@ class NotificationJobs {
             log.warn(
                     "Reminder email is enabled but MAIL_FROM or NOTIFICATION_WEB_BASE_URL is empty;"
                             + " reminders stay in-app only");
+        } else if (properties.mail().deliverable() && !properties.mail().hasSettingsPath()) {
+            log.info(
+                    "Reminder email is enabled without notification.mail.settings-path;"
+                            + " settings link is omitted until the frontend settings route is ready");
         }
     }
 

@@ -149,13 +149,14 @@ khóa có giá trị mặc định nên app và CI khởi động được khi t
 | `notification.worker.interval` | `PT1M` | Chu kỳ worker gửi email |
 | `notification.scheduler.initial-delay` | `PT1M` | Độ trễ trước lần chạy đầu sau khi khởi động |
 | `notification.max-retries` | `3` | 0–3; tổng số lần thử = `max-retries + 1` ≤ 4 |
-| `notification.lease-seconds` | `60` | Lease của một lần claim |
-| `notification.retry-backoff` | `1m,5m,30m` | Một khoảng chờ cho mỗi lần thử lại |
+| `notification.lease-seconds` | `60` | Lease cố định của một lần claim (`>= 15` giây, không gia hạn heartbeat khi đang gửi SMTP) |
+| `notification.retry-backoff` | `1m,5m,30m` | Các khoảng chờ dương (`> 0`) cho từng lần thử lại |
 | `notification.scheduler-batch-size` | `200` | Số tùy chọn đọc mỗi trang khi quét |
 | `notification.worker-batch-size` | `20` | Số email tối đa mỗi lượt worker |
 | `notification.mail.enabled` | `${MAIL_ENABLED:false}` | Bật email nhắc; chỉ có hiệu lực khi có đủ `from` và `web-base-url` |
 | `notification.mail.from` | `${MAIL_FROM:}` | Trống thì không tạo delivery EMAIL và worker không gửi |
 | `notification.mail.web-base-url` | `${NOTIFICATION_WEB_BASE_URL:}` | Gốc URL tuyệt đối cho link trong email. Trống thì không tạo delivery EMAIL và worker không gửi, để email không bao giờ mang link hỏng. Có giá trị thì phải là URL `http(s)://` tuyệt đối |
+| `notification.mail.settings-path` | `${NOTIFICATION_SETTINGS_PATH:}` | Đường dẫn tương đối bắt đầu bằng `/` cho link cài đặt trong email (vd `/learn/notifications/settings`). Mặc định trống — bỏ qua link cài đặt trong email cho tới khi frontend hoàn thiện route |
 
 Cấu hình sai (múi giờ không hợp lệ, `max-retries` ngoài 0–3, thiếu khoảng chờ, `web-base-url` không
 phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì chạy sai. Khi `MAIL_ENABLED=true` mà thiếu
@@ -192,7 +193,9 @@ phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì ch�
   phương ≥ giờ nhắc; ngoài quiet hours; rule `REVIEW_DUE` bật và đã qua `minimum_gap_minutes`; tài
   khoản `ACTIVE`; số thẻ đến hạn > 0. Lỡ một lần quét thì gửi bù trong cùng ngày địa phương, không
   bù ngày đã qua. Bộ quét đọc tùy chọn theo trang (keyset trên `user_id`), lọc giờ theo múi giờ trong
-  Java, rồi gọi identity và learning một lần cho mỗi trang.
+  Java, gọi identity và learning một lần cho mỗi trang, và khóa bi quan theo từng `user_id` trên
+  `notification_preferences` (`FOR UPDATE`) khi ghi nhắc để kiểm tra `minimum_gap_minutes` an toàn qua
+  mốc 00:00 địa phương.
 - **Dedupe:** `REVIEW_DUE:{userId}:{ngày địa phương yyyy-MM-dd}` với unique `(user_id, dedupe_key)`.
   Chạy lặp hoặc nhiều instance không tạo trùng: thông báo được ghi bằng
   `INSERT … ON CONFLICT (user_id, dedupe_key) DO NOTHING`, mỗi người học trong một transaction riêng.
@@ -200,8 +203,9 @@ phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì ch�
   - `title`: `Bạn có {n} thẻ cần ôn hôm nay`
   - `body`: `{n} thẻ Flashcard đã đến hạn ôn tập. Ôn ngay để giữ nhịp ghi nhớ.`
   - `target_url`: `/learn/review`
-  - Email: tiêu đề như `title`; thân thư gồm `body`, liên kết tới `/learn/review` và liên kết tắt
-    hoặc đổi giờ nhắc tới `/learn/notifications/settings` (URL tuyệt đối ghép từ địa chỉ web cấu hình).
+  - Email: tiêu đề như `title`; thân thư gồm `body`, liên kết tới `/learn/review` và chỉ chèn liên kết
+    cài đặt thông báo (vd `/learn/notifications/settings`, ghép từ `notification.mail.web-base-url` +
+    `notification.mail.settings-path`) khi `settings-path` được cấu hình khác rỗng.
 - Kênh `IN_APP` ghi delivery `SENT` ngay khi tạo thông báo. Kênh `EMAIL` ghi `PENDING` khi người học
   bật email và hệ thống bật mail, với `recipient_address` là email tại thời điểm tạo.
 
@@ -209,13 +213,18 @@ phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì ch�
 
 - Worker claim bằng transaction ngắn với `FOR UPDATE SKIP LOCKED`: dòng `PENDING` đã tới
   `next_retry_at`, hoặc `PROCESSING` đã hết `lease_until`. Mỗi lần claim tăng `attempt_count`, đặt
-  `claim_token` và lease 60 giây, commit rồi mới gửi SMTP ngoài transaction. Kết quả chỉ được ghi khi
-  `claim_token` còn khớp. Worker claim từng delivery một, nên mỗi email có lease mới; thời gian chờ SMTP
-  (tối đa khoảng 15 giây) luôn ngắn hơn lease.
+  `claim_token` và lease cố định (mặc định 60 giây, tối thiểu 15 giây, không gia hạn heartbeat khi đang
+  gửi SMTP), commit rồi mới gửi SMTP ngoài transaction. Kết quả chỉ được ghi khi `claim_token` còn
+  khớp; trong cùng một lượt chạy, worker bỏ qua các `deliveryId` đã xử lý để tránh claim lại lặp tức thì.
+  Worker claim từng delivery một, nên mỗi email có lease mới; thời gian chờ SMTP (tối đa khoảng 15 giây)
+  luôn ngắn hơn lease.
 - Trước khi gửi, worker hỏi lại identity; tài khoản không còn `ACTIVE` thì delivery chuyển `FAILED`
-  với `USER_INACTIVE`, không thử lại.
+  với `USER_INACTIVE`, không thử lại. Nếu tra cứu identity lỗi runtime, delivery được ghi nhận
+  `IDENTITY_LOOKUP_FAILED` để retry an toàn và không làm gián đoạn các delivery khác trong batch.
 - Mã lỗi đã làm sạch: `MAIL_NOT_CONFIGURED`, `MAIL_AUTH_FAILED`, `MAIL_SEND_FAILED`, `MAIL_ERROR`,
-  `USER_INACTIVE`, `LEASE_EXPIRED`, `RETRIES_EXHAUSTED`.
+  `IDENTITY_LOOKUP_FAILED`, `USER_INACTIVE`, `LEASE_EXPIRED`, `RETRIES_EXHAUSTED`. Trong đó phản hồi
+  SMTP `5xx` hoặc địa chỉ nhận không hợp lệ từ `MailSendException` được phân loại là lỗi vĩnh viễn
+  (`MAIL_SEND_FAILED`, không thử lại).
 - Thử lại sau 1, 5 và 30 phút (một lần đầu và tối đa ba lần thử lại, CHECK `attempt_count` 0–4).
   Thất bại ở lần thứ tư chuyển `FAILED`.
 - Dòng `PROCESSING` hết lease mà `attempt_count = 4` chuyển `FAILED` với

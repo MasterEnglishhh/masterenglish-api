@@ -16,7 +16,8 @@ import lombok.NoArgsConstructor;
 /**
  * One delivery per notification and channel. The OTP ciphertext columns of the approved baseline
  * stay unmapped until security mail moves to this outbox. recipientAddress is read only by the
- * delivery worker and must never be logged.
+ * delivery worker and must never be logged. Claims hold a fixed-duration {@code leaseUntil} without
+ * heartbeat renewal; once expired, another worker may reclaim the delivery.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

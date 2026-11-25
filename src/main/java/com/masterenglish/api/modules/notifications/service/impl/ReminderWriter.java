@@ -3,9 +3,12 @@ package com.masterenglish.api.modules.notifications.service.impl;
 import com.masterenglish.api.modules.notifications.entity.NotificationDelivery;
 import com.masterenglish.api.modules.notifications.entity.NotificationType;
 import com.masterenglish.api.modules.notifications.repository.NotificationDeliveryRepository;
+import com.masterenglish.api.modules.notifications.repository.NotificationPreferenceRepository;
 import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,11 +21,15 @@ class ReminderWriter {
 
     private final NotificationRepository notifications;
     private final NotificationDeliveryRepository deliveries;
+    private final NotificationPreferenceRepository preferences;
 
     ReminderWriter(
-            NotificationRepository notifications, NotificationDeliveryRepository deliveries) {
+            NotificationRepository notifications,
+            NotificationDeliveryRepository deliveries,
+            NotificationPreferenceRepository preferences) {
         this.notifications = notifications;
         this.deliveries = deliveries;
+        this.preferences = preferences;
     }
 
     static String reviewDueKey(UUID userId, LocalDate localDay) {
@@ -45,11 +52,24 @@ class ReminderWriter {
     public boolean createReviewDue(
             UUID userId,
             UUID ruleId,
+            int minimumGapMinutes,
             LocalDate localDay,
             long dueCards,
             boolean inApp,
             String emailRecipient,
             Instant now) {
+        // Lock the learner's preference row so concurrent schedulers racing across midnight
+        // serialize and observe committed reminders when enforcing minimum_gap_minutes.
+        if (preferences.findForUpdate(userId).isEmpty()) {
+            return false;
+        }
+        Instant gapStart = now.minus(Duration.ofMinutes(minimumGapMinutes));
+        boolean withinMinimumGap =
+                notifications.findLastReminders(ruleId, List.of(userId)).stream()
+                        .anyMatch(last -> last.getLastCreatedAt().isAfter(gapStart));
+        if (withinMinimumGap) {
+            return false;
+        }
         UUID id = UUID.randomUUID();
         int inserted =
                 notifications.insertIfAbsent(

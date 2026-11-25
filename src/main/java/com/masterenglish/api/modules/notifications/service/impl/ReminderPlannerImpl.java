@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.notifications.service.impl;
 
 import com.masterenglish.api.common.events.IdentityEvents;
 import com.masterenglish.api.common.events.LearningEvents;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.config.NotificationProperties;
 import com.masterenglish.api.modules.notifications.entity.NotificationPreference;
 import com.masterenglish.api.modules.notifications.entity.ReminderRule;
@@ -9,20 +10,19 @@ import com.masterenglish.api.modules.notifications.repository.NotificationPrefer
 import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
 import com.masterenglish.api.modules.notifications.repository.ReminderRuleRepository;
 import com.masterenglish.api.modules.notifications.service.ReminderPlanner;
-import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -93,11 +93,20 @@ public class ReminderPlannerImpl implements ReminderPlanner {
         }
         if (candidates.isEmpty()) return 0;
 
-        Set<String> existing =
-                new HashSet<>(
-                        notifications.findExistingDedupeKeys(
-                                candidates.values().stream().map(Candidate::dedupeKey).toList()));
-        candidates.values().removeIf(candidate -> existing.contains(candidate.dedupeKey()));
+        Set<DedupeKey> existing =
+                notifications
+                        .findExistingDedupeKeys(
+                                candidates.keySet(),
+                                candidates.values().stream().map(Candidate::dedupeKey).toList())
+                        .stream()
+                        .map(row -> new DedupeKey(row.getUserId(), row.getDedupeKey()))
+                        .collect(Collectors.toSet());
+        candidates
+                .values()
+                .removeIf(
+                        candidate ->
+                                existing.contains(
+                                        new DedupeKey(candidate.userId(), candidate.dedupeKey())));
 
         Instant gapStart = now.minus(Duration.ofMinutes(rule.getMinimumGapMinutes()));
         if (!candidates.isEmpty()) {
@@ -120,6 +129,7 @@ public class ReminderPlannerImpl implements ReminderPlanner {
             if (writer.createReviewDue(
                     candidate.userId(),
                     rule.getId(),
+                    rule.getMinimumGapMinutes(),
                     candidate.localDay(),
                     due,
                     candidate.preference().isInAppEnabled(),
@@ -131,6 +141,8 @@ public class ReminderPlannerImpl implements ReminderPlanner {
         return created;
     }
 
+    private record DedupeKey(UUID userId, String dedupeKey) {}
+
     /** The learner's local day when the reminder time has passed outside quiet hours. */
     static Optional<LocalDate> localDayIfDue(NotificationPreference preference, Instant now) {
         String zoneId = preference.getTimezone();
@@ -138,13 +150,12 @@ public class ReminderPlannerImpl implements ReminderPlanner {
             log.warn("Skipping reminder for user {}: blank timezone", preference.getUserId());
             return Optional.empty();
         }
-        ZonedDateTime local;
-        try {
-            local = now.atZone(ZoneId.of(zoneId));
-        } catch (DateTimeException exception) {
+        Optional<ZoneId> resolved = TimeZones.resolveCanonicalZone(zoneId);
+        if (resolved.isEmpty()) {
             log.warn("Skipping reminder for user {}: invalid timezone", preference.getUserId());
             return Optional.empty();
         }
+        ZonedDateTime local = now.atZone(resolved.get());
         LocalTime time = local.toLocalTime();
         if (time.isBefore(preference.getDailyReminderTime())) return Optional.empty();
         if (inQuietHours(time, preference.getQuietHoursStart(), preference.getQuietHoursEnd())) {

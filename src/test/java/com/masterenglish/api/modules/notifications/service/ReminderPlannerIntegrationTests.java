@@ -232,16 +232,23 @@ class ReminderPlannerIntegrationTests {
     }
 
     @Test
-    @DisplayName("Múi giờ không hợp lệ bị bỏ qua an toàn mà không làm hỏng người học hợp lệ khác")
+    @DisplayName(
+            "Múi giờ không hợp lệ hoặc raw offset bị bỏ qua an toàn; legacy alias vẫn được chuẩn hóa và nhắc")
     void skipsInvalidTimezoneSafelyWithoutBreakingValidLearners() {
         UUID invalidZoneUser = user("ACTIVE");
         preference(invalidZoneUser, true, false, "20:00", "Mars/Base", null, null);
-        UUID validUser = user("ACTIVE");
-        preference(validUser, true, false, "20:00", "Asia/Ho_Chi_Minh", null, null);
+        UUID rawOffsetUser = user("ACTIVE");
+        preference(rawOffsetUser, true, false, "20:00", "+07:00", null, null);
+        UUID systemVUser = user("ACTIVE");
+        preference(systemVUser, true, false, "20:00", "SystemV/AST4", null, null);
+        UUID legacyAliasUser = user("ACTIVE");
+        preference(legacyAliasUser, true, false, "20:00", "Asia/Saigon", null, null);
 
         assertThat(planner.planReviewDueReminders(NOW)).isEqualTo(1);
         assertThat(count(invalidZoneUser)).isZero();
-        assertThat(count(validUser)).isEqualTo(1);
+        assertThat(count(rawOffsetUser)).isZero();
+        assertThat(count(systemVUser)).isZero();
+        assertThat(count(legacyAliasUser)).isEqualTo(1);
     }
 
     @Test

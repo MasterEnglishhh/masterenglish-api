@@ -1,6 +1,9 @@
 package com.masterenglish.api.modules.notifications.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 
 import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.modules.notifications.entity.DeliveryChannel;
@@ -43,6 +46,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /** Runs without a test transaction: claims must commit for concurrent workers to see them. */
 @Import({TestcontainersConfiguration.class, EmailDeliveryWorkerIntegrationTests.Fakes.class})
@@ -58,7 +62,7 @@ class EmailDeliveryWorkerIntegrationTests {
     private static final Instant T = Instant.parse("2026-11-19T13:00:00Z");
 
     @Autowired private EmailDeliveryWorker worker;
-    @Autowired private DeliveryClaimStore store;
+    @MockitoSpyBean private DeliveryClaimStore store;
     @Autowired private NotificationRepository notifications;
     @Autowired private NotificationDeliveryRepository deliveries;
     @Autowired private JdbcTemplate jdbc;
@@ -87,7 +91,7 @@ class EmailDeliveryWorkerIntegrationTests {
 
     @Test
     @DisplayName(
-            "Gửi email đang chờ đúng một lần và đánh dấu SENT; email có link ôn và link cài đặt")
+            "Gửi email đang chờ đúng một lần và đánh dấu SENT; email có link ôn và bỏ qua link cài đặt khi chưa cấu hình settings-path")
     void sendsPendingEmailOnce() {
         UUID notification = reminder(user("ACTIVE"));
         NotificationDelivery email = pendingEmail(notification, "once@example.test");
@@ -103,7 +107,7 @@ class EmailDeliveryWorkerIntegrationTests {
         assertThat(mailer.sends("once@example.test")).isEqualTo(1);
         String text = mailer.lastText.get();
         assertThat(text).contains("http://localhost:3000/learn/review");
-        assertThat(text).contains("http://localhost:3000/learn/notifications/settings");
+        assertThat(text).doesNotContain("/learn/notifications/settings");
         assertThat(mailer.lastSubject.get()).isEqualTo("Bạn có 4 thẻ cần ôn hôm nay");
     }
 
@@ -250,7 +254,8 @@ class EmailDeliveryWorkerIntegrationTests {
     }
 
     @Test
-    @DisplayName("Kết quả từ claim đã mất (lease hết, worker khác nhận lại) không ghi đè")
+    @DisplayName(
+            "Kết quả từ claim đã mất (recordSent, recordFailure, recordPermanentFailure hoặc sau khi đã SENT) không ghi đè")
     void staleClaimCannotOverwrite() {
         NotificationDelivery email = pendingEmail(reminder(user("ACTIVE")), "stale@example.test");
         var first = store.claimNext(T).orElseThrow();
@@ -258,11 +263,125 @@ class EmailDeliveryWorkerIntegrationTests {
         assertThat(second.deliveryId()).isEqualTo(first.deliveryId());
 
         store.recordSent(first.deliveryId(), first.claimToken(), null, T.plusSeconds(62));
+        store.recordFailure(
+                first.deliveryId(), first.claimToken(), "MAIL_SEND_FAILED", T.plusSeconds(62));
+        store.recordPermanentFailure(
+                first.deliveryId(), first.claimToken(), "USER_INACTIVE", T.plusSeconds(62));
 
         NotificationDelivery current = reload(email.getId());
         assertThat(current.getStatus()).isEqualTo(DeliveryStatus.PROCESSING);
         assertThat(current.getClaimToken()).isEqualTo(second.claimToken());
         assertThat(current.getAttemptCount()).isEqualTo((short) 2);
+
+        // Once second claim finishes and releases claimToken = null, stale claims still cannot
+        // overwrite.
+        store.recordSent(second.deliveryId(), second.claimToken(), "ok-2", T.plusSeconds(63));
+        store.recordFailure(
+                first.deliveryId(), first.claimToken(), "MAIL_SEND_FAILED", T.plusSeconds(64));
+        store.recordPermanentFailure(
+                second.deliveryId(), second.claimToken(), "MAIL_ERROR", T.plusSeconds(64));
+
+        NotificationDelivery sent = reload(email.getId());
+        assertThat(sent.getStatus()).isEqualTo(DeliveryStatus.SENT);
+        assertThat(sent.getProviderMessageId()).isEqualTo("ok-2");
+    }
+
+    @Test
+    @DisplayName(
+            "SMTP thành công lần 1 nhưng recordSent lỗi DB: giữ PROCESSING rồi reclaim và gửi lại (at-least-once) khi hết lease")
+    void recordSentPersistenceFailureOnAttempt1RecoversAfterLeaseExpiry() {
+        NotificationDelivery email =
+                pendingEmail(reminder(user("ACTIVE")), "recovers-sent@example.test");
+        doThrow(new org.springframework.dao.QueryTimeoutException("db down"))
+                .doThrow(new org.springframework.dao.QueryTimeoutException("db down"))
+                .doCallRealMethod()
+                .when(store)
+                .recordSent(eq(email.getId()), any(), any(), any());
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(1);
+        NotificationDelivery stuck = reload(email.getId());
+        assertThat(stuck.getStatus()).isEqualTo(DeliveryStatus.PROCESSING);
+        assertThat(stuck.getAttemptCount()).isEqualTo((short) 1);
+        assertThat(mailer.sends("recovers-sent@example.test")).isEqualTo(1);
+
+        // Before lease expiry, worker does not reclaim.
+        clock.set(T.plusSeconds(30));
+        assertThat(worker.deliverDueEmails()).isZero();
+
+        // After lease expiry, worker reclaims and completes SENT on attempt 2 (at-least-once).
+        clock.set(T.plusSeconds(61));
+        assertThat(worker.deliverDueEmails()).isEqualTo(1);
+        NotificationDelivery recovered = reload(email.getId());
+        assertThat(recovered.getStatus()).isEqualTo(DeliveryStatus.SENT);
+        assertThat(recovered.getAttemptCount()).isEqualTo((short) 2);
+        assertThat(mailer.sends("recovers-sent@example.test")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName(
+            "SMTP thành công lần 4 nhưng recordSent lỗi DB: chuyển FAILED LEASE_EXPIRED sau hết lease và không gửi lần 5")
+    void recordSentPersistenceFailureOnAttempt4ClosesAsLeaseExpired() {
+        NotificationDelivery email =
+                processing(
+                        reminder(user("ACTIVE")),
+                        "last-db-fail@example.test",
+                        3,
+                        T.minusSeconds(1));
+        doThrow(new org.springframework.dao.QueryTimeoutException("db down"))
+                .when(store)
+                .recordSent(eq(email.getId()), any(), any(), any());
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(1);
+        NotificationDelivery stuckAt4 = reload(email.getId());
+        assertThat(stuckAt4.getStatus()).isEqualTo(DeliveryStatus.PROCESSING);
+        assertThat(stuckAt4.getAttemptCount()).isEqualTo((short) 4);
+        assertThat(mailer.sends("last-db-fail@example.test")).isEqualTo(1);
+
+        clock.set(T.plusSeconds(61));
+        assertThat(worker.deliverDueEmails()).isZero();
+        NotificationDelivery closed = reload(email.getId());
+        assertThat(closed.getStatus()).isEqualTo(DeliveryStatus.FAILED);
+        assertThat(closed.getLastFailureCode()).isEqualTo(DeliveryClaimStore.LEASE_EXPIRED);
+        assertThat(closed.getAttemptCount()).isEqualTo((short) 4);
+        assertThat(mailer.sends("last-db-fail@example.test")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName(
+            "Một batch không bao giờ tự claim lại cùng delivery vừa xử lý dù next_retry_at <= now")
+    void singleBatchNeverReclaimsSameDeliveryEvenIfRetryIsImmediatelyDue() {
+        // Ensure deterministic FIFO ordering (ORDER BY created_at, id) so d1 is claimed first.
+        NotificationDelivery d1 =
+                deliveries.save(
+                        NotificationDelivery.emailPending(
+                                reminder(user("ACTIVE")),
+                                "batch-1@example.test",
+                                T.minusSeconds(10)));
+        NotificationDelivery d2 = pendingEmail(reminder(user("ACTIVE")), "batch-2@example.test");
+        mailer.failuresRemaining.set(1);
+        org.mockito.Mockito.doAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0);
+                            UUID token = inv.getArgument(1);
+                            String code = inv.getArgument(2);
+                            Instant now = inv.getArgument(3);
+                            deliveries
+                                    .findByIdAndClaimToken(id, token)
+                                    .ifPresent(
+                                            row -> {
+                                                row.scheduleRetry(code, now, now);
+                                                deliveries.saveAndFlush(row);
+                                            });
+                            return null;
+                        })
+                .when(store)
+                .recordFailure(eq(d1.getId()), any(), any(), any());
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(2);
+        assertThat(mailer.sends("batch-1@example.test")).isEqualTo(1);
+        assertThat(mailer.sends("batch-2@example.test")).isEqualTo(1);
+        assertThat(reload(d1.getId()).getStatus()).isEqualTo(DeliveryStatus.PENDING);
+        assertThat(reload(d2.getId()).getStatus()).isEqualTo(DeliveryStatus.SENT);
     }
 
     @Test

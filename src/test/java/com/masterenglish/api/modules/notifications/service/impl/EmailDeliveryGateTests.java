@@ -30,11 +30,12 @@ class EmailDeliveryGateTests {
                         store,
                         mailer,
                         mock(IdentityEvents.class),
-                        properties(new NotificationProperties.Mail(true, "a@example.test", "")),
+                        properties(new NotificationProperties.Mail(true, "a@example.test", "", "")),
                         Clock.fixed(Instant.parse("2026-11-19T13:00:00Z"), ZoneOffset.UTC));
 
         assertThat(worker.deliverDueEmails()).isZero();
         verify(store, never()).claimNext(any());
+        verify(store, never()).claimNext(any(), any());
         verifyNoInteractions(mailer);
     }
 
