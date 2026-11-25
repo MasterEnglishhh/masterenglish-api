@@ -127,7 +127,7 @@ Kiểm tra đầu vào (lỗi trả `400 ProblemDetail`):
 | Trường | Quy tắc |
 |---|---|
 | `inAppEnabled`, `emailEnabled` | Bắt buộc, boolean |
-| `timezone` | Bắt buộc, ≤ 60 ký tự, tên múi giờ IANA trong tzdb của JVM (không nhận offset như `+07:00`) |
+| `timezone` | Bắt buộc, ≤ 60 ký tự, tên múi giờ IANA chuẩn tương thích PostgreSQL `pg_timezone_names` (hỗ trợ các backward alias tương đương lịch sử như `Asia/Saigon` → `Asia/Ho_Chi_Minh`, `US/Eastern` → `America/New_York`; từ chối offset như `+07:00`, `UTC+07:00`, `SystemV/*` và các chuỗi POSIX `EST5EDT`, `CST6CDT`, `MST7MDT`, `PST8PDT`) |
 | `dailyReminderTime`, `quietHoursStart`, `quietHoursEnd` | `HH:mm` hoặc `null`; giờ có giây như `20:00:30` bị từ chối |
 | `quietHoursStart` / `quietHoursEnd` | Cùng `null` hoặc cùng có giá trị, và hai mốc khác nhau |
 | Trường lạ | Bị từ chối (`fail-on-unknown-properties`) |
