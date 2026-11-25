@@ -8,16 +8,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.masterenglish.api.TestcontainersConfiguration;
-import com.masterenglish.api.common.events.NotificationEvents;
 import com.masterenglish.api.infrastructure.security.UserPrincipal;
 import com.masterenglish.api.modules.identity.entity.LearningGoal;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.LearningGoalRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.notifications.entity.NotificationPreference;
+import com.masterenglish.api.modules.notifications.repository.NotificationPreferenceRepository;
+import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -34,8 +38,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * Verifies real cross-module fault isolation on PostgreSQL without an outer test transaction: a
- * failing Notification module must not trigger UnexpectedRollbackException or break Dashboard.
+ * Verifies real cross-module fault isolation on PostgreSQL without an outer test transaction: DB
+ * persistence failures occurring INSIDE the transactional notification service must roll back only
+ * that inner transaction without triggering UnexpectedRollbackException or breaking Dashboard
+ * reads.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -48,7 +54,8 @@ class DashboardFaultIsolationIntegrationTests {
     @Autowired private EntityManager entityManager;
     @Autowired private JdbcTemplate jdbc;
 
-    @MockitoSpyBean private NotificationEvents notificationEvents;
+    @MockitoSpyBean private NotificationRepository notificationRepository;
+    @MockitoSpyBean private NotificationPreferenceRepository preferenceRepository;
 
     private MockMvc mockMvc;
     private User learner;
@@ -74,6 +81,7 @@ class DashboardFaultIsolationIntegrationTests {
     void cleanUp() {
         if (learner != null) {
             UUID id = learner.getId();
+            jdbc.update("DELETE FROM notification_preferences WHERE user_id = ?", id);
             jdbc.update("DELETE FROM learning_goals WHERE user_id = ?", id);
             jdbc.update("DELETE FROM user_roles WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
@@ -82,13 +90,14 @@ class DashboardFaultIsolationIntegrationTests {
 
     @Test
     @DisplayName(
-            "Khi NotificationEvents lỗi lúc runtime, GET /api/v1/dashboard vẫn trả 200 OK với dữ liệu các module còn lại")
-    void dashboardSurvivesNotificationFailureAcrossRealTransactions() throws Exception {
-        doThrow(new IllegalStateException("notifications outage"))
-                .when(notificationEvents)
-                .findLearnerTimezone(learner.getId());
-        doThrow(new IllegalStateException("notifications outage"))
-                .when(notificationEvents)
+            "Khi repository bên trong @Transactional của NotificationService lỗi DB, GET /api/v1/dashboard không UnexpectedRollbackException và vẫn trả 200 OK")
+    void dashboardSurvivesNotificationPersistenceFailuresInsideTransactionalService()
+            throws Exception {
+        doThrow(new QueryTimeoutException("simulated pg failure on notification_preferences"))
+                .when(preferenceRepository)
+                .findById(learner.getId());
+        doThrow(new QueryTimeoutException("simulated pg failure on notifications"))
+                .when(notificationRepository)
                 .countUnreadInFeed(learner.getId());
 
         mockMvc.perform(get("/api/v1/dashboard").with(user(UserPrincipal.create(learner))))
@@ -97,6 +106,29 @@ class DashboardFaultIsolationIntegrationTests {
                 .andExpect(jsonPath("$.learningGoal.configured").value(true))
                 .andExpect(jsonPath("$.learningGoal.targetScore").value(720))
                 .andExpect(jsonPath("$.studyPlan.studyGoal.plannedDailyMinutes").value(45))
+                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(0))
+                .andExpect(jsonPath("$.notificationSummary.available").value(false))
+                .andExpect(jsonPath("$.notificationSummary.status").value("UNAVAILABLE"));
+    }
+
+    @Test
+    @DisplayName(
+            "Khi đọc timezone thành công trên PostgreSQL nhưng đếm unread trong feed lỗi DB, Dashboard vẫn giữ timezone đúng và cô lập notificationSummary")
+    void dashboardPreservesTimezoneWhenOnlyUnreadCountFailsInRepository() throws Exception {
+        var pref = new NotificationPreference(learner.getId());
+        pref.update(
+                true, false, LocalTime.of(20, 0), "America/New_York", null, null, Instant.now());
+        preferenceRepository.saveAndFlush(pref);
+
+        doThrow(new QueryTimeoutException("simulated pg timeout on notifications count"))
+                .when(notificationRepository)
+                .countUnreadInFeed(learner.getId());
+
+        mockMvc.perform(get("/api/v1/dashboard").with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overview.timezone").value("America/New_York"))
+                .andExpect(jsonPath("$.learningGoal.configured").value(true))
+                .andExpect(jsonPath("$.learningGoal.targetScore").value(720))
                 .andExpect(jsonPath("$.notificationSummary.unreadCount").value(0))
                 .andExpect(jsonPath("$.notificationSummary.available").value(false))
                 .andExpect(jsonPath("$.notificationSummary.status").value("UNAVAILABLE"));

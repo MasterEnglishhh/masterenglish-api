@@ -23,9 +23,7 @@ import com.masterenglish.api.modules.notifications.repository.NotificationReposi
 import com.masterenglish.api.modules.notifications.repository.ReminderRuleRepository;
 import com.masterenglish.api.modules.notifications.service.NotificationService;
 import java.time.Clock;
-import java.time.DateTimeException;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -132,19 +130,7 @@ public class NotificationServiceImpl implements NotificationService {
         return preferences
                 .findById(userId)
                 .map(NotificationPreference::getTimezone)
-                .filter(
-                        zone -> {
-                            if (zone == null || zone.isBlank()) {
-                                return false;
-                            }
-                            try {
-                                ZoneId.of(zone.trim());
-                                return true;
-                            } catch (DateTimeException exception) {
-                                return false;
-                            }
-                        })
-                .map(String::trim)
+                .flatMap(TimeZones::resolveCanonical)
                 .orElse(properties.defaultTimezone());
     }
 

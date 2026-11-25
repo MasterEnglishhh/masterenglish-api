@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Set;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 class LearningEventHandler {
@@ -38,7 +39,8 @@ class LearningEventHandler {
 
     @EventListener
     void on(VocabularyProgressRequested event) {
-        LearningProgressResponse progress = progressService.getProgress(event.userId());
+        LearningProgressResponse progress =
+                progressService.getProgress(event.userId(), event.asOf());
         event.reply()
                 .complete(
                         new VocabularyProgressView(
@@ -61,6 +63,7 @@ class LearningEventHandler {
     }
 
     @EventListener
+    @Transactional(readOnly = true)
     void on(LearningActivityDaysRequested event) {
         Set<LocalDate> days =
                 new HashSet<>(

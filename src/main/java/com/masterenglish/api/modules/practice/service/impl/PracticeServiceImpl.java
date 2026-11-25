@@ -8,6 +8,7 @@ import com.masterenglish.api.common.events.IdentityEvents;
 import com.masterenglish.api.common.events.PracticeEvents.AttemptSummaryView;
 import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
 import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.OptionResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.QuestionResponse;
@@ -37,10 +38,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
-import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -327,11 +326,8 @@ public class PracticeServiceImpl implements PracticeService {
         if (timezone == null || timezone.isBlank()) {
             throw validation("timezone must not be blank.");
         }
-        try {
-            return ZoneId.of(timezone.trim()).getId();
-        } catch (DateTimeException exception) {
-            throw validation("Invalid timezone: " + timezone);
-        }
+        return TimeZones.resolveCanonical(timezone)
+                .orElseThrow(() -> validation("Invalid timezone: " + timezone));
     }
 
     private StartAttemptResult start(

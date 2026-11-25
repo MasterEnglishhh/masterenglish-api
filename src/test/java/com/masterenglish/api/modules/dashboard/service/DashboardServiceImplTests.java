@@ -21,6 +21,8 @@ import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
 import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
 import com.masterenglish.api.common.events.VocabularyEvents;
 import com.masterenglish.api.common.events.VocabularyEvents.DeckSummaryView;
+import com.masterenglish.api.config.DashboardProperties;
+import com.masterenglish.api.config.DashboardProperties.Recommendations;
 import com.masterenglish.api.modules.dashboard.service.impl.DashboardServiceImpl;
 import java.time.Clock;
 import java.time.Instant;
@@ -60,11 +62,14 @@ class DashboardServiceImplTests {
                         grammar,
                         practice,
                         notifications,
+                        new DashboardProperties(new Recommendations(true)),
                         Clock.fixed(NOW, ZoneOffset.UTC));
         when(notifications.findLearnerTimezone(userId)).thenReturn(TZ);
         when(notifications.countUnreadInFeed(userId)).thenReturn(0L);
         when(identity.findLearningGoal(userId)).thenReturn(Optional.empty());
-        when(learning.getVocabularyProgress(userId))
+        when(learning.getVocabularyProgress(userId, NOW))
+                .thenReturn(new VocabularyProgressView(0, 0, 0, 0, 0, 0));
+        when(learning.getVocabularyProgress(eq(userId), any()))
                 .thenReturn(new VocabularyProgressView(0, 0, 0, 0, 0, 0));
         when(learning.getLessonProgressSummary(userId))
                 .thenReturn(new LessonProgressSummaryView(0, 0, Set.of(), Set.of()));
@@ -234,7 +239,7 @@ class DashboardServiceImplTests {
                         Optional.of(
                                 new LearningGoalView(
                                         (short) 750, 30, LocalDate.of(2027, 1, 1), NOW)));
-        when(learning.getVocabularyProgress(userId))
+        when(learning.getVocabularyProgress(userId, NOW))
                 .thenReturn(new VocabularyProgressView(15, 5, 4, 8, 30, 12));
         when(learning.countDueCardsByDeck(userId, NOW))
                 .thenReturn(List.of(new DueDeckCountView(deckId, 4)));
@@ -352,6 +357,7 @@ class DashboardServiceImplTests {
                         grammar,
                         practice,
                         notifications,
+                        DashboardProperties.defaults(),
                         Clock.fixed(Instant.parse("2026-03-09T12:00:00Z"), ZoneOffset.UTC));
         when(notifications.findLearnerTimezone(userId)).thenReturn(nyZone);
         when(learning.findActivityLocalDays(userId, nyZone))
@@ -375,7 +381,7 @@ class DashboardServiceImplTests {
         when(notifications.findLearnerTimezone(userId)).thenReturn("Mars/Base");
         when(notifications.countUnreadInFeed(userId))
                 .thenThrow(new IllegalStateException("notifications unavailable"));
-        when(learning.getVocabularyProgress(userId))
+        when(learning.getVocabularyProgress(userId, NOW))
                 .thenReturn(new VocabularyProgressView(5, 2, 0, 1, 10, 4));
 
         var invalidTzResult = service.getLearnerDashboard(userId);
@@ -385,6 +391,17 @@ class DashboardServiceImplTests {
         assertThat(invalidTzResult.notificationSummary().available()).isFalse();
         assertThat(invalidTzResult.notificationSummary().status()).isEqualTo("UNAVAILABLE");
         assertThat(invalidTzResult.notificationSummary().unreadCount()).isZero();
+
+        for (String rawOffsetOrUnsupported :
+                new String[] {"+07:00", "UTC+07:00", "GMT+07:00", "SystemV/AST4"}) {
+            when(notifications.findLearnerTimezone(userId)).thenReturn(rawOffsetOrUnsupported);
+            var fallback = service.getLearnerDashboard(userId);
+            assertThat(fallback.overview().timezone()).isEqualTo("Asia/Ho_Chi_Minh");
+        }
+
+        when(notifications.findLearnerTimezone(userId)).thenReturn("Asia/Saigon");
+        var legacyAliasResult = service.getLearnerDashboard(userId);
+        assertThat(legacyAliasResult.overview().timezone()).isEqualTo("Asia/Ho_Chi_Minh");
 
         when(notifications.findLearnerTimezone(userId))
                 .thenThrow(new IllegalStateException("timezone lookup down"));
@@ -434,7 +451,7 @@ class DashboardServiceImplTests {
                         List.of(
                                 new VisibleLessonView(l1, t1, "Lesson 1", 1, (short) 5),
                                 new VisibleLessonView(l2, t1, "Lesson 2", 2, (short) 5)));
-        when(learning.getVocabularyProgress(userId))
+        when(learning.getVocabularyProgress(userId, NOW))
                 .thenReturn(new VocabularyProgressView(10, 4, 0, 3, 20, 5));
 
         var result = service.getLearnerDashboard(userId);
@@ -458,5 +475,22 @@ class DashboardServiceImplTests {
                 .containsExactly("GRAMMAR_LESSON", "GRAMMAR_LESSON", "SAVED_VOCABULARY");
         assertThat(fallbackOnly.recommendations().getLast().targetUrl())
                 .isEqualTo("/learn/vocabulary?view=saved");
+
+        // When grammarDeepLinksEnabled = false (default safety gate), unimplemented
+        // /learn/grammar?... deep links are suppressed while vocabulary links remain intact.
+        var gatedService =
+                new DashboardServiceImpl(
+                        identity,
+                        learning,
+                        vocabulary,
+                        grammar,
+                        practice,
+                        notifications,
+                        DashboardProperties.defaults(),
+                        Clock.fixed(NOW, ZoneOffset.UTC));
+        var gatedResult = gatedService.getLearnerDashboard(userId);
+        assertThat(gatedResult.recommendations())
+                .extracting(r -> r.targetUrl())
+                .containsExactly("/learn/vocabulary?view=saved");
     }
 }

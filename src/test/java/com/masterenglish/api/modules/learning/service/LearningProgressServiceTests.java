@@ -1,14 +1,18 @@
 package com.masterenglish.api.modules.learning.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.VocabularyEvents;
 import com.masterenglish.api.modules.learning.dto.response.LearningProgressResponse;
 import com.masterenglish.api.modules.learning.dto.response.ReviewHistoryItemDto;
@@ -149,5 +153,23 @@ class LearningProgressServiceTests {
 
         assertThat(service.getProgress(userId))
                 .isEqualTo(new LearningProgressResponse(0, 0, 0, 0, 0, 0));
+    }
+
+    @Test
+    void findReviewActivityLocalDays_canonicalizesLegacyAndRejectsOffsets() {
+        when(reviewRepository.findDistinctActivityLocalDays(userId, "Asia/Ho_Chi_Minh"))
+                .thenReturn(List.of("2026-11-17"));
+
+        assertThat(service.findReviewActivityLocalDays(userId, "Asia/Saigon"))
+                .containsExactly(LocalDate.of(2026, 11, 17));
+        verify(reviewRepository).findDistinctActivityLocalDays(userId, "Asia/Ho_Chi_Minh");
+
+        for (String bad :
+                new String[] {null, " ", "+07:00", "UTC+07:00", "SystemV/AST4", "Mars/Base"}) {
+            assertThatThrownBy(() -> service.findReviewActivityLocalDays(userId, bad))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_ERROR);
+        }
     }
 }

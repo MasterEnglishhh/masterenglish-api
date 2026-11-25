@@ -123,18 +123,33 @@ class PracticeServiceHistoryUnitTests {
     }
 
     @Test
-    @DisplayName("getPracticeSummary từ chối timezone không hợp lệ trước khi gọi SQL")
+    @DisplayName("getPracticeSummary từ chối timezone không hợp lệ và raw offset trước khi gọi SQL")
     void getPracticeSummaryRejectsInvalidTimezone() {
-        assertThatThrownBy(
-                        () ->
-                                service.getPracticeSummary(
-                                        userId, NOW.minusSeconds(86400), "Mars/Base"))
-                .isInstanceOf(BusinessException.class)
-                .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
-        assertThatThrownBy(() -> service.getPracticeSummary(userId, NOW.minusSeconds(86400), " "))
-                .isInstanceOf(BusinessException.class)
-                .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+        for (String invalid :
+                new String[] {
+                    "Mars/Base", " ", "+07:00", "UTC+07:00", "GMT+07:00", "SystemV/AST4"
+                }) {
+            assertThatThrownBy(
+                            () ->
+                                    service.getPracticeSummary(
+                                            userId, NOW.minusSeconds(86400), invalid))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_ERROR);
+        }
+    }
+
+    @Test
+    @DisplayName("getPracticeSummary chuẩn hóa legacy IANA alias trước khi gọi SQL")
+    void getPracticeSummaryCanonicalizesLegacyAlias() {
+        when(attempts.findSubmittedLocalDays(userId, "Asia/Ho_Chi_Minh")).thenReturn(List.of());
+        when(attempts.topicStatisticsSince(userId, NOW.minusSeconds(86400))).thenReturn(List.of());
+        when(attempts.findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(
+                        userId, Attempt.SUBMITTED))
+                .thenReturn(List.of());
+
+        service.getPracticeSummary(userId, NOW.minusSeconds(86400), "Asia/Saigon");
+
+        verify(attempts).findSubmittedLocalDays(userId, "Asia/Ho_Chi_Minh");
     }
 }

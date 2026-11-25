@@ -23,7 +23,8 @@ final class DashboardRecommendationBuilder {
             List<DueDeckItem> dueDecks,
             List<WeakTopicItem> weakTopics,
             List<VisibleLessonView> visibleLessons,
-            LessonProgressSummaryView lessonProgress) {
+            LessonProgressSummaryView lessonProgress,
+            boolean grammarDeepLinksEnabled) {
         List<RecommendationItem> items = new ArrayList<>();
         Set<String> seenTargets = new HashSet<>();
 
@@ -52,57 +53,59 @@ final class DashboardRecommendationBuilder {
             }
         }
 
-        for (WeakTopicItem weak : weakTopics) {
-            if (items.size() >= 5) {
-                break;
+        if (grammarDeepLinksEnabled) {
+            for (WeakTopicItem weak : weakTopics) {
+                if (items.size() >= 5) {
+                    break;
+                }
+                addUnique(
+                        items,
+                        seenTargets,
+                        "WEAK_TOPIC_PRACTICE",
+                        "GRAMMAR",
+                        "WEAK_GRAMMAR_TOPIC",
+                        "Cải thiện chủ điểm: " + weak.topicName(),
+                        "Độ chính xác "
+                                + weak.accuracyPercent()
+                                + "% trên "
+                                + weak.questionCount()
+                                + " câu trong 30 ngày gần nhất.",
+                        "/learn/grammar?topic=" + weak.topicId() + "&mode=practice");
             }
-            addUnique(
-                    items,
-                    seenTargets,
-                    "WEAK_TOPIC_PRACTICE",
-                    "GRAMMAR",
-                    "WEAK_GRAMMAR_TOPIC",
-                    "Cải thiện chủ điểm: " + weak.topicName(),
-                    "Độ chính xác "
-                            + weak.accuracyPercent()
-                            + "% trên "
-                            + weak.questionCount()
-                            + " câu trong 30 ngày gần nhất.",
-                    "/learn/grammar?topic=" + weak.topicId() + "&mode=practice");
-        }
 
-        Set<UUID> completed = lessonProgress.completedLessonIds();
-        Set<UUID> inProgress = lessonProgress.inProgressLessonIds();
-        List<VisibleLessonView> nextLessons =
-                visibleLessons.stream()
-                        .filter(l -> !completed.contains(l.id()))
-                        .sorted(
-                                Comparator.comparing(
-                                                (VisibleLessonView l) ->
-                                                        !inProgress.contains(l.id()))
-                                        .thenComparingInt(VisibleLessonView::sortOrder)
-                                        .thenComparing(VisibleLessonView::id))
-                        .toList();
-        int lessonsAdded = 0;
-        for (VisibleLessonView lesson : nextLessons) {
-            if (lessonsAdded >= 2 || items.size() >= 6) {
-                break;
-            }
-            String prefix = inProgress.contains(lesson.id()) ? "Học tiếp: " : "Bài học mới: ";
-            String reasonCode =
-                    inProgress.contains(lesson.id())
-                            ? "RESUME_GRAMMAR_LESSON"
-                            : "NEXT_GRAMMAR_LESSON";
-            if (addUnique(
-                    items,
-                    seenTargets,
-                    "GRAMMAR_LESSON",
-                    "GRAMMAR",
-                    reasonCode,
-                    prefix + lesson.title(),
-                    "Bài ngữ pháp tiếp theo trong lộ trình.",
-                    "/learn/grammar?lesson=" + lesson.id())) {
-                lessonsAdded++;
+            Set<UUID> completed = lessonProgress.completedLessonIds();
+            Set<UUID> inProgress = lessonProgress.inProgressLessonIds();
+            List<VisibleLessonView> nextLessons =
+                    visibleLessons.stream()
+                            .filter(l -> !completed.contains(l.id()))
+                            .sorted(
+                                    Comparator.comparing(
+                                                    (VisibleLessonView l) ->
+                                                            !inProgress.contains(l.id()))
+                                            .thenComparingInt(VisibleLessonView::sortOrder)
+                                            .thenComparing(VisibleLessonView::id))
+                            .toList();
+            int lessonsAdded = 0;
+            for (VisibleLessonView lesson : nextLessons) {
+                if (lessonsAdded >= 2 || items.size() >= 6) {
+                    break;
+                }
+                String prefix = inProgress.contains(lesson.id()) ? "Học tiếp: " : "Bài học mới: ";
+                String reasonCode =
+                        inProgress.contains(lesson.id())
+                                ? "RESUME_GRAMMAR_LESSON"
+                                : "NEXT_GRAMMAR_LESSON";
+                if (addUnique(
+                        items,
+                        seenTargets,
+                        "GRAMMAR_LESSON",
+                        "GRAMMAR",
+                        reasonCode,
+                        prefix + lesson.title(),
+                        "Bài ngữ pháp tiếp theo trong lộ trình.",
+                        "/learn/grammar?lesson=" + lesson.id())) {
+                    lessonsAdded++;
+                }
             }
         }
 

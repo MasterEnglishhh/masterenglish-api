@@ -1,9 +1,12 @@
 package com.masterenglish.api.modules.dashboard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -297,8 +300,7 @@ class DashboardControllerIntegrationTests {
 
         assertThat(dashboard.at("/recommendations").toString())
                 .contains("FLASHCARD_REVIEW")
-                .contains("WEAK_TOPIC_PRACTICE")
-                .contains(lessonTodo.toString());
+                .doesNotContain("/learn/grammar?");
         assertThat(dashboard.at("/recommendations/0/skill").asText()).isEqualTo("VOCABULARY");
         assertThat(dashboard.at("/recommendations/0/reasonCode").asText())
                 .isEqualTo("DUE_FLASHCARDS");
@@ -376,6 +378,78 @@ class DashboardControllerIntegrationTests {
         assertThat(dashboard.at("/overview/timezone").asText()).isEqualTo("America/New_York");
         // Both fall into local 2026-03-08 (deduped to 1 distinct activity day).
         assertThat(dashboard.at("/overview/totalActivityDays").asLong()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName(
+            "Legacy alias Asia/Saigon và raw offset +07:00 không gây 500 trên Postgres AT TIME ZONE khi có dữ liệu học tập")
+    void legacyAliasAndStoredRawOffsetWorkAcrossPostgresActivityQueries() throws Exception {
+        seedService.seedVocabularyData(contentAdmin.getId());
+        UUID word1 = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        UUID sense1 = UUID.fromString("20000000-0000-0000-0000-000000000001");
+        UUID rev1 =
+                jdbc.queryForObject(
+                        "SELECT published_revision_id FROM content_items WHERE id = ?",
+                        UUID.class,
+                        word1);
+
+        Instant activityAt = clock.instant().minusSeconds(60);
+        reviewRepository.saveAndFlush(
+                new WordReview(
+                        UUID.randomUUID(),
+                        learner.getId(),
+                        sense1,
+                        word1,
+                        rev1,
+                        UUID.randomUUID(),
+                        "1".repeat(64),
+                        "GOOD",
+                        "SM2_3BTN_V1",
+                        "{}",
+                        "{}",
+                        activityAt.minusSeconds(3600),
+                        activityAt.plusSeconds(3600),
+                        activityAt,
+                        "UTC",
+                        LocalDate.ofInstant(activityAt, java.time.ZoneOffset.UTC)));
+        UUID topic = publishGrammarTopic("Alias Topic", "alias-topic");
+        UUID lesson = publishGrammarLesson(topic, "Alias Lesson", 1);
+        lessonProgressRepository.upsertCompletion(
+                learner.getId(), lesson, currentRevision(lesson), activityAt);
+        seedSubmittedAttempt(learner.getId(), topic, 1, 1, activityAt);
+
+        // 1. PUT /preferences with legacy alias Asia/Saigon -> canonicalized and works on PG
+        mockMvc.perform(
+                        put("/api/v1/notifications/preferences")
+                                .with(as(learner))
+                                .with(csrf())
+                                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"inAppEnabled\":true,\"emailEnabled\":false,\"dailyReminderTime\":\"20:00\",\"timezone\":\"Asia/Saigon\",\"quietHoursStart\":null,\"quietHoursEnd\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timezone").value("Asia/Ho_Chi_Minh"));
+
+        JsonNode fromPut = jsonGet("/api/v1/dashboard", learner);
+        assertThat(fromPut.at("/overview/timezone").asText()).isEqualTo("Asia/Ho_Chi_Minh");
+        assertThat(fromPut.at("/overview/totalActivityDays").asLong()).isGreaterThanOrEqualTo(1L);
+
+        // 2. Stored legacy alias directly in DB (before normalization) -> canonicalized on read
+        jdbc.update(
+                "UPDATE notification_preferences SET timezone = 'Europe/Kiev' WHERE user_id = ?",
+                learner.getId());
+        entityManager.flush();
+        entityManager.clear();
+        JsonNode storedAlias = jsonGet("/api/v1/dashboard", learner);
+        assertThat(storedAlias.at("/overview/timezone").asText()).isEqualTo("Europe/Kyiv");
+
+        // 3. Stored raw offset directly in DB -> falls back safely to Asia/Ho_Chi_Minh
+        jdbc.update(
+                "UPDATE notification_preferences SET timezone = '+07:00' WHERE user_id = ?",
+                learner.getId());
+        entityManager.flush();
+        entityManager.clear();
+        JsonNode rawOffset = jsonGet("/api/v1/dashboard", learner);
+        assertThat(rawOffset.at("/overview/timezone").asText()).isEqualTo("Asia/Ho_Chi_Minh");
     }
 
     private JsonNode jsonGet(String path, User actor) throws Exception {

@@ -17,6 +17,8 @@ public interface LearningProgressService {
 
     LearningProgressResponse getProgress(UUID userId);
 
+    LearningProgressResponse getProgress(UUID userId, Instant asOf);
+
     List<DueDeckCountView> countDueCardsByDeck(UUID userId, Instant asOf);
 
     Set<LocalDate> findReviewActivityLocalDays(UUID userId, String timezone);

@@ -23,7 +23,11 @@ public class LearningEvents {
     }
 
     public VocabularyProgressView getVocabularyProgress(UUID userId) {
-        return events.request(reply -> new VocabularyProgressRequested(userId, reply));
+        return getVocabularyProgress(userId, null);
+    }
+
+    public VocabularyProgressView getVocabularyProgress(UUID userId, Instant asOf) {
+        return events.request(reply -> new VocabularyProgressRequested(userId, asOf, reply));
     }
 
     public LessonProgressSummaryView getLessonProgressSummary(UUID userId) {
@@ -50,7 +54,7 @@ public class LearningEvents {
             long reviewsLast7Days) {}
 
     public record VocabularyProgressRequested(
-            UUID userId, EventReply<VocabularyProgressView> reply) {}
+            UUID userId, Instant asOf, EventReply<VocabularyProgressView> reply) {}
 
     public record LessonProgressSummaryView(
             long completedCount,

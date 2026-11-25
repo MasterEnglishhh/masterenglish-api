@@ -15,6 +15,8 @@ import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
 import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
 import com.masterenglish.api.common.events.VocabularyEvents;
 import com.masterenglish.api.common.events.VocabularyEvents.DeckSummaryView;
+import com.masterenglish.api.common.time.TimeZones;
+import com.masterenglish.api.config.DashboardProperties;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.DueDeckItem;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarLessonProgressSummary;
@@ -39,7 +41,6 @@ import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.We
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeaknessAnalysisSummary;
 import com.masterenglish.api.modules.dashboard.service.DashboardService;
 import java.time.Clock;
-import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -77,6 +78,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final GrammarEvents grammar;
     private final PracticeEvents practice;
     private final NotificationEvents notifications;
+    private final DashboardProperties properties;
     private final Clock clock;
 
     public DashboardServiceImpl(
@@ -86,6 +88,7 @@ public class DashboardServiceImpl implements DashboardService {
             GrammarEvents grammar,
             PracticeEvents practice,
             NotificationEvents notifications,
+            DashboardProperties properties,
             Clock clock) {
         this.identity = Objects.requireNonNull(identity);
         this.learning = Objects.requireNonNull(learning);
@@ -93,6 +96,7 @@ public class DashboardServiceImpl implements DashboardService {
         this.grammar = Objects.requireNonNull(grammar);
         this.practice = Objects.requireNonNull(practice);
         this.notifications = Objects.requireNonNull(notifications);
+        this.properties = Objects.requireNonNull(properties);
         this.clock = Objects.requireNonNull(clock);
     }
 
@@ -110,7 +114,7 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDate todayLocal = now.atZone(zone).toLocalDate();
         Instant weaknessSince = now.minus(Duration.ofDays(WEAKNESS_PERIOD_DAYS));
 
-        VocabularyProgressView vocab = learning.getVocabularyProgress(userId);
+        VocabularyProgressView vocab = learning.getVocabularyProgress(userId, now);
         LessonProgressSummaryView lessonProgress = learning.getLessonProgressSummary(userId);
         List<DueDeckCountView> rawDueDecks = learning.countDueCardsByDeck(userId, now);
         PracticeSummaryView practiceSummary =
@@ -137,7 +141,8 @@ public class DashboardServiceImpl implements DashboardService {
                         dueDecks,
                         weaknessAnalysis.weakTopics(),
                         visibleLessons,
-                        lessonProgress);
+                        lessonProgress,
+                        properties.recommendations().grammarDeepLinksEnabled());
 
         Integer plannedDailyMinutes = goal.map(LearningGoalView::dailyMinutes).orElse(null);
         StudyPlanSummary studyPlan =
@@ -187,14 +192,14 @@ public class DashboardServiceImpl implements DashboardService {
         if (rawTimezone == null || rawTimezone.isBlank()) {
             return ZoneId.of(DEFAULT_TIMEZONE);
         }
-        try {
-            return ZoneId.of(rawTimezone.trim());
-        } catch (DateTimeException exception) {
-            log.warn(
-                    "Invalid learner timezone encountered on dashboard; falling back to {}",
-                    DEFAULT_TIMEZONE);
-            return ZoneId.of(DEFAULT_TIMEZONE);
-        }
+        return TimeZones.resolveCanonicalZone(rawTimezone)
+                .orElseGet(
+                        () -> {
+                            log.warn(
+                                    "Invalid learner timezone encountered on dashboard; falling back to {}",
+                                    DEFAULT_TIMEZONE);
+                            return ZoneId.of(DEFAULT_TIMEZONE);
+                        });
     }
 
     private NotificationSummary safeNotificationSummary(UUID userId) {
