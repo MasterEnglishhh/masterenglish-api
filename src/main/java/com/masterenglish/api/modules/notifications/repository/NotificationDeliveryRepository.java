@@ -118,7 +118,7 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
                     SELECT id FROM notification_deliveries
                     WHERE channel = 'EMAIL'
                       AND ((status = 'PENDING' AND (next_retry_at IS NULL OR next_retry_at <= :now))
-                        OR (status = 'PROCESSING' AND lease_until < :now))
+                        OR (status = 'PROCESSING' AND lease_until <= :now))
                     ORDER BY created_at, id
                     LIMIT :limit
                     FOR UPDATE SKIP LOCKED

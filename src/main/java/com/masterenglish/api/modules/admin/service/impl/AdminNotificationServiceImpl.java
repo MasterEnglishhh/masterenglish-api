@@ -1,5 +1,7 @@
 package com.masterenglish.api.modules.admin.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.common.events.NotificationEvents;
@@ -14,7 +16,9 @@ import com.masterenglish.api.modules.admin.dto.response.AdminReminderHistoryDto.
 import com.masterenglish.api.modules.admin.dto.response.ReminderRuleDto;
 import com.masterenglish.api.modules.admin.service.AdminNotificationService;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminNotificationServiceImpl implements AdminNotificationService {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final NotificationEvents notifications;
     private final ContentEvents content;
@@ -69,14 +75,7 @@ public class AdminNotificationServiceImpl implements AdminNotificationService {
                         ruleId, request.enabled(), request.minimumGapMinutes());
         ReminderRuleView before = result.before();
         ReminderRuleView after = result.after();
-        String metadata =
-                String.format(
-                        "{\"code\":\"%s\",\"before\":{\"enabled\":%s,\"minimumGapMinutes\":%d},\"after\":{\"enabled\":%s,\"minimumGapMinutes\":%d}}",
-                        after.code(),
-                        before.enabled(),
-                        before.minimumGapMinutes(),
-                        after.enabled(),
-                        after.minimumGapMinutes());
+        String metadata = serializeRuleChangeMetadata(before, after);
         content.recordAuditLog(
                 actorId,
                 "REMINDER_RULE_UPDATED",
@@ -85,6 +84,27 @@ public class AdminNotificationServiceImpl implements AdminNotificationService {
                 metadata,
                 "Cập nhật quy tắc nhắc học " + after.code());
         return toRuleDto(after);
+    }
+
+    private static String serializeRuleChangeMetadata(
+            ReminderRuleView before, ReminderRuleView after) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("code", after.code());
+        payload.put(
+                "before",
+                Map.of(
+                        "enabled", before.enabled(),
+                        "minimumGapMinutes", before.minimumGapMinutes()));
+        payload.put(
+                "after",
+                Map.of(
+                        "enabled", after.enabled(),
+                        "minimumGapMinutes", after.minimumGapMinutes()));
+        try {
+            return JSON.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize audit metadata.", exception);
+        }
     }
 
     @Override

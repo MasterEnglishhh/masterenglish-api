@@ -59,6 +59,11 @@ public record NotificationProperties(
         if (leaseSeconds < 1) {
             throw new IllegalArgumentException("notification.lease-seconds must be positive.");
         }
+        if (retryBackoff == null
+                || retryBackoff.stream().anyMatch(d -> d == null || d.isNegative())) {
+            throw new IllegalArgumentException(
+                    "notification.retry-backoff delays must be non-null and non-negative.");
+        }
         retryBackoff = List.copyOf(retryBackoff);
         if (retryBackoff.size() < maxRetries) {
             throw new IllegalArgumentException(
