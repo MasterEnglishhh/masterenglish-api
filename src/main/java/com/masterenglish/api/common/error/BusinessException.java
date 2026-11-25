@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * The message must be safe to return to the client. Details are returned as extra ProblemDetail
@@ -19,8 +20,9 @@ public class BusinessException extends RuntimeException {
     }
 
     /**
-     * @throws IllegalArgumentException if a key is not allowlisted for the code, or a value is not
-     *     a non-negative count. This is a programming error and is never sent to the client.
+     * @throws IllegalArgumentException if a key is not allowlisted for the code, or a value does
+     *     not match the shape of its key (see {@link #isValidDetail}). This is a programming error
+     *     and is never sent to the client.
      */
     public BusinessException(ErrorCode errorCode, String message, Map<String, Object> details) {
         super(message);
@@ -43,13 +45,25 @@ public class BusinessException extends RuntimeException {
                 throw new IllegalArgumentException(
                         "Detail key '" + entry.getKey() + "' is not allowlisted for " + code);
             }
-            if (!isCount(entry.getValue())) {
+            if (!isValidDetail(entry.getKey(), entry.getValue())) {
                 throw new IllegalArgumentException(
-                        "Detail '" + entry.getKey() + "' must be a non-negative count.");
+                        "Detail '" + entry.getKey() + "' has a value of the wrong shape.");
             }
             copy.put(entry.getKey(), entry.getValue());
         }
         return Collections.unmodifiableMap(copy);
+    }
+
+    /**
+     * Shapes allowed by the practice contract (section 4.2): counts are non-negative integers, the
+     * current selected option is the caller's own option id (or null), and status is an enum name.
+     */
+    private static boolean isValidDetail(String key, Object value) {
+        return switch (key) {
+            case "currentSelectedOptionId" -> value == null || value instanceof UUID;
+            case "attemptStatus" -> value instanceof String text && text.matches("[A-Z_]{1,32}");
+            default -> isCount(value);
+        };
     }
 
     private static boolean isCount(Object value) {

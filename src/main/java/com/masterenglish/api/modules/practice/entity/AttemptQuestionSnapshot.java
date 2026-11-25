@@ -1,85 +1,86 @@
 package com.masterenglish.api.modules.practice.entity;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.io.Serializable;
-import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-/** A question as it was when the attempt started. Later publications never change it. */
+/**
+ * One sealed question of an attempt. {@code questionSnapshot} is public; the answer key and the
+ * explanation are private and only leave the server after submission.
+ */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "attempt_question_snapshots")
 public class AttemptQuestionSnapshot {
 
-    @EmbeddedId private Id id;
+    @Id private UUID id;
+
+    @Column(name = "attempt_id", nullable = false, updatable = false)
+    private UUID attemptId;
 
     @Column(name = "question_id", nullable = false, updatable = false)
     private UUID questionId;
 
-    @Column(name = "topic_id", nullable = false, updatable = false)
-    private UUID topicId;
+    @Column(name = "source_revision_id", nullable = false, updatable = false)
+    private UUID sourceRevisionId;
+
+    @Column(nullable = false, length = 16, updatable = false)
+    private String category;
+
+    @Column(nullable = false, updatable = false)
+    private short ordinal;
 
     @Column(name = "question_type_code", nullable = false, length = 32, updatable = false)
     private String questionTypeCode;
 
-    @Column(name = "practice_mode", nullable = false, length = 32, updatable = false)
-    private String practiceMode;
+    @Column(name = "schema_version", nullable = false, updatable = false)
+    private short schemaVersion;
 
-    @Column(nullable = false, updatable = false)
-    private String prompt;
+    @Column(name = "grading_policy_version", nullable = false, length = 32, updatable = false)
+    private String gradingPolicyVersion;
 
-    @Column(nullable = false, updatable = false)
-    private String explanation;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "question_snapshot", nullable = false, updatable = false)
+    private String questionSnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "answer_key_snapshot", nullable = false, updatable = false)
+    private String answerKeySnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "explanation_snapshot", updatable = false)
+    private String explanationSnapshot;
 
     public AttemptQuestionSnapshot(
+            UUID id,
             UUID attemptId,
-            int position,
             UUID questionId,
-            UUID topicId,
+            UUID sourceRevisionId,
+            short ordinal,
             String questionTypeCode,
-            String practiceMode,
-            String prompt,
-            String explanation) {
-        this.id = new Id(attemptId, position);
+            String gradingPolicyVersion,
+            String questionSnapshot,
+            String answerKeySnapshot,
+            String explanationSnapshot) {
+        this.id = id;
+        this.attemptId = attemptId;
         this.questionId = questionId;
-        this.topicId = topicId;
+        this.sourceRevisionId = sourceRevisionId;
+        this.category = Attempt.GRAMMAR;
+        this.ordinal = ordinal;
         this.questionTypeCode = questionTypeCode;
-        this.practiceMode = practiceMode;
-        this.prompt = prompt;
-        this.explanation = explanation;
-    }
-
-    @Embeddable
-    @Getter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Id implements Serializable {
-
-        @Column(name = "attempt_id", nullable = false)
-        private UUID attemptId;
-
-        @Column(name = "position", nullable = false)
-        private int position;
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof Id that)) return false;
-            return position == that.position && Objects.equals(attemptId, that.attemptId);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(attemptId, position);
-        }
+        this.schemaVersion = 1;
+        this.gradingPolicyVersion = gradingPolicyVersion;
+        this.questionSnapshot = questionSnapshot;
+        this.answerKeySnapshot = answerKeySnapshot;
+        this.explanationSnapshot = explanationSnapshot;
     }
 }

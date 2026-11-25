@@ -1,6 +1,6 @@
 # Hợp đồng Practice và Results (bản chốt Giai đoạn 1)
 
-Trạng thái: **DESIGN CHỐT cho Giai đoạn 1. Chưa triển khai.** Chưa đổi Java, migration, Frontend hay baseline.
+Trạng thái: **đã triển khai cho Giai đoạn 1 (Slice 2, migration V14)** trên nhánh `feat/m04-grammar-complete`. Bản thiết kế bên dưới giữ nguyên làm căn cứ; các điểm đã đổi khi triển khai được ghi ở mục 18. Chưa triển khai: thống kê điểm yếu và lỗi sai (Slice 3). Frontend chưa dùng các endpoint này.
 Nhánh: `feat/m04-grammar`. Ngày: 2026-11-21.
 
 Nguồn chuẩn (đã duyệt, đọc trực tiếp trong repository):
@@ -440,7 +440,7 @@ Câu bỏ trống có `is_correct = false` nên tính là sai.
 
 ## 8. Mistake lifecycle (D13): HOÃN, CHƯA HOÀN THÀNH
 
-**Trạng thái:** chưa triển khai. Không ghi nhận đây là tính năng đã hoàn thành.
+**Trạng thái:** đã triển khai (Slice 3, migration V15): `mistake_records`, `attempt_source_mistakes`, projection lại từ lịch sử đã chấm, nguồn `MISTAKES`. Quyết định D13 đã được đảo: lỗi sai nằm trong phạm vi M04 theo yêu cầu của người dùng. Mục 8.1 bên dưới là lịch sử thiết kế.
 
 ### 8.1. Đã hoãn
 
@@ -786,3 +786,43 @@ Theo thứ tự phụ thuộc:
 Còn chặn: chỉ công việc phụ thuộc schema (Nhóm B), do thiếu bằng chứng Flyway và chưa kiểm chứng checksum với line ending. Không có lỗi thiết kế nào còn lại trong file.
 
 Không sửa Java, migration, Frontend, baseline. Không chạy migration. Không commit, push, merge. Không bắt đầu Giai đoạn 2.
+
+## 18. Ghi nhận triển khai (Slice 2)
+
+Migration `V14__practice_engine_alignment.sql`: dựng lại các bảng attempt của V13 theo cấu trúc Approved Baseline v3.0 (phạm vi grammar); tạo `question_types` (SINGLE_CHOICE bật), và các bảng rỗng `question_groups`, `practice_sets`, `set_items`, `attempt_group_snapshots` để giữ FK nullable cho M05. V1..V13 không sửa, không có V11. Dữ liệu attempt của V13 bị bỏ (đã được duyệt cho môi trường local).
+
+Endpoint đang dùng:
+- `POST /api/v1/attempts` (header `Idempotency-Key`; body `source` và `questionCount` bắt buộc). Trả 201 khi tạo mới, 200 khi replay.
+- `GET /api/v1/attempts/{id}`; `PUT /api/v1/attempts/{id}/answers/{snapshotId}` (`selectedOptionId` hoặc null, `expectedVersion`); `POST /api/v1/attempts/{id}/submit`.
+- `GET /api/v1/attempts/statistics/topics?category=GRAMMAR&view=allocation` (chỉ allocation; cờ điểm yếu thuộc Slice 3).
+- `GET /api/v1/grammar/topics/{id}/exercises`.
+- Đã gỡ các đường dẫn cũ `POST /api/v1/grammar/topics/{id}/attempts`, `POST /api/v1/grammar/attempts/mixed`, `GET /api/v1/grammar/statistics/topics`.
+
+Mã lỗi mới: `IDEMPOTENCY_CONFLICT` (409), `OPEN_ATTEMPT_LIMIT_REACHED` (409; `openAttemptCount`, `maxOpenAttempts`), `STALE_ANSWER_VERSION` (409; `currentVersion`, `currentSelectedOptionId`), `ATTEMPT_NOT_OPEN` (409; `attemptStatus`), `OPTION_NOT_IN_SNAPSHOT` (400). Khóa `attemptStatus` (không dùng `status`) vì `status` là thành viên dành riêng của ProblemDetail. Giá trị `details` nay được kiểm tra theo khóa: đếm không âm, `currentSelectedOptionId` là UUID hoặc null, `attemptStatus` là tên enum.
+
+Điểm khác với bản thiết kế khi triển khai:
+- `score = correct_count` (1 điểm mỗi câu đúng); `accuracyPercent` là trường dẫn xuất trong phản hồi sau nộp.
+- Đáp án đúng và lời giải nằm trong `answer_key_snapshot` và `explanation_snapshot` (JSONB riêng); `attempt_snapshot_options` không có `is_correct`. Trước nộp, phản hồi có `correctOptionId`, `explanation`, `isCorrect` đều null.
+- Topic được gán (`attributedTopicId`) và `topicIds` nằm trong `question_snapshot` (JSON công khai), vì baseline không có cột topic trên snapshot.
+- Chọn câu dùng `SelectionPlanner` (D9): lock `FOR SHARE` theo id, thứ tự theo hash của requestId, thiếu câu thì báo `NO_ELIGIBLE_QUESTIONS` / `INSUFFICIENT_QUESTIONS`, không cắt.
+- Trần 5 bài mở và thời gian abandon 7 ngày là hằng số trong code. Bảng `system_settings` chưa được tạo, nên chưa đọc cấu hình từ DB.
+- Chưa áp dụng các trigger `guard_*`/`*_complete` và các hàm `me_*` của baseline; ràng buộc được service thực thi. Cần bổ sung ở M05.
+- Mistake lifecycle (M04.09) và thống kê điểm yếu (M04.08) thuộc Slice 3.
+- Facade mới trong `common/events`: `GrammarEvents.findPublishedTopic(topicId)`.
+
+### 18.1. Ghi nhận triển khai (Slice 3)
+
+Migration `V15__mistake_lifecycle.sql`: `mistake_records` và `attempt_source_mistakes` theo DATA_DICTIONARY (đủ UNIQUE, CHECK trạng thái, FK kép). V1..V14 không sửa.
+
+Vòng đời lỗi sai: khi một lượt chuyển sang `SUBMITTED` (kể cả `TIME_LIMIT`), với mỗi câu của lượt đó, projection được tính lại từ toàn bộ lịch sử đã chấm của user với câu đó, sắp theo `(effective_finished_at, attempt_id)` (SQL). Hàm gập thuần `MistakeProjection` không phụ thuộc đồng hồ. Vì tính lại từ lịch sử, nộp muộn không làm sai kết quả và retry không cộng thêm gì. Blank tính là sai.
+
+Endpoint mới:
+- `GET /api/v1/mistakes?state=&topicId=&page=&size=` (sắp `lastWrongAt` giảm dần, tie-break `id`). Đường dẫn này không có trong contract gốc; cần FE duyệt.
+- `POST /api/v1/attempts` với `source.type = MISTAKES` và `source.mistakeIds` (1..100 id, phải thuộc về learner, không thì 404). Chỉ chọn câu còn hợp lệ (đúng revision, loại câu bật, không archive/revoke). Thiếu thì `NO_ELIGIBLE_QUESTIONS` / `INSUFFICIENT_QUESTIONS` kèm số khả dụng. Các lỗi sai được chọn được ghim vào `attempt_source_mistakes`.
+- `GET /api/v1/attempts/statistics/summary?category=GRAMMAR&view=allocation`: tổng toàn hệ thống, mỗi câu đếm đúng một lần. Đường dẫn này không có trong contract gốc.
+
+Thống kê theo topic (`view=allocation`) thêm: `view`, `sampleSize`, `windowCorrectCount`, `windowAccuracyPercent`, `weak`, `windowDays`, `windowStart`. Cửa sổ là 30 ngày theo `effective_finished_at`. Điểm yếu: ít nhất 20 câu đã chấm trong cửa sổ và tỷ lệ đúng dưới 70% (so sánh số nguyên, `70.0%` không yếu). Các ngưỡng là hằng số trong `WeakTopicPolicy`, chưa đọc từ `system_settings`.
+
+Điểm chưa làm, cần duyệt:
+- View `multi_label` (đếm trùng câu đa topic theo từng topic) vẫn bị hoãn theo mục 7.3. Yêu cầu của Slice 3 muốn đếm trùng theo topic, nên đây là điểm xung đột. Phần đã làm theo `allocation`: mỗi câu đếm đúng một lần theo `attributedTopicId`, và tổng toàn hệ thống không cộng trùng.
+- Hỗ trợ lọc thống kê theo khoảng thời gian: không có trong contract, chưa làm; cửa sổ cố định 30 ngày.

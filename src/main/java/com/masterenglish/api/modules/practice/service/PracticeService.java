@@ -1,32 +1,43 @@
 package com.masterenglish.api.modules.practice.service;
 
+import com.masterenglish.api.modules.practice.dto.response.AnswerResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
+import com.masterenglish.api.modules.practice.dto.response.StatisticsSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.TopicStatisticsResponse;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * The shared practice engine for grammar quizzes. Attempts are sealed at start, answers are
- * accepted only while the attempt is open, and grading runs on the server against the snapshot.
- */
 public interface PracticeService {
 
     ExerciseSummaryResponse exercises(UUID topicId);
 
-    StartAttemptResult startTopicAttempt(
-            UUID userId, UUID topicId, UUID requestId, Integer questionCount);
-
-    StartAttemptResult startMixedAttempt(
-            UUID userId, UUID requestId, List<UUID> topicIds, Integer questionCount);
+    /**
+     * {@code sourceType} is GRAMMAR_TOPIC (one {@code topicId}), MIXED_GRAMMAR ({@code topicIds})
+     * or MISTAKES ({@code mistakeIds}, the learner's own mistakes).
+     */
+    StartAttemptResult start(
+            UUID userId,
+            UUID requestId,
+            String sourceType,
+            UUID topicId,
+            List<UUID> topicIds,
+            List<UUID> mistakeIds,
+            Integer questionCount);
 
     AttemptResponse getAttempt(UUID userId, UUID attemptId);
 
-    AttemptResponse saveAnswer(UUID userId, UUID attemptId, int position, UUID optionId);
+    AnswerResponse saveAnswer(
+            UUID userId,
+            UUID attemptId,
+            UUID snapshotId,
+            UUID selectedOptionId,
+            long expectedVersion);
 
-    /** Submitting twice returns the first result; grading never runs again. */
     AttemptResponse submit(UUID userId, UUID attemptId);
 
-    List<TopicStatisticsResponse> topicStatistics(UUID userId);
+    List<TopicStatisticsResponse> topicStatistics(UUID userId, String category, String view);
+
+    StatisticsSummaryResponse statisticsSummary(UUID userId, String category, String view);
 }

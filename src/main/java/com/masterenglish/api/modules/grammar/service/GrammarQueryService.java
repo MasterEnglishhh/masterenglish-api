@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.grammar.service;
 
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
@@ -25,4 +26,6 @@ public interface GrammarQueryService {
     Optional<PublishedLessonRef> findPublishedLesson(UUID lessonId);
 
     boolean isVisibleTopic(UUID topicId);
+
+    Optional<GrammarEvents.PublishedTopicRef> findPublishedTopic(UUID topicId);
 }

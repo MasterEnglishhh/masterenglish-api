@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleLesson;
@@ -128,6 +129,16 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
     @Transactional(readOnly = true)
     public boolean isVisibleTopic(UUID topicId) {
         return topics.findVisibleTopicById(topicId).isPresent();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<GrammarEvents.PublishedTopicRef> findPublishedTopic(UUID topicId) {
+        return topics.findVisibleTopicById(topicId)
+                .map(
+                        t ->
+                                new GrammarEvents.PublishedTopicRef(
+                                        t.getId(), t.getPublishedRevisionId()));
     }
 
     private Map<String, Object> body(GrammarLesson lesson) {

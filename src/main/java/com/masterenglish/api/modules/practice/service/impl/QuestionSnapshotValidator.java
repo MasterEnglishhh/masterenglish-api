@@ -40,7 +40,13 @@ public class QuestionSnapshotValidator {
                     "word_sense_ids");
     private static final Set<String> OPTION_FIELDS = Set.of("id", "position", "body");
     private static final Set<String> ANSWER_KEY_FIELDS = Set.of("correctOptionId");
-    private static final Set<String> PRACTICE_MODES = Set.of("STANDARD", "FILL_OPTION");
+    private static final Set<String> PRACTICE_MODES =
+            Set.of(
+                    "STANDARD",
+                    "TRANSLATE_EN_VI",
+                    "TRANSLATE_VI_EN",
+                    "LISTEN_AND_CHOOSE",
+                    "FILL_OPTION");
     private static final Set<String> DIFFICULTIES = Set.of("EASY", "MEDIUM", "HARD");
     private static final Pattern HTML = Pattern.compile("<\\s*/?\\s*[a-zA-Z!]");
     private static final int MAX_PROMPT = 10_000;

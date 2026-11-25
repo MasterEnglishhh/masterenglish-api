@@ -30,6 +30,16 @@ public class GrammarEvents {
         return events.request(reply -> new VisibleCatalogRequested(reply));
     }
 
+    /** The topic's currently published revision, or empty when the topic is not visible. */
+    public Optional<PublishedTopicRef> findPublishedTopic(UUID topicId) {
+        return events.request(reply -> new PublishedTopicRequested(topicId, reply));
+    }
+
+    public record PublishedTopicRef(UUID topicId, UUID revisionId) {}
+
+    public record PublishedTopicRequested(
+            UUID topicId, EventReply<Optional<PublishedTopicRef>> reply) {}
+
     public record PublishedLessonRef(UUID lessonId, UUID revisionId) {}
 
     public record PublishedLessonRequested(

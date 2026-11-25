@@ -5,31 +5,44 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A learner's attempt. While IN_PROGRESS, options carry no correctness flag and questions carry no
- * explanation. Both appear only after the attempt is SUBMITTED.
+ * Learner view of an attempt. Answers, correctness and explanations appear only after submission
+ * (SUBMITTED). Before that, the view carries no answer key and no explanation.
  */
 public record AttemptResponse(
         UUID id,
-        String sourceType,
-        List<UUID> topicIds,
+        String category,
+        Source source,
         String status,
         int totalCount,
-        Integer correctCount,
-        Integer score,
+        long version,
+        Instant deadlineAt,
         Instant startedAt,
+        Instant lastActiveAt,
+        Integer score,
+        Integer correctCount,
+        Integer answeredCount,
+        Integer accuracyPercent,
         Instant submittedAt,
-        List<QuestionResponse> questions) {
+        Instant effectiveFinishedAt,
+        String submitReason,
+        Integer durationSeconds,
+        List<QuestionView> questions) {
 
-    public record QuestionResponse(
-            int position,
+    public record Source(String type, List<UUID> topicIds) {}
+
+    public record QuestionView(
+            UUID snapshotId,
+            int ordinal,
             UUID topicId,
-            String questionType,
+            String questionTypeCode,
             String practiceMode,
             String prompt,
-            String explanation,
+            List<OptionView> options,
             UUID selectedOptionId,
-            Boolean correct,
-            List<OptionResponse> options) {}
+            long answerVersion,
+            Boolean isCorrect,
+            UUID correctOptionId,
+            String explanation) {}
 
-    public record OptionResponse(UUID id, int position, String body, Boolean correct) {}
+    public record OptionView(UUID optionId, int position, String body) {}
 }

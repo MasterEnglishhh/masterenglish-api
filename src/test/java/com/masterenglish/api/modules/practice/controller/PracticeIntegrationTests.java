@@ -134,16 +134,16 @@ class PracticeIntegrationTests {
         publishQuestion(topic, "Seal one", "right-1", "wrong-1");
         publishQuestion(topic, "Seal two", "right-2", "wrong-2");
 
-        JsonNode attempt = startTopic(learner, UUID.randomUUID(), null, topic, 201);
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 2, topic, 201);
 
         assertThat(attempt.path("status").asText()).isEqualTo("IN_PROGRESS");
         assertThat(attempt.path("totalCount").asInt()).isEqualTo(2);
         assertThat(attempt.path("questions")).hasSize(2);
         for (JsonNode question : attempt.path("questions")) {
             assertAbsent(question.path("explanation"));
-            assertAbsent(question.path("correct"));
+            assertAbsent(question.path("isCorrect"));
             for (JsonNode option : question.path("options")) {
-                assertAbsent(option.path("correct"));
+                assertAbsent(option.path("isCorrect"));
             }
         }
     }
@@ -167,7 +167,7 @@ class PracticeIntegrationTests {
         UUID topic = publishTopic();
         publishQuestion(topic, "Answer one", "right-1", "wrong-1");
         publishQuestion(topic, "Answer two", "right-2", "wrong-2");
-        JsonNode attempt = startTopic(learner, UUID.randomUUID(), null, topic, 201);
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 2, topic, 201);
         UUID attemptId = UUID.fromString(attempt.path("id").asText());
         String optionOfSecond = optionIdWithBody(attempt, 2, correctByPrompt(attempt, 2));
 
@@ -186,7 +186,7 @@ class PracticeIntegrationTests {
         UUID topic = publishTopic();
         publishQuestion(topic, "Grade one", "right-1", "wrong-1");
         publishQuestion(topic, "Grade two", "right-2", "wrong-2");
-        JsonNode attempt = startTopic(learner, UUID.randomUUID(), null, topic, 201);
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 2, topic, 201);
         UUID attemptId = UUID.fromString(attempt.path("id").asText());
         answer(
                 learner,
@@ -200,13 +200,14 @@ class PracticeIntegrationTests {
 
         assertThat(submitted.path("status").asText()).isEqualTo("SUBMITTED");
         assertThat(submitted.path("correctCount").asInt()).isEqualTo(1);
-        assertThat(submitted.path("score").asInt()).isEqualTo(50);
-        assertThat(submitted.path("questions").get(0).path("correct").asBoolean()).isTrue();
-        assertThat(submitted.path("questions").get(1).path("correct").asBoolean()).isFalse();
+        assertThat(submitted.path("score").asInt()).isEqualTo(1);
+        assertThat(submitted.path("accuracyPercent").asInt()).isEqualTo(50);
+        assertThat(submitted.path("questions").get(0).path("isCorrect").asBoolean()).isTrue();
+        assertThat(submitted.path("questions").get(1).path("isCorrect").asBoolean()).isFalse();
         assertThat(submitted.path("questions").get(0).path("explanation").asText()).isNotBlank();
 
         JsonNode again = submit(learner, attemptId);
-        assertThat(again.path("score").asInt()).isEqualTo(50);
+        assertThat(again.path("score").asInt()).isEqualTo(1);
         assertThat(again.path("correctCount").asInt()).isEqualTo(1);
 
         answer(learner, attemptId, 1, optionIdWithBody(attempt, 1, wrongOf(attempt, 1)), 409);
@@ -217,7 +218,7 @@ class PracticeIntegrationTests {
         UUID topic = publishTopic();
         publishQuestion(topic, "Stats one", "right-1", "wrong-1");
         publishQuestion(topic, "Stats two", "right-2", "wrong-2");
-        JsonNode attempt = startTopic(learner, UUID.randomUUID(), null, topic, 201);
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 2, topic, 201);
         UUID attemptId = UUID.fromString(attempt.path("id").asText());
         answer(
                 learner,
@@ -228,7 +229,9 @@ class PracticeIntegrationTests {
         submit(learner, attemptId);
 
         mockMvc.perform(
-                        get("/api/v1/grammar/statistics/topics")
+                        get("/api/v1/attempts/statistics/topics")
+                                .param("category", "GRAMMAR")
+                                .param("view", "allocation")
                                 .with(user(UserPrincipal.create(learner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].topicId").value(topic.toString()))
@@ -245,7 +248,9 @@ class PracticeIntegrationTests {
         startTopic(learner, UUID.randomUUID(), null, topic, 201);
 
         mockMvc.perform(
-                        get("/api/v1/grammar/statistics/topics")
+                        get("/api/v1/attempts/statistics/topics")
+                                .param("category", "GRAMMAR")
+                                .param("view", "allocation")
                                 .with(user(UserPrincipal.create(learner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
@@ -284,10 +289,9 @@ class PracticeIntegrationTests {
         publishQuestion(topicB, "Mixed from B", "b", "y");
         publishQuestion(topicC, "Mixed from C", "c", "z");
 
-        JsonNode attempt =
-                startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), null, 201);
+        JsonNode attempt = startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 2, 201);
 
-        assertThat(attempt.path("sourceType").asText()).isEqualTo("MIXED_GRAMMAR");
+        assertThat(attempt.path("source").path("type").asText()).isEqualTo("MIXED_GRAMMAR");
         assertThat(attempt.path("totalCount").asInt()).isEqualTo(2);
         List<String> prompts = new java.util.ArrayList<>();
         attempt.path("questions").forEach(q -> prompts.add(q.path("prompt").asText()));
@@ -299,14 +303,16 @@ class PracticeIntegrationTests {
         UUID topic = publishTopic();
         publishQuestion(topic, "Mixed guard", "a", "x");
         mockMvc.perform(
-                        post("/api/v1/grammar/attempts/mixed")
+                        post("/api/v1/attempts")
+                                .header("Idempotency-Key", UUID.randomUUID().toString())
                                 .with(user(UserPrincipal.create(learner)))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(mixedBody(UUID.randomUUID(), List.of(topic, topic), null)))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(
-                        post("/api/v1/grammar/attempts/mixed")
+                        post("/api/v1/attempts")
+                                .header("Idempotency-Key", UUID.randomUUID().toString())
                                 .with(user(UserPrincipal.create(learner)))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -334,6 +340,642 @@ class PracticeIntegrationTests {
                 .andExpect(jsonPath("$.questions[0].prompt").value("Old prompt"));
     }
 
+    @Test
+    void autosaveIsCompareAndSetAndClearingCountsAsAWrite() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Cas one", "right", "wrong");
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        UUID snapshot =
+                UUID.fromString(attempt.path("questions").get(0).path("snapshotId").asText());
+        String correct = optionIdWithBody(attempt, 1, correctByPrompt(attempt, 1));
+
+        JsonNode first =
+                read(
+                        saveAnswer(learner, attemptId, snapshot, correct, 0)
+                                .andExpect(status().isOk()));
+        assertThat(first.path("answerVersion").asLong()).isEqualTo(1);
+
+        JsonNode stale =
+                read(
+                        saveAnswer(learner, attemptId, snapshot, correct, 0)
+                                .andExpect(status().isConflict()));
+        assertThat(stale.path("code").asText()).isEqualTo("STALE_ANSWER_VERSION");
+        assertThat(stale.path("currentVersion").asLong()).isEqualTo(1);
+        assertThat(stale.path("currentSelectedOptionId").asText()).isEqualTo(correct);
+
+        JsonNode cleared =
+                read(saveAnswer(learner, attemptId, snapshot, null, 1).andExpect(status().isOk()));
+        assertThat(cleared.path("selectedOptionId").isNull()).isTrue();
+        assertThat(cleared.path("answerVersion").asLong()).isEqualTo(2);
+
+        JsonNode submitted = submit(learner, attemptId);
+        assertThat(submitted.path("correctCount").asInt()).isZero();
+        assertThat(submitted.path("answeredCount").asInt()).isZero();
+        assertThat(submitted.path("score").asInt()).isZero();
+    }
+
+    @Test
+    void openAttemptLimitIsFive() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Limit one", "right", "wrong");
+        for (int i = 0; i < 5; i++) {
+            startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        }
+        JsonNode refused =
+                read(
+                        startTopicRaw(learner, UUID.randomUUID(), 1, topic)
+                                .andExpect(status().isConflict()));
+        assertThat(refused.path("code").asText()).isEqualTo("OPEN_ATTEMPT_LIMIT_REACHED");
+        assertThat(refused.path("openAttemptCount").asInt()).isEqualTo(5);
+        assertThat(refused.path("maxOpenAttempts").asInt()).isEqualTo(5);
+    }
+
+    @Test
+    void insufficientAndEmptyPoolsAreRefusedWithCounts() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Pool one", "right", "wrong");
+        publishQuestion(topic, "Pool two", "right", "wrong");
+        JsonNode thin =
+                read(
+                        startTopicRaw(learner, UUID.randomUUID(), 3, topic)
+                                .andExpect(status().isConflict()));
+        assertThat(thin.path("code").asText()).isEqualTo("INSUFFICIENT_QUESTIONS");
+        assertThat(thin.path("requestedCount").asInt()).isEqualTo(3);
+        assertThat(thin.path("availableCount").asInt()).isEqualTo(2);
+
+        UUID empty = publishTopic();
+        JsonNode none =
+                read(
+                        startTopicRaw(learner, UUID.randomUUID(), 1, empty)
+                                .andExpect(status().isConflict()));
+        assertThat(none.path("code").asText()).isEqualTo("NO_ELIGIBLE_QUESTIONS");
+        assertThat(none.path("availableCount").asInt()).isZero();
+    }
+
+    @Test
+    void timeLimitSubmitsAtTheDeadlineAndRefusesLaterWrites() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Timed one", "right", "wrong");
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        UUID snapshot =
+                UUID.fromString(attempt.path("questions").get(0).path("snapshotId").asText());
+        saveAnswer(
+                        learner,
+                        attemptId,
+                        snapshot,
+                        optionIdWithBody(attempt, 1, correctByPrompt(attempt, 1)),
+                        0)
+                .andExpect(status().isOk());
+
+        jdbc.update(
+                "UPDATE attempts SET started_at = now() - interval '2 minutes',"
+                        + " deadline_at = now() - interval '1 minute' WHERE id = ?",
+                attemptId);
+        refreshFromDatabase();
+
+        JsonNode after =
+                read(
+                        saveAnswer(learner, attemptId, snapshot, null, 1)
+                                .andExpect(status().isConflict()));
+        assertThat(after.path("code").asText()).isEqualTo("ATTEMPT_NOT_OPEN");
+        assertThat(after.path("attemptStatus").asText()).isEqualTo("SUBMITTED");
+
+        JsonNode view =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/" + attemptId)
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(view.path("status").asText()).isEqualTo("SUBMITTED");
+        assertThat(view.path("submitReason").asText()).isEqualTo("TIME_LIMIT");
+        assertThat(view.path("correctCount").asInt()).isEqualTo(1);
+        assertThat(view.path("durationSeconds").asInt()).isEqualTo(60);
+    }
+
+    @Test
+    void idleUntimedAttemptIsAbandonedWithoutAScore() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Idle one", "right", "wrong");
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        UUID snapshot =
+                UUID.fromString(attempt.path("questions").get(0).path("snapshotId").asText());
+        saveAnswer(
+                        learner,
+                        attemptId,
+                        snapshot,
+                        optionIdWithBody(attempt, 1, correctByPrompt(attempt, 1)),
+                        0)
+                .andExpect(status().isOk());
+
+        jdbc.update(
+                "UPDATE attempts SET last_active_at = now() - interval '8 days' WHERE id = ?",
+                attemptId);
+        refreshFromDatabase();
+
+        JsonNode view =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/" + attemptId)
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(view.path("status").asText()).isEqualTo("ABANDONED");
+        assertThat(view.path("score").isNull()).isTrue();
+
+        JsonNode refused =
+                read(
+                        mockMvc.perform(
+                                        post("/api/v1/attempts/" + attemptId + "/submit")
+                                                .with(user(UserPrincipal.create(learner)))
+                                                .with(csrf()))
+                                .andExpect(status().isConflict()));
+        assertThat(refused.path("attemptStatus").asText()).isEqualTo("ABANDONED");
+
+        startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+    }
+
+    @Test
+    void questionsStayHiddenUntilSubmission() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Hidden one", "right", "wrong");
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        String raw =
+                mockMvc.perform(
+                                get("/api/v1/attempts/" + attempt.path("id").asText())
+                                        .with(user(UserPrincipal.create(learner))))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(raw).doesNotContain("Why: Hidden one");
+        JsonNode question = attempt.path("questions").get(0);
+        assertThat(question.path("correctOptionId").isNull()).isTrue();
+        assertThat(question.path("explanation").isNull()).isTrue();
+        assertThat(question.path("isCorrect").isNull()).isTrue();
+    }
+
+    @Test
+    void mixedAttemptCountsEachQuestionOnceUnderOneTopic() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestionIn(List.of(topicA, topicB), "Shared prompt", "right", "wrong");
+        JsonNode attempt = startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 1, 201);
+        JsonNode question = attempt.path("questions").get(0);
+        String expected =
+                topicA.toString().compareTo(topicB.toString()) < 0
+                        ? topicA.toString()
+                        : topicB.toString();
+        assertThat(question.path("topicId").asText()).isEqualTo(expected);
+
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        UUID snapshot = UUID.fromString(question.path("snapshotId").asText());
+        saveAnswer(
+                        learner,
+                        attemptId,
+                        snapshot,
+                        optionIdWithBody(attempt, 1, correctByPrompt(attempt, 1)),
+                        0)
+                .andExpect(status().isOk());
+        submit(learner, attemptId);
+
+        JsonNode stats =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/statistics/topics")
+                                                .param("category", "GRAMMAR")
+                                                .param("view", "allocation")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        int total = 0;
+        for (JsonNode row : stats) {
+            total += row.path("questionCount").asInt();
+        }
+        assertThat(total).isEqualTo(1);
+    }
+
+    @Test
+    void startRequestsAreValidatedBeforeAnyWrite() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Validate one", "right", "wrong");
+        String withoutCount =
+                "{\"source\":{\"type\":\"GRAMMAR_TOPIC\",\"topicId\":\"" + topic + "\"}}";
+        startRaw(learner, UUID.randomUUID().toString(), withoutCount)
+                .andExpect(status().isBadRequest());
+        startRaw(
+                        learner,
+                        UUID.randomUUID().toString(),
+                        startBody("GRAMMAR_TOPIC", topic, null, 101))
+                .andExpect(status().isBadRequest());
+        startRaw(learner, null, startBody("GRAMMAR_TOPIC", topic, null, 1))
+                .andExpect(status().isBadRequest());
+        startRaw(
+                        learner,
+                        UUID.randomUUID().toString(),
+                        startBody("MIXED_GRAMMAR", null, List.of(topic), 1))
+                .andExpect(status().isBadRequest());
+        startRaw(learner, UUID.randomUUID().toString(), startBody("VOCABULARY", topic, null, 1))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(
+                        get("/api/v1/attempts/statistics/topics")
+                                .param("category", "VOCABULARY")
+                                .param("view", "allocation")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest());
+    }
+
+    private ResultActions saveAnswer(
+            User account, UUID attemptId, UUID snapshotId, String optionId, long expectedVersion)
+            throws Exception {
+        String option = optionId == null ? "null" : "\"" + optionId + "\"";
+        return mockMvc.perform(
+                put("/api/v1/attempts/" + attemptId + "/answers/" + snapshotId)
+                        .with(user(UserPrincipal.create(account)))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"selectedOptionId\":"
+                                        + option
+                                        + ",\"expectedVersion\":"
+                                        + expectedVersion
+                                        + "}"));
+    }
+
+    private ResultActions startRaw(User account, String idempotencyKey, String body)
+            throws Exception {
+        var request =
+                post("/api/v1/attempts")
+                        .with(user(UserPrincipal.create(account)))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body);
+        if (idempotencyKey != null) {
+            request.header("Idempotency-Key", idempotencyKey);
+        }
+        return mockMvc.perform(request);
+    }
+
+    /** Writes made through JDBC bypass the persistence context; detach so reads see them. */
+    private void refreshFromDatabase() {
+        entityManager.flush();
+        entityManager.clear();
+    }
+
+    private UUID publishQuestionIn(List<UUID> topics, String prompt, String correct, String wrong) {
+        UUID item = publishItem("QUESTION");
+        correctByPrompt.put(prompt, correct);
+        events.publishEvent(
+                new RevisionPublished(
+                        item,
+                        currentRevision(item),
+                        "QUESTION",
+                        snapshotIn(topics, prompt, correct, wrong)));
+        return item;
+    }
+
+    private String snapshotIn(List<UUID> topics, String prompt, String correct, String wrong) {
+        UUID correctId = UUID.randomUUID();
+        UUID wrongId = UUID.randomUUID();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("category", "GRAMMAR");
+        data.put("part_number", null);
+        data.put("question_type_code", "SINGLE_CHOICE");
+        data.put("practice_mode", "STANDARD");
+        data.put("difficulty", "MEDIUM");
+        data.put("prompt", prompt);
+        data.put("group", null);
+        data.put(
+                "options",
+                List.of(
+                        Map.of("id", correctId.toString(), "position", 1, "body", correct),
+                        Map.of("id", wrongId.toString(), "position", 2, "body", wrong)));
+        data.put("answer_key", Map.of("correctOptionId", correctId.toString()));
+        data.put("explanation", "Why: " + prompt);
+        data.put("materials", List.of());
+        data.put("topic_ids", topics.stream().map(UUID::toString).toList());
+        data.put("word_sense_ids", List.of());
+        try {
+            return mapper.writeValueAsString(
+                    Map.of("schema_version", 1, "content_type", "QUESTION", "data", data));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void replayReturnsTheSameAttemptEvenAfterTheTopicIsArchived() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Replay archived", "right", "wrong");
+        UUID requestId = UUID.randomUUID();
+        JsonNode first = startTopic(learner, requestId, 1, topic, 201);
+        archive(topic);
+        JsonNode replay = startTopic(learner, requestId, 1, topic, 200);
+        assertThat(replay.path("id").asText()).isEqualTo(first.path("id").asText());
+        startTopicRaw(learner, requestId, 2, topic).andExpect(status().isConflict());
+    }
+
+    @Test
+    void weakTopicNeedsTwentyGradedQuestionsAndBelowSeventyPercent() throws Exception {
+        UUID topic = publishTopic();
+        for (int i = 1; i <= 20; i++) {
+            publishQuestion(topic, "Weak " + suffix() + " " + i, "right", "wrong");
+        }
+        gradedAttempt(learner, topic, 20, 13);
+        JsonNode row = statsRowFor(learner, topic);
+        assertThat(row.path("sampleSize").asLong()).isEqualTo(20);
+        assertThat(row.path("windowCorrectCount").asLong()).isEqualTo(13);
+        assertThat(row.path("windowAccuracyPercent").asInt()).isEqualTo(65);
+        assertThat(row.path("weak").asBoolean()).isTrue();
+        assertThat(row.path("windowDays").asInt()).isEqualTo(30);
+        assertThat(row.path("view").asText()).isEqualTo("allocation");
+    }
+
+    @Test
+    void fourteenOfTwentyIsExactlySeventyPercentAndNotWeak() throws Exception {
+        UUID topic = publishTopic();
+        for (int i = 1; i <= 20; i++) {
+            publishQuestion(topic, "Edge " + suffix() + " " + i, "right", "wrong");
+        }
+        gradedAttempt(learner, topic, 20, 14);
+        JsonNode row = statsRowFor(learner, topic);
+        assertThat(row.path("windowAccuracyPercent").asInt()).isEqualTo(70);
+        assertThat(row.path("weak").asBoolean()).isFalse();
+    }
+
+    @Test
+    void nineteenGradedQuestionsAreNotEnoughToBeWeak() throws Exception {
+        UUID topic = publishTopic();
+        for (int i = 1; i <= 19; i++) {
+            publishQuestion(topic, "Short " + suffix() + " " + i, "right", "wrong");
+        }
+        gradedAttempt(learner, topic, 19, 0);
+        JsonNode row = statsRowFor(learner, topic);
+        assertThat(row.path("sampleSize").asLong()).isEqualTo(19);
+        assertThat(row.path("weak").asBoolean()).isFalse();
+    }
+
+    @Test
+    void attemptsOutsideTheThirtyDayWindowAreNotInTheSample() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Old one", "right", "wrong");
+        JsonNode attempt = gradedAttempt(learner, topic, 1, 1);
+        // attempts_c18 keeps started_at <= effective_finished_at <= submitted_at, so all three
+        // move.
+        jdbc.update(
+                "UPDATE attempts SET started_at = now() - interval '31 days 2 minutes',"
+                        + " effective_finished_at = now() - interval '31 days 1 minute',"
+                        + " submitted_at = now() - interval '31 days' WHERE id = ?",
+                UUID.fromString(attempt.path("id").asText()));
+        refreshFromDatabase();
+
+        JsonNode row = statsRowFor(learner, topic);
+        assertThat(row.path("questionCount").asLong()).isEqualTo(1);
+        assertThat(row.path("sampleSize").asLong()).isZero();
+        assertThat(row.path("windowCorrectCount").asLong()).isZero();
+        assertThat(row.path("weak").asBoolean()).isFalse();
+    }
+
+    @Test
+    void summaryCountsEachQuestionOnceAcrossTopics() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestionIn(List.of(topicA, topicB), "Shared summary", "right", "wrong");
+        JsonNode attempt = startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 1, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        answer(
+                learner,
+                attemptId,
+                1,
+                optionIdWithBody(attempt, 1, correctByPrompt(attempt, 1)),
+                200);
+        submit(learner, attemptId);
+
+        JsonNode summary =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/statistics/summary")
+                                                .param("category", "GRAMMAR")
+                                                .param("view", "allocation")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(summary.path("questionCount").asLong()).isEqualTo(1);
+        assertThat(summary.path("correctCount").asLong()).isEqualTo(1);
+        assertThat(summary.path("sampleSize").asLong()).isEqualTo(1);
+    }
+
+    @Test
+    void mistakeStateFollowsOpenImprovingResolvedAndOpenAgain() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Lifecycle one", "right", "wrong");
+        answeredAttempt(learner, topic, false);
+        assertMistake(learner, "OPEN", 1, 0, false);
+        answeredAttempt(learner, topic, true);
+        assertMistake(learner, "IMPROVING", 1, 1, false);
+        answeredAttempt(learner, topic, true);
+        assertMistake(learner, "RESOLVED", 1, 2, true);
+        answeredAttempt(learner, topic, false);
+        assertMistake(learner, "OPEN", 2, 0, false);
+    }
+
+    @Test
+    void aBlankAnswerCountsAsWrongAndARetriedSubmitAddsNothing() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Blank one", "right", "wrong");
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        submit(learner, attemptId);
+        assertMistake(learner, "OPEN", 1, 0, false);
+        submit(learner, attemptId);
+        assertMistake(learner, "OPEN", 1, 0, false);
+    }
+
+    @Test
+    void lateTimeLimitSubmissionRebuildsTheMistakeFromHistory() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Late one", "right", "wrong");
+        JsonNode early = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+        UUID earlyId = UUID.fromString(early.path("id").asText());
+        answer(learner, earlyId, 1, optionIdWithBody(early, 1, wrongOf(early, 1)), 200);
+        answeredAttempt(learner, topic, true);
+
+        jdbc.update(
+                "UPDATE attempts SET started_at = now() - interval '20 minutes',"
+                        + " deadline_at = now() - interval '10 minutes' WHERE id = ?",
+                earlyId);
+        refreshFromDatabase();
+        JsonNode view =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/" + earlyId)
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(view.path("submitReason").asText()).isEqualTo("TIME_LIMIT");
+
+        // The early wrong answer happened first, so the later correct answer makes it IMPROVING.
+        assertMistake(learner, "IMPROVING", 1, 1, false);
+    }
+
+    @Test
+    void mistakeListFiltersByStateAndTopicAndHidesOtherLearners() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestion(topicA, "Filter A", "right", "wrong");
+        publishQuestion(topicB, "Filter B", "right", "wrong");
+        answeredAttempt(learner, topicA, false);
+        answeredAttempt(learner, topicB, false);
+        answeredAttempt(learner, topicB, true);
+
+        JsonNode byTopic = mistakePage(learner, "?topicId=" + topicA);
+        assertThat(byTopic.path("totalItems").asLong()).isEqualTo(1);
+        assertThat(byTopic.path("items").get(0).path("state").asText()).isEqualTo("OPEN");
+
+        JsonNode improving = mistakePage(learner, "?state=IMPROVING");
+        assertThat(improving.path("totalItems").asLong()).isEqualTo(1);
+
+        assertThat(mistakePage(otherLearner, "").path("totalItems").asLong()).isZero();
+        mockMvc.perform(
+                        get("/api/v1/mistakes?state=MASTERED")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void practiceFromMistakesDrawsOnlyTheLearnersMistakesAndPinsThemToTheAttempt()
+            throws Exception {
+        UUID topic = publishTopic();
+        UUID item = publishQuestion(topic, "Mistake kept", "right", "wrong");
+        answeredAttempt(learner, topic, false);
+        UUID mistakeId =
+                UUID.fromString(mistakePage(learner, "").path("items").get(0).path("id").asText());
+
+        JsonNode practice =
+                read(
+                        startMistakesRaw(learner, UUID.randomUUID(), List.of(mistakeId), 1)
+                                .andExpect(status().isCreated()));
+        assertThat(practice.path("source").path("type").asText()).isEqualTo("MISTAKES");
+        assertThat(practice.path("questions").get(0).path("prompt").asText())
+                .isEqualTo("Mistake kept");
+        Integer pinned =
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM attempt_source_mistakes WHERE attempt_id = ?",
+                        Integer.class,
+                        UUID.fromString(practice.path("id").asText()));
+        assertThat(pinned).isEqualTo(1);
+
+        startMistakesRaw(otherLearner, UUID.randomUUID(), List.of(mistakeId), 1)
+                .andExpect(status().isNotFound());
+
+        archive(item);
+        JsonNode none =
+                read(
+                        startMistakesRaw(learner, UUID.randomUUID(), List.of(mistakeId), 1)
+                                .andExpect(status().isConflict()));
+        assertThat(none.path("code").asText()).isEqualTo("NO_ELIGIBLE_QUESTIONS");
+        assertThat(none.path("availableCount").asInt()).isZero();
+    }
+
+    @Test
+    void practiceFromMistakesReportsHowManyEligibleMistakesExist() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Pool A", "right", "wrong");
+        publishQuestion(topic, "Pool B", "right", "wrong");
+        gradedAttempt(learner, topic, 2, 0);
+        List<UUID> ids = new java.util.ArrayList<>();
+        mistakePage(learner, "")
+                .path("items")
+                .forEach(m -> ids.add(UUID.fromString(m.path("id").asText())));
+        JsonNode thin =
+                read(
+                        startMistakesRaw(learner, UUID.randomUUID(), ids, 3)
+                                .andExpect(status().isConflict()));
+        assertThat(thin.path("code").asText()).isEqualTo("INSUFFICIENT_QUESTIONS");
+        assertThat(thin.path("requestedCount").asInt()).isEqualTo(3);
+        assertThat(thin.path("availableCount").asInt()).isEqualTo(2);
+
+        startMistakesRaw(learner, UUID.randomUUID(), ids, 1).andExpect(status().isCreated());
+        startMistakesRaw(learner, UUID.randomUUID(), List.of(UUID.randomUUID()), 1)
+                .andExpect(status().isNotFound());
+        startMistakesRaw(learner, UUID.randomUUID(), ids, null).andExpect(status().isBadRequest());
+    }
+
+    /** Answers every question of a fresh attempt on {@code topic} and submits it. */
+    private JsonNode answeredAttempt(User account, UUID topic, boolean correct) throws Exception {
+        JsonNode attempt = startTopic(account, UUID.randomUUID(), 1, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        String body = correct ? correctByPrompt(attempt, 1) : wrongOf(attempt, 1);
+        answer(account, attemptId, 1, optionIdWithBody(attempt, 1, body), 200);
+        return submit(account, attemptId);
+    }
+
+    /** Starts an attempt of {@code size} questions, answers the first {@code correct} correctly. */
+    private JsonNode gradedAttempt(User account, UUID topic, int size, int correct)
+            throws Exception {
+        JsonNode attempt = startTopic(account, UUID.randomUUID(), size, topic, 201);
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        for (int i = 1; i <= size; i++) {
+            String body = i <= correct ? correctByPrompt(attempt, i) : wrongOf(attempt, i);
+            answer(account, attemptId, i, optionIdWithBody(attempt, i, body), 200);
+        }
+        return submit(account, attemptId);
+    }
+
+    private JsonNode statsRowFor(User account, UUID topic) throws Exception {
+        JsonNode rows =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts/statistics/topics")
+                                                .param("category", "GRAMMAR")
+                                                .param("view", "allocation")
+                                                .with(user(UserPrincipal.create(account))))
+                                .andExpect(status().isOk()));
+        for (JsonNode row : rows) {
+            if (row.path("topicId").asText().equals(topic.toString())) {
+                return row;
+            }
+        }
+        throw new AssertionError("No statistics row for topic " + topic);
+    }
+
+    private JsonNode mistakePage(User account, String query) throws Exception {
+        return read(
+                mockMvc.perform(
+                                get("/api/v1/mistakes" + query)
+                                        .with(user(UserPrincipal.create(account))))
+                        .andExpect(status().isOk()));
+    }
+
+    /** The learner's single mistake must be in the expected state with the expected counts. */
+    private void assertMistake(
+            User account, String state, int wrong, int consecutive, boolean resolved)
+            throws Exception {
+        JsonNode page = mistakePage(account, "");
+        assertThat(page.path("totalItems").asLong()).isEqualTo(1);
+        JsonNode mistake = page.path("items").get(0);
+        assertThat(mistake.path("state").asText()).isEqualTo(state);
+        assertThat(mistake.path("wrongCount").asInt()).isEqualTo(wrong);
+        assertThat(mistake.path("consecutiveCorrect").asInt()).isEqualTo(consecutive);
+        assertThat(!mistake.path("resolvedAt").isNull()).isEqualTo(resolved);
+    }
+
+    private ResultActions startMistakesRaw(
+            User account, UUID requestId, List<UUID> mistakeIds, Integer count) throws Exception {
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("type", "MISTAKES");
+        source.put("mistakeIds", mistakeIds.stream().map(UUID::toString).toList());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("source", source);
+        if (count != null) {
+            body.put("questionCount", count);
+        }
+        return mockMvc.perform(
+                post("/api/v1/attempts")
+                        .header("Idempotency-Key", requestId.toString())
+                        .with(user(UserPrincipal.create(account)))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(body)));
+    }
+
     // ---- request helpers ------------------------------------------------------------------
 
     private JsonNode startTopic(
@@ -346,11 +988,12 @@ class PracticeIntegrationTests {
     private ResultActions startTopicRaw(User account, UUID requestId, Integer count, UUID topic)
             throws Exception {
         return mockMvc.perform(
-                post("/api/v1/grammar/topics/" + topic + "/attempts")
+                post("/api/v1/attempts")
+                        .header("Idempotency-Key", requestId.toString())
                         .with(user(UserPrincipal.create(account)))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(startBody(requestId, count)));
+                        .content(startBody("GRAMMAR_TOPIC", topic, null, count)));
     }
 
     private JsonNode startMixed(
@@ -358,22 +1001,48 @@ class PracticeIntegrationTests {
             throws Exception {
         return read(
                 mockMvc.perform(
-                                post("/api/v1/grammar/attempts/mixed")
+                                post("/api/v1/attempts")
+                                        .header("Idempotency-Key", requestId.toString())
                                         .with(user(UserPrincipal.create(account)))
                                         .with(csrf())
                                         .contentType(MediaType.APPLICATION_JSON)
-                                        .content(mixedBody(requestId, topics, count)))
+                                        .content(startBody("MIXED_GRAMMAR", null, topics, count)))
                         .andExpect(status().is(expected)));
     }
 
+    /**
+     * Saves one answer the way a client does: reads the attempt view first, then writes with the
+     * snapshot id and answer version from that view. Unknown positions and foreign attempts fall
+     * back to a random snapshot id, so the server answers 404.
+     */
     private void answer(User account, UUID attemptId, int position, String optionId, int expected)
             throws Exception {
+        ResultActions loaded =
+                mockMvc.perform(
+                        get("/api/v1/attempts/" + attemptId)
+                                .with(user(UserPrincipal.create(account))));
+        String snapshotId = UUID.randomUUID().toString();
+        long version = 0;
+        if (loaded.andReturn().getResponse().getStatus() == 200) {
+            JsonNode attempt = read(loaded);
+            JsonNode questions = attempt.path("questions");
+            if (position >= 1 && position <= questions.size()) {
+                JsonNode question = questions.get(position - 1);
+                snapshotId = question.path("snapshotId").asText();
+                version = question.path("answerVersion").asLong();
+            }
+        }
         mockMvc.perform(
-                        put("/api/v1/attempts/" + attemptId + "/answers/" + position)
+                        put("/api/v1/attempts/" + attemptId + "/answers/" + snapshotId)
                                 .with(user(UserPrincipal.create(account)))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"optionId\":\"" + optionId + "\"}"))
+                                .content(
+                                        "{\"selectedOptionId\":\""
+                                                + optionId
+                                                + "\",\"expectedVersion\":"
+                                                + version
+                                                + "}"))
                 .andExpect(status().is(expected));
     }
 
@@ -391,29 +1060,30 @@ class PracticeIntegrationTests {
         return mapper.readTree(mvc.getResponse().getContentAsString());
     }
 
-    private String startBody(UUID requestId, Integer count) throws Exception {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("requestId", requestId.toString());
-        if (count != null) {
-            body.put("questionCount", count);
+    private String startBody(String type, UUID topic, List<UUID> topics, Integer count)
+            throws Exception {
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("type", type);
+        if (topic != null) {
+            source.put("topicId", topic.toString());
         }
+        if (topics != null) {
+            source.put("topicIds", topics.stream().map(UUID::toString).toList());
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("source", source);
+        body.put("questionCount", count == null ? 1 : count);
         return mapper.writeValueAsString(body);
     }
 
     private String mixedBody(UUID requestId, List<UUID> topics, Integer count) throws Exception {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("requestId", requestId.toString());
-        body.put("topicIds", topics.stream().map(UUID::toString).toList());
-        if (count != null) {
-            body.put("questionCount", count);
-        }
-        return mapper.writeValueAsString(body);
+        return startBody("MIXED_GRAMMAR", null, topics, count);
     }
 
     private static String optionIdWithBody(JsonNode attempt, int position, String body) {
         for (JsonNode option : attempt.path("questions").get(position - 1).path("options")) {
             if (option.path("body").asText().equals(body)) {
-                return option.path("id").asText();
+                return option.path("optionId").asText();
             }
         }
         throw new AssertionError("No option with body " + body + " at position " + position);

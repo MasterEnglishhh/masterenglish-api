@@ -19,7 +19,12 @@ public enum ErrorCode {
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
     NO_ELIGIBLE_QUESTIONS(HttpStatus.CONFLICT, "requestedCount", "availableCount"),
-    INSUFFICIENT_QUESTIONS(HttpStatus.CONFLICT, "requestedCount", "availableCount");
+    INSUFFICIENT_QUESTIONS(HttpStatus.CONFLICT, "requestedCount", "availableCount"),
+    IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT),
+    OPEN_ATTEMPT_LIMIT_REACHED(HttpStatus.CONFLICT, "openAttemptCount", "maxOpenAttempts"),
+    STALE_ANSWER_VERSION(HttpStatus.CONFLICT, "currentVersion", "currentSelectedOptionId"),
+    ATTEMPT_NOT_OPEN(HttpStatus.CONFLICT, "attemptStatus"),
+    OPTION_NOT_IN_SNAPSHOT(HttpStatus.BAD_REQUEST);
 
     private final HttpStatus httpStatus;
     private final Set<String> detailKeys;
