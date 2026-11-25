@@ -27,6 +27,9 @@ class TimeZonesTests {
         assertThat(TimeZones.resolveCanonical("Europe/Kiev")).contains("Europe/Kyiv");
         assertThat(TimeZones.resolveCanonical("Asia/Calcutta")).contains("Asia/Kolkata");
         assertThat(TimeZones.resolveCanonical("US/Eastern")).contains("America/New_York");
+        assertThat(TimeZones.resolveCanonical("US/Central")).contains("America/Chicago");
+        assertThat(TimeZones.resolveCanonical("US/Mountain")).contains("America/Denver");
+        assertThat(TimeZones.resolveCanonical("US/Pacific")).contains("America/Los_Angeles");
         assertThat(TimeZones.resolveCanonical(" Asia/Ho_Chi_Minh ")).contains("Asia/Ho_Chi_Minh");
 
         for (String rejected :
@@ -40,6 +43,10 @@ class TimeZonesTests {
                     "Z",
                     "SystemV/AST4",
                     "SystemV/EST5EDT",
+                    "EST5EDT",
+                    "CST6CDT",
+                    "MST7MDT",
+                    "PST8PDT",
                     "Mars/Base"
                 }) {
             assertThat(TimeZones.resolveCanonical(rejected)).as("reject %s", rejected).isEmpty();

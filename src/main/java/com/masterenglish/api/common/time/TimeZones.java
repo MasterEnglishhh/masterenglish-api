@@ -9,10 +9,12 @@ import java.util.stream.Collectors;
 
 /**
  * Shared IANA timezone resolver ensuring Java {@link ZoneId} names remain compatible with
- * PostgreSQL {@code AT TIME ZONE}. Raw UTC offsets (e.g. {@code +07:00}, {@code UTC+07:00}) and
- * legacy {@code SystemV/*} strings are rejected because PostgreSQL either rejects them or applies
- * POSIX sign inversion. Known IANA backward aliases (e.g. {@code Asia/Saigon}, {@code Europe/Kiev})
- * are canonicalized to modern IANA identifiers present in PostgreSQL tzdb.
+ * PostgreSQL {@code AT TIME ZONE}. Raw UTC offsets (e.g. {@code +07:00}, {@code UTC+07:00}), legacy
+ * {@code SystemV/*} strings, and POSIX-style US compatibility zones ({@code EST5EDT}, {@code
+ * CST6CDT}, {@code MST7MDT}, {@code PST8PDT}, which IANA tzdb 2026d+ unlinked from {@code
+ * America/*} with distinct pre-1967 history and which PostgreSQL {@code pg_timezone_names} omits)
+ * are rejected. Exact IANA backward aliases (e.g. {@code Asia/Saigon}, {@code Europe/Kiev}, {@code
+ * US/Eastern}) are canonicalized to modern IANA identifiers present in PostgreSQL tzdb.
  */
 public final class TimeZones {
 
@@ -59,7 +61,6 @@ public final class TimeZones {
                     Map.entry("Brazil/East", "America/Sao_Paulo"),
                     Map.entry("Brazil/West", "America/Manaus"),
                     Map.entry("CET", "Europe/Brussels"),
-                    Map.entry("CST6CDT", "America/Chicago"),
                     Map.entry("Canada/Atlantic", "America/Halifax"),
                     Map.entry("Canada/Central", "America/Winnipeg"),
                     Map.entry("Canada/Eastern", "America/Toronto"),
@@ -72,7 +73,6 @@ public final class TimeZones {
                     Map.entry("Chile/EasterIsland", "Pacific/Easter"),
                     Map.entry("Cuba", "America/Havana"),
                     Map.entry("EET", "Europe/Athens"),
-                    Map.entry("EST5EDT", "America/New_York"),
                     Map.entry("Egypt", "Africa/Cairo"),
                     Map.entry("Eire", "Europe/Dublin"),
                     Map.entry("Europe/Kiev", "Europe/Kyiv"),
@@ -91,7 +91,6 @@ public final class TimeZones {
                     Map.entry("Kwajalein", "Pacific/Kwajalein"),
                     Map.entry("Libya", "Africa/Tripoli"),
                     Map.entry("MET", "Europe/Brussels"),
-                    Map.entry("MST7MDT", "America/Denver"),
                     Map.entry("Mexico/BajaNorte", "America/Tijuana"),
                     Map.entry("Mexico/BajaSur", "America/Mazatlan"),
                     Map.entry("Mexico/General", "America/Mexico_City"),
@@ -99,7 +98,6 @@ public final class TimeZones {
                     Map.entry("NZ-CHAT", "Pacific/Chatham"),
                     Map.entry("Navajo", "America/Denver"),
                     Map.entry("PRC", "Asia/Shanghai"),
-                    Map.entry("PST8PDT", "America/Los_Angeles"),
                     Map.entry("Pacific/Enderbury", "Pacific/Kanton"),
                     Map.entry("Pacific/Ponape", "Pacific/Pohnpei"),
                     Map.entry("Pacific/Truk", "Pacific/Chuuk"),
@@ -126,11 +124,18 @@ public final class TimeZones {
                     Map.entry("WET", "Europe/Lisbon"),
                     Map.entry("Zulu", "UTC"));
 
+    private static final Set<String> UNSUPPORTED_LEGACY_ZONES =
+            Set.of("EST5EDT", "CST6CDT", "MST7MDT", "PST8PDT");
+
     private static final Set<String> AVAILABLE_ZONES = Set.copyOf(ZoneId.getAvailableZoneIds());
 
     private static final Set<String> CANONICAL_ZONES =
             AVAILABLE_ZONES.stream()
-                    .filter(z -> !LEGACY_ALIASES.containsKey(z) && !z.startsWith("SystemV/"))
+                    .filter(
+                            z ->
+                                    !LEGACY_ALIASES.containsKey(z)
+                                            && !z.startsWith("SystemV/")
+                                            && !UNSUPPORTED_LEGACY_ZONES.contains(z))
                     .collect(Collectors.toUnmodifiableSet());
 
     private TimeZones() {}
@@ -149,7 +154,9 @@ public final class TimeZones {
             return Optional.empty();
         }
         String trimmed = raw.trim();
-        if (trimmed.isEmpty() || trimmed.startsWith("SystemV/")) {
+        if (trimmed.isEmpty()
+                || trimmed.startsWith("SystemV/")
+                || UNSUPPORTED_LEGACY_ZONES.contains(trimmed)) {
             return Optional.empty();
         }
         String mapped = LEGACY_ALIASES.getOrDefault(trimmed, trimmed);

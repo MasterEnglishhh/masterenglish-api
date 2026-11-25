@@ -261,6 +261,8 @@ class NotificationControllerIntegrationTests {
             body("true", "false", "\"20:00\"", "\"UTC+07:00\"", "null", "null"),
             body("true", "false", "\"20:00\"", "\"GMT+07:00\"", "null", "null"),
             body("true", "false", "\"20:00\"", "\"SystemV/AST4\"", "null", "null"),
+            body("true", "false", "\"20:00\"", "\"EST5EDT\"", "null", "null"),
+            body("true", "false", "\"20:00\"", "\"PST8PDT\"", "null", "null"),
             body("true", "false", "\"20:00\"", "\"Asia/Ho_Chi_Minh\"", "\"22:00\"", "null"),
             body("true", "false", "\"20:00\"", "\"Asia/Ho_Chi_Minh\"", "\"22:00\"", "\"22:00\""),
             body("true", "false", "\"20:00:30\"", "\"Asia/Ho_Chi_Minh\"", "null", "null"),
