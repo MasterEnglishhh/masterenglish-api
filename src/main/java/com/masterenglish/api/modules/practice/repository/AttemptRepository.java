@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -124,4 +126,29 @@ public interface AttemptRepository extends JpaRepository<Attempt, UUID> {
             nativeQuery = true)
     List<String> findSubmittedLocalDays(
             @Param("userId") UUID userId, @Param("timezone") String timezone);
+
+    /** Learner's own practice attempt history filtered by optional status and source type. */
+    @Query(
+            value =
+                    """
+                    SELECT a FROM Attempt a
+                    WHERE a.userId = :userId
+                      AND (:hasStatus = false OR a.status = :status)
+                      AND (:hasSourceType = false OR a.sourceType = :sourceType)
+                    ORDER BY COALESCE(a.submittedAt, a.startedAt) DESC, a.id DESC
+                    """,
+            countQuery =
+                    """
+                    SELECT count(a) FROM Attempt a
+                    WHERE a.userId = :userId
+                      AND (:hasStatus = false OR a.status = :status)
+                      AND (:hasSourceType = false OR a.sourceType = :sourceType)
+                    """)
+    Page<Attempt> findHistory(
+            @Param("userId") UUID userId,
+            @Param("hasStatus") boolean hasStatus,
+            @Param("status") String status,
+            @Param("hasSourceType") boolean hasSourceType,
+            @Param("sourceType") String sourceType,
+            Pageable pageable);
 }

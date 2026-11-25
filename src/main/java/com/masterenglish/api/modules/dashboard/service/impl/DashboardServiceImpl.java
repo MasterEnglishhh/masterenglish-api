@@ -17,13 +17,23 @@ import com.masterenglish.api.common.events.VocabularyEvents;
 import com.masterenglish.api.common.events.VocabularyEvents.DeckSummaryView;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.DueDeckItem;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarLessonProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarPracticeProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarWeaknessScopeSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.LearningGoalSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.NotificationSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.OverviewSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.PracticeStatisticsSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.RecentAttemptItem;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.RecommendationItem;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyGoalSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyPlanSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyScheduleSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudySessionSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.TodayReviewSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicSkillProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicTargetSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicWeaknessScopeSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.VocabularyProgressSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeakTopicItem;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeaknessAnalysisSummary;
@@ -52,8 +62,11 @@ public class DashboardServiceImpl implements DashboardService {
     static final int WEAKNESS_PERIOD_DAYS = 30;
     static final int WEAKNESS_MIN_SAMPLE = 20;
     static final int WEAKNESS_THRESHOLD_PERCENT = 70;
+    static final String STATUS_UNAVAILABLE_PENDING_MIGRATION = "UNAVAILABLE_PENDING_MIGRATION";
     private static final int MAX_DUE_DECKS = 5;
     private static final int MAX_WEAK_TOPICS = 5;
+    private static final List<Integer> TOEIC_LISTENING_PARTS = List.of(1, 2, 3, 4);
+    private static final List<Integer> TOEIC_READING_PARTS = List.of(5, 6, 7);
 
     private final IdentityEvents identity;
     private final LearningEvents learning;
@@ -118,6 +131,12 @@ public class DashboardServiceImpl implements DashboardService {
                         visibleLessons,
                         lessonProgress);
 
+        Integer plannedDailyMinutes = goal.map(LearningGoalView::dailyMinutes).orElse(null);
+        StudyPlanSummary studyPlan =
+                buildStudyPlan(goal, plannedDailyMinutes, streakDays, activeToday);
+        PracticeStatisticsSummary practiceStatistics =
+                buildPracticeStatistics(lessonProgress, visibleLessons.size(), practiceSummary);
+
         return new DashboardResponse(
                 new OverviewSummary(
                         todayLocal, timezone, streakDays, activeToday, activityDays.size()),
@@ -132,35 +151,112 @@ public class DashboardServiceImpl implements DashboardService {
                 new LearningGoalSummary(
                         goal.isPresent(),
                         goal.map(LearningGoalView::targetScore).orElse(null),
-                        goal.map(LearningGoalView::dailyMinutes).orElse(null),
+                        plannedDailyMinutes,
                         goal.map(LearningGoalView::targetDate).orElse(null),
                         goal.map(LearningGoalView::updatedAt).orElse(null),
                         streakDays,
                         activeToday,
                         null,
                         false),
-                new PracticeStatisticsSummary(
-                        lessonProgress.completedCount(),
-                        lessonProgress.inProgressCount(),
-                        visibleLessons.size(),
-                        practiceSummary.submittedAttemptCount(),
-                        practiceSummary.inProgressAttemptCount(),
-                        practiceSummary.averageScorePercent(),
-                        false,
-                        practiceSummary.recentSubmittedAttempts().stream()
-                                .map(
-                                        a ->
-                                                new RecentAttemptItem(
-                                                        a.id(),
-                                                        a.sourceType(),
-                                                        a.totalCount(),
-                                                        a.correctCount(),
-                                                        a.score(),
-                                                        a.submittedAt()))
-                                .toList()),
+                studyPlan,
+                practiceStatistics,
                 weaknessAnalysis,
                 recommendations,
                 new NotificationSummary(unreadNotifications));
+    }
+
+    private static StudyPlanSummary buildStudyPlan(
+            Optional<LearningGoalView> goal,
+            Integer plannedDailyMinutes,
+            int streakDays,
+            boolean activeToday) {
+        StudyGoalSummary studyGoal =
+                new StudyGoalSummary(
+                        goal.isPresent(),
+                        plannedDailyMinutes,
+                        goal.map(LearningGoalView::updatedAt).orElse(null));
+        ToeicTargetSummary toeicTarget =
+                new ToeicTargetSummary(
+                        goal.isPresent(),
+                        null,
+                        goal.map(LearningGoalView::targetScore).orElse(null),
+                        goal.map(LearningGoalView::targetDate).orElse(null),
+                        null,
+                        null,
+                        goal.isPresent() ? "TARGET_ONLY_BASELINE_UNAVAILABLE" : "NOT_CONFIGURED");
+        StudyScheduleSummary studySchedule =
+                new StudyScheduleSummary(
+                        false,
+                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
+                        List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
+                        null,
+                        0);
+        StudySessionSummary studySession =
+                new StudySessionSummary(
+                        false,
+                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
+                        null,
+                        plannedDailyMinutes,
+                        null,
+                        streakDays,
+                        activeToday);
+        return new StudyPlanSummary(studyGoal, toeicTarget, studySchedule, studySession);
+    }
+
+    private static PracticeStatisticsSummary buildPracticeStatistics(
+            LessonProgressSummaryView lessonProgress,
+            int totalVisibleLessons,
+            PracticeSummaryView practiceSummary) {
+        String lessonStatus =
+                (lessonProgress.completedCount() == 0 && lessonProgress.inProgressCount() == 0)
+                        ? "NO_DATA"
+                        : "READY";
+        String grammarPracticeStatus =
+                (practiceSummary.submittedAttemptCount() == 0
+                                && practiceSummary.inProgressAttemptCount() == 0)
+                        ? "NO_DATA"
+                        : "READY";
+        List<RecentAttemptItem> recentItems =
+                practiceSummary.recentSubmittedAttempts().stream()
+                        .map(
+                                a ->
+                                        new RecentAttemptItem(
+                                                a.id(),
+                                                a.sourceType(),
+                                                a.totalCount(),
+                                                a.correctCount(),
+                                                a.score(),
+                                                a.submittedAt()))
+                        .toList();
+        return new PracticeStatisticsSummary(
+                lessonProgress.completedCount(),
+                lessonProgress.inProgressCount(),
+                totalVisibleLessons,
+                practiceSummary.submittedAttemptCount(),
+                practiceSummary.inProgressAttemptCount(),
+                practiceSummary.averageScorePercent(),
+                false,
+                new GrammarLessonProgressSummary(
+                        true,
+                        lessonStatus,
+                        lessonProgress.completedCount(),
+                        lessonProgress.inProgressCount(),
+                        totalVisibleLessons),
+                new GrammarPracticeProgressSummary(
+                        true,
+                        grammarPracticeStatus,
+                        practiceSummary.submittedAttemptCount(),
+                        practiceSummary.inProgressAttemptCount(),
+                        practiceSummary.averageScorePercent()),
+                new ToeicSkillProgressSummary(
+                        false,
+                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
+                        TOEIC_LISTENING_PARTS,
+                        0,
+                        null),
+                new ToeicSkillProgressSummary(
+                        false, STATUS_UNAVAILABLE_PENDING_MIGRATION, TOEIC_READING_PARTS, 0, null),
+                recentItems);
     }
 
     private List<DueDeckItem> resolveDueDecks(List<DueDeckCountView> rawDueDecks) {
@@ -191,7 +287,8 @@ public class DashboardServiceImpl implements DashboardService {
                         .collect(Collectors.toMap(VisibleTopicView::id, Function.identity()));
 
         long totalQuestions = 0;
-        boolean hasEligibleSample = false;
+        long evaluatedTopics = 0;
+        long eligibleTopics = 0;
         List<WeakTopicItem> weakTopics = new java.util.ArrayList<>();
 
         for (TopicAccuracyView stat : stats) {
@@ -199,9 +296,12 @@ public class DashboardServiceImpl implements DashboardService {
             if (topic == null) {
                 continue;
             }
+            if (stat.questionCount() > 0) {
+                evaluatedTopics++;
+            }
             totalQuestions += stat.questionCount();
             if (stat.questionCount() >= WEAKNESS_MIN_SAMPLE) {
-                hasEligibleSample = true;
+                eligibleTopics++;
                 if (stat.accuracyPercent() != null
                         && stat.accuracyPercent() < WEAKNESS_THRESHOLD_PERCENT) {
                     weakTopics.add(
@@ -232,10 +332,12 @@ public class DashboardServiceImpl implements DashboardService {
         String status;
         if (!weakTopics.isEmpty()) {
             status = "READY";
-        } else if (hasEligibleSample) {
+        } else if (eligibleTopics > 0) {
             status = "NO_WEAKNESS_DETECTED";
-        } else {
+        } else if (totalQuestions > 0) {
             status = "INSUFFICIENT_DATA";
+        } else {
+            status = "NO_DATA";
         }
 
         return new WeaknessAnalysisSummary(
@@ -245,6 +347,18 @@ public class DashboardServiceImpl implements DashboardService {
                 WEAKNESS_THRESHOLD_PERCENT,
                 totalQuestions,
                 false,
+                new GrammarWeaknessScopeSummary(
+                        true, status, evaluatedTopics, eligibleTopics, totalQuestions),
+                new ToeicWeaknessScopeSummary(
+                        false,
+                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
+                        TOEIC_LISTENING_PARTS,
+                        List.of()),
+                new ToeicWeaknessScopeSummary(
+                        false,
+                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
+                        TOEIC_READING_PARTS,
+                        List.of()),
                 weakTopics);
     }
 

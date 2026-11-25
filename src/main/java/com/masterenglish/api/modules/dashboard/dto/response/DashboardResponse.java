@@ -11,6 +11,7 @@ public record DashboardResponse(
         VocabularyProgressSummary vocabularyProgress,
         TodayReviewSummary todayReview,
         LearningGoalSummary learningGoal,
+        StudyPlanSummary studyPlan,
         PracticeStatisticsSummary practiceStatistics,
         WeaknessAnalysisSummary weaknessAnalysis,
         List<RecommendationItem> recommendations,
@@ -37,8 +38,8 @@ public record DashboardResponse(
     public record TodayReviewSummary(long dueNow, long savedSenses, List<DueDeckItem> dueDecks) {}
 
     /**
-     * Learning goal & activity streak (M02.06). {@code todayActiveMinutes} stays null while {@code
-     * study_sessions} migration is pending Flyway baseline verification.
+     * Backward-compatible goal & streak view (M02.06). {@code todayActiveMinutes} stays null while
+     * {@code study_sessions} migration is pending Flyway baseline verification.
      */
     public record LearningGoalSummary(
             boolean configured,
@@ -51,6 +52,45 @@ public record DashboardResponse(
             Integer todayActiveMinutes,
             boolean studyTimeTrackingAvailable) {}
 
+    /**
+     * Explicit separation of the four approved learner planning concepts (Phương án C): Study Goal,
+     * TOEIC Target, Study Schedule, and Study Session. Planned duration never replaces actual
+     * tracked study time.
+     */
+    public record StudyPlanSummary(
+            StudyGoalSummary studyGoal,
+            ToeicTargetSummary toeicTarget,
+            StudyScheduleSummary studySchedule,
+            StudySessionSummary studySession) {}
+
+    public record StudyGoalSummary(
+            boolean configured, Integer plannedDailyMinutes, Instant updatedAt) {}
+
+    public record ToeicTargetSummary(
+            boolean configured,
+            Short currentScore,
+            Short targetScore,
+            LocalDate targetDate,
+            Short listeningCurrentScore,
+            Short readingCurrentScore,
+            String status) {}
+
+    public record StudyScheduleSummary(
+            boolean available,
+            String status,
+            List<String> supportedModes,
+            String activeMode,
+            int pendingProposalCount) {}
+
+    public record StudySessionSummary(
+            boolean trackingAvailable,
+            String status,
+            Integer todayActualMinutes,
+            Integer plannedDailyMinutes,
+            Boolean dailyGoalCompleted,
+            int streakDays,
+            boolean activeToday) {}
+
     public record RecentAttemptItem(
             UUID attemptId,
             String sourceType,
@@ -59,7 +99,32 @@ public record DashboardResponse(
             Integer score,
             Instant submittedAt) {}
 
-    /** Grammar lessons & practice attempts summary (M02.02). */
+    public record GrammarLessonProgressSummary(
+            boolean available,
+            String status,
+            long completedCount,
+            long inProgressCount,
+            long totalVisibleCount) {}
+
+    public record GrammarPracticeProgressSummary(
+            boolean available,
+            String status,
+            long submittedAttempts,
+            long inProgressAttempts,
+            Integer averageScorePercent) {}
+
+    public record ToeicSkillProgressSummary(
+            boolean available,
+            String status,
+            List<Integer> parts,
+            long submittedAttempts,
+            Integer averageAccuracyPercent) {}
+
+    /**
+     * Progress across Grammar lessons, Grammar practice, TOEIC Listening (Parts 1–4), and TOEIC
+     * Reading (Parts 5–7) (M02.02). TOEIC skill metrics remain explicitly unavailable until V14
+     * migration is approved.
+     */
     public record PracticeStatisticsSummary(
             long completedGrammarLessons,
             long inProgressGrammarLessons,
@@ -68,6 +133,10 @@ public record DashboardResponse(
             long inProgressPracticeAttempts,
             Integer averagePracticeScorePercent,
             boolean toeicPracticeAvailable,
+            GrammarLessonProgressSummary grammarLessons,
+            GrammarPracticeProgressSummary grammarPractice,
+            ToeicSkillProgressSummary toeicListening,
+            ToeicSkillProgressSummary toeicReading,
             List<RecentAttemptItem> recentAttempts) {}
 
     public record WeakTopicItem(
@@ -80,9 +149,21 @@ public record DashboardResponse(
             int accuracyPercent,
             int periodDays) {}
 
+    public record GrammarWeaknessScopeSummary(
+            boolean available,
+            String status,
+            long evaluatedTopics,
+            long eligibleTopics,
+            long gradedQuestions) {}
+
+    public record ToeicWeaknessScopeSummary(
+            boolean available, String status, List<Integer> parts, List<WeakTopicItem> weakParts) {}
+
     /**
-     * Weakness ranking (M02.04): only topics with >= 20 graded questions in the last 30 days and
-     * accuracy < 70% are reported, matching UC06 / B25.
+     * Weakness ranking (M02.04): distinguishes NO_DATA (0 graded questions), INSUFFICIENT_DATA
+     * (some questions but no topic >= 20 in 30 days), NO_WEAKNESS_DETECTED, and READY (< 70%).
+     * TOEIC Listening Parts 1–4 and Reading Parts 5–7 are reported separately as pending schema
+     * migration.
      */
     public record WeaknessAnalysisSummary(
             String status,
@@ -91,10 +172,19 @@ public record DashboardResponse(
             int weaknessThresholdPercent,
             long gradedQuestionsInPeriod,
             boolean toeicWeaknessAvailable,
+            GrammarWeaknessScopeSummary grammar,
+            ToeicWeaknessScopeSummary toeicListening,
+            ToeicWeaknessScopeSummary toeicReading,
             List<WeakTopicItem> weakTopics) {}
 
     public record RecommendationItem(
-            String type, String title, String description, String targetUrl, int priority) {}
+            String type,
+            String skill,
+            String reasonCode,
+            String title,
+            String description,
+            String targetUrl,
+            int priority) {}
 
     public record NotificationSummary(long unreadCount) {}
 }

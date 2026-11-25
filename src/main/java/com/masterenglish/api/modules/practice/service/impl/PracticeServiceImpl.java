@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.practice.service.impl;
 
+import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
@@ -10,6 +11,7 @@ import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.OptionResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.QuestionResponse;
+import com.masterenglish.api.modules.practice.dto.response.AttemptSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
 import com.masterenglish.api.modules.practice.dto.response.TopicStatisticsResponse;
@@ -40,11 +42,14 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -127,6 +132,82 @@ public class PracticeServiceImpl implements PracticeService {
     @Transactional(readOnly = true)
     public AttemptResponse getAttempt(UUID userId, UUID attemptId) {
         return view(userId, attemptId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AttemptSummaryResponse> listAttempts(
+            UUID userId, String status, String sourceType, Pageable pageable) {
+        String normalizedStatus = normalizeStatus(status);
+        String normalizedSourceType = normalizeSourceType(sourceType);
+        Page<Attempt> page =
+                attempts.findHistory(
+                        userId,
+                        normalizedStatus != null,
+                        normalizedStatus == null ? "" : normalizedStatus,
+                        normalizedSourceType != null,
+                        normalizedSourceType == null ? "" : normalizedSourceType,
+                        pageable);
+        List<UUID> mixedIds =
+                page.getContent().stream()
+                        .filter(a -> MIXED_GRAMMAR.equals(a.getSourceType()))
+                        .map(Attempt::getId)
+                        .toList();
+        Map<UUID, List<UUID>> mixedTopicsByAttempt =
+                mixedIds.isEmpty()
+                        ? Map.of()
+                        : sourceTopics
+                                .findByIdAttemptIdInOrderByIdAttemptIdAscIdTopicIdAsc(mixedIds)
+                                .stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                t -> t.getId().getAttemptId(),
+                                                Collectors.mapping(
+                                                        t -> t.getId().getTopicId(),
+                                                        Collectors.toList())));
+        return PageResponse.from(
+                page,
+                attempt -> {
+                    List<UUID> topicIds =
+                            MIXED_GRAMMAR.equals(attempt.getSourceType())
+                                    ? mixedTopicsByAttempt.getOrDefault(attempt.getId(), List.of())
+                                    : (attempt.getSourceTopicId() == null
+                                            ? List.of()
+                                            : List.of(attempt.getSourceTopicId()));
+                    return new AttemptSummaryResponse(
+                            attempt.getId(),
+                            attempt.getCategory(),
+                            attempt.getSourceType(),
+                            topicIds,
+                            attempt.getStatus(),
+                            attempt.getTotalCount(),
+                            attempt.getCorrectCount(),
+                            attempt.getScore(),
+                            attempt.getStartedAt(),
+                            attempt.getSubmittedAt());
+                });
+    }
+
+    private static String normalizeStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!Attempt.IN_PROGRESS.equals(normalized) && !Attempt.SUBMITTED.equals(normalized)) {
+            throw validation("Unsupported attempt status: " + raw);
+        }
+        return normalized;
+    }
+
+    private static String normalizeSourceType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!GRAMMAR_TOPIC.equals(normalized) && !MIXED_GRAMMAR.equals(normalized)) {
+            throw validation("Unsupported attempt sourceType: " + raw);
+        }
+        return normalized;
     }
 
     @Override

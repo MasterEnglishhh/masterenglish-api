@@ -77,8 +77,9 @@ class DashboardServiceImplTests {
     }
 
     @Test
-    @DisplayName("Người học mới chưa có dữ liệu trả trạng thái rỗng và INSUFFICIENT_DATA")
-    void emptyDataReturnsInsufficientDataWithoutFakingMetrics() {
+    @DisplayName(
+            "Người học mới chưa có dữ liệu trả trạng thái rỗng, NO_DATA và không giả lập số liệu")
+    void emptyDataReturnsNoDataWithoutFakingMetrics() {
         var result = service.getLearnerDashboard(userId);
 
         assertThat(result.overview().todayLocal()).isEqualTo(LocalDate.of(2026, 11, 25));
@@ -87,9 +88,51 @@ class DashboardServiceImplTests {
         assertThat(result.learningGoal().configured()).isFalse();
         assertThat(result.learningGoal().todayActiveMinutes()).isNull();
         assertThat(result.learningGoal().studyTimeTrackingAvailable()).isFalse();
-        assertThat(result.weaknessAnalysis().status()).isEqualTo("INSUFFICIENT_DATA");
+        assertThat(result.studyPlan().studyGoal().configured()).isFalse();
+        assertThat(result.studyPlan().toeicTarget().status()).isEqualTo("NOT_CONFIGURED");
+        assertThat(result.studyPlan().studySchedule().available()).isFalse();
+        assertThat(result.studyPlan().studySession().trackingAvailable()).isFalse();
+        assertThat(result.studyPlan().studySession().todayActualMinutes()).isNull();
+        assertThat(result.practiceStatistics().grammarLessons().status()).isEqualTo("NO_DATA");
+        assertThat(result.practiceStatistics().grammarPractice().status()).isEqualTo("NO_DATA");
+        assertThat(result.practiceStatistics().toeicListening().available()).isFalse();
+        assertThat(result.practiceStatistics().toeicListening().status())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
+        assertThat(result.practiceStatistics().toeicReading().available()).isFalse();
+        assertThat(result.practiceStatistics().toeicReading().status())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
+        assertThat(result.weaknessAnalysis().status()).isEqualTo("NO_DATA");
+        assertThat(result.weaknessAnalysis().grammar().status()).isEqualTo("NO_DATA");
+        assertThat(result.weaknessAnalysis().toeicListening().available()).isFalse();
+        assertThat(result.weaknessAnalysis().toeicReading().available()).isFalse();
         assertThat(result.weaknessAnalysis().weakTopics()).isEmpty();
         assertThat(result.recommendations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Có bài làm nhưng chưa đủ 20 câu trả INSUFFICIENT_DATA tách bạch NO_DATA")
+    void subThresholdQuestionsReturnInsufficientData() {
+        UUID topicId = UUID.randomUUID();
+        when(grammar.listVisibleTopics())
+                .thenReturn(List.of(new VisibleTopicView(topicId, "tenses", "Tenses", "BASIC", 1)));
+        when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
+                .thenReturn(
+                        new PracticeSummaryView(
+                                1,
+                                0,
+                                50,
+                                List.of(),
+                                List.of(new TopicAccuracyView(topicId, 1, 12, 6, 50)),
+                                Set.of()));
+
+        var result = service.getLearnerDashboard(userId);
+
+        assertThat(result.weaknessAnalysis().status()).isEqualTo("INSUFFICIENT_DATA");
+        assertThat(result.weaknessAnalysis().grammar().status()).isEqualTo("INSUFFICIENT_DATA");
+        assertThat(result.weaknessAnalysis().grammar().evaluatedTopics()).isEqualTo(1);
+        assertThat(result.weaknessAnalysis().grammar().eligibleTopics()).isZero();
+        assertThat(result.weaknessAnalysis().gradedQuestionsInPeriod()).isEqualTo(12);
+        assertThat(result.weaknessAnalysis().weakTopics()).isEmpty();
     }
 
     @Test
@@ -228,11 +271,30 @@ class DashboardServiceImplTests {
 
         assertThat(result.learningGoal().configured()).isTrue();
         assertThat(result.learningGoal().targetScore()).isEqualTo((short) 750);
+        assertThat(result.studyPlan().studyGoal().configured()).isTrue();
+        assertThat(result.studyPlan().studyGoal().plannedDailyMinutes()).isEqualTo(30);
+        assertThat(result.studyPlan().toeicTarget().targetScore()).isEqualTo((short) 750);
+        assertThat(result.studyPlan().toeicTarget().currentScore()).isNull();
+        assertThat(result.studyPlan().toeicTarget().status())
+                .isEqualTo("TARGET_ONLY_BASELINE_UNAVAILABLE");
+        assertThat(result.studyPlan().studySession().plannedDailyMinutes()).isEqualTo(30);
+        assertThat(result.studyPlan().studySession().todayActualMinutes()).isNull();
+        assertThat(result.studyPlan().studySession().dailyGoalCompleted()).isNull();
         assertThat(result.todayReview().dueDecks()).hasSize(1);
         assertThat(result.notificationSummary().unreadCount()).isEqualTo(3L);
         assertThat(result.recommendations())
                 .extracting(r -> r.type())
                 .containsExactly(
                         "FLASHCARD_REVIEW", "DUE_DECK", "WEAK_TOPIC_PRACTICE", "GRAMMAR_LESSON");
+        assertThat(result.recommendations())
+                .extracting(r -> r.skill())
+                .containsExactly("VOCABULARY", "VOCABULARY", "GRAMMAR", "GRAMMAR");
+        assertThat(result.recommendations())
+                .extracting(r -> r.reasonCode())
+                .containsExactly(
+                        "DUE_FLASHCARDS",
+                        "DUE_DECK_CARDS",
+                        "WEAK_GRAMMAR_TOPIC",
+                        "RESUME_GRAMMAR_LESSON");
     }
 }

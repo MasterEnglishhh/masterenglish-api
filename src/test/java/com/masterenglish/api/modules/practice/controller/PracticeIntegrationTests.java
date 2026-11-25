@@ -334,6 +334,82 @@ class PracticeIntegrationTests {
                 .andExpect(jsonPath("$.questions[0].prompt").value("Old prompt"));
     }
 
+    @Test
+    void attemptHistorySupportsFilteringPaginationAndOwnershipIsolation() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestion(topicA, "Hist A1", "right", "wrong");
+        publishQuestion(topicB, "Hist B1", "right", "wrong");
+
+        // Learner: 1 submitted GRAMMAR_TOPIC + 1 open MIXED_GRAMMAR
+        JsonNode single = startTopic(learner, UUID.randomUUID(), 1, topicA, 201);
+        UUID singleId = UUID.fromString(single.path("id").asText());
+        submit(learner, singleId);
+
+        JsonNode mixed = startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 2, 201);
+        UUID mixedId = UUID.fromString(mixed.path("id").asText());
+
+        // Other learner: 1 submitted GRAMMAR_TOPIC (must stay isolated from learner's feed)
+        JsonNode otherAttempt = startTopic(otherLearner, UUID.randomUUID(), 1, topicA, 201);
+        submit(otherLearner, UUID.fromString(otherAttempt.path("id").asText()));
+
+        mockMvc.perform(get("/api/v1/attempts")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/attempts").with(user(UserPrincipal.create(adminOnly))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        get("/api/v1/attempts?status=BAD")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest());
+
+        JsonNode page0 =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?page=0&size=1")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(page0.path("totalItems").asLong()).isEqualTo(2L);
+        assertThat(page0.path("hasNext").asBoolean()).isTrue();
+
+        JsonNode page1 =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?page=1&size=1")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(page1.path("totalItems").asLong()).isEqualTo(2L);
+        assertThat(page1.path("hasNext").asBoolean()).isFalse();
+        assertThat(
+                        List.of(
+                                page0.path("items").get(0).path("id").asText(),
+                                page1.path("items").get(0).path("id").asText()))
+                .containsExactlyInAnyOrder(singleId.toString(), mixedId.toString());
+
+        JsonNode mixedOnly =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?sourceType=MIXED_GRAMMAR")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(mixedOnly.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(mixedOnly.path("items").get(0).path("id").asText())
+                .isEqualTo(mixedId.toString());
+        assertThat(mixedOnly.path("items").get(0).path("topicIds")).hasSize(2);
+
+        JsonNode submittedOnly =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?status=SUBMITTED")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(submittedOnly.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(submittedOnly.path("items").get(0).path("id").asText())
+                .isEqualTo(singleId.toString());
+        assertThat(submittedOnly.path("items").get(0).path("status").asText())
+                .isEqualTo("SUBMITTED");
+        assertThat(submittedOnly.path("items").get(0).path("topicIds").get(0).asText())
+                .isEqualTo(topicA.toString());
+    }
+
     // ---- request helpers ------------------------------------------------------------------
 
     private JsonNode startTopic(

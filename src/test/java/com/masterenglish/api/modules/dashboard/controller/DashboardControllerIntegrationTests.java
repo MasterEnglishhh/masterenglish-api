@@ -253,6 +253,15 @@ class DashboardControllerIntegrationTests {
         assertThat(dashboard.at("/learningGoal/streakDays").asInt()).isGreaterThanOrEqualTo(1);
         assertThat(dashboard.at("/learningGoal/studyTimeTrackingAvailable").asBoolean()).isFalse();
 
+        assertThat(dashboard.at("/studyPlan/studyGoal/plannedDailyMinutes").asInt())
+                .isEqualTo(goalJson.get("dailyMinutes").asInt());
+        assertThat(dashboard.at("/studyPlan/toeicTarget/targetScore").asInt())
+                .isEqualTo(goalJson.get("targetScore").asInt());
+        assertThat(dashboard.at("/studyPlan/toeicTarget/currentScore").isNull()).isTrue();
+        assertThat(dashboard.at("/studyPlan/studySchedule/available").asBoolean()).isFalse();
+        assertThat(dashboard.at("/studyPlan/studySession/trackingAvailable").asBoolean()).isFalse();
+        assertThat(dashboard.at("/studyPlan/studySession/todayActualMinutes").isNull()).isTrue();
+
         assertThat(dashboard.at("/notificationSummary/unreadCount").asLong())
                 .isEqualTo(unreadJson.get("count").asLong())
                 .isEqualTo(1L);
@@ -263,8 +272,21 @@ class DashboardControllerIntegrationTests {
                 .isEqualTo(1L);
         assertThat(dashboard.at("/practiceStatistics/averagePracticeScorePercent").asInt())
                 .isEqualTo(60);
+        assertThat(dashboard.at("/practiceStatistics/grammarLessons/status").asText())
+                .isEqualTo("READY");
+        assertThat(dashboard.at("/practiceStatistics/grammarPractice/status").asText())
+                .isEqualTo("READY");
+        assertThat(dashboard.at("/practiceStatistics/toeicListening/status").asText())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
+        assertThat(dashboard.at("/practiceStatistics/toeicReading/status").asText())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
 
         assertThat(dashboard.at("/weaknessAnalysis/status").asText()).isEqualTo("READY");
+        assertThat(dashboard.at("/weaknessAnalysis/grammar/status").asText()).isEqualTo("READY");
+        assertThat(dashboard.at("/weaknessAnalysis/toeicListening/status").asText())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
+        assertThat(dashboard.at("/weaknessAnalysis/toeicReading/status").asText())
+                .isEqualTo("UNAVAILABLE_PENDING_MIGRATION");
         assertThat(dashboard.at("/weaknessAnalysis/weakTopics").size()).isEqualTo(1);
         assertThat(dashboard.at("/weaknessAnalysis/weakTopics/0/topicId").asText())
                 .isEqualTo(topicId.toString());
@@ -275,6 +297,9 @@ class DashboardControllerIntegrationTests {
                 .contains("FLASHCARD_REVIEW")
                 .contains("WEAK_TOPIC_PRACTICE")
                 .contains(lessonTodo.toString());
+        assertThat(dashboard.at("/recommendations/0/skill").asText()).isEqualTo("VOCABULARY");
+        assertThat(dashboard.at("/recommendations/0/reasonCode").asText())
+                .isEqualTo("DUE_FLASHCARDS");
     }
 
     private JsonNode jsonGet(String path, User actor) throws Exception {

@@ -30,6 +30,8 @@ final class DashboardRecommendationBuilder {
             items.add(
                     new RecommendationItem(
                             "FLASHCARD_REVIEW",
+                            "VOCABULARY",
+                            "DUE_FLASHCARDS",
                             "Ôn tập " + vocab.dueNow() + " thẻ Flashcard đến hạn",
                             "Hoàn thành hàng ôn SRS hôm nay để giữ nhịp ghi nhớ.",
                             "/learn/review",
@@ -38,6 +40,8 @@ final class DashboardRecommendationBuilder {
                 items.add(
                         new RecommendationItem(
                                 "DUE_DECK",
+                                "VOCABULARY",
+                                "DUE_DECK_CARDS",
                                 "Ôn bộ thẻ: " + deck.title(),
                                 deck.dueCount() + " thẻ đang đến hạn trong bộ thẻ này.",
                                 "/learn/vocabulary/decks/" + deck.deckId(),
@@ -53,6 +57,8 @@ final class DashboardRecommendationBuilder {
             items.add(
                     new RecommendationItem(
                             "WEAK_TOPIC_PRACTICE",
+                            "GRAMMAR",
+                            "WEAK_GRAMMAR_TOPIC",
                             "Cải thiện chủ điểm: " + weak.topicName(),
                             "Độ chính xác "
                                     + weak.accuracyPercent()
@@ -81,9 +87,15 @@ final class DashboardRecommendationBuilder {
                 break;
             }
             String prefix = inProgress.contains(lesson.id()) ? "Học tiếp: " : "Bài học mới: ";
+            String reasonCode =
+                    inProgress.contains(lesson.id())
+                            ? "RESUME_GRAMMAR_LESSON"
+                            : "NEXT_GRAMMAR_LESSON";
             items.add(
                     new RecommendationItem(
                             "GRAMMAR_LESSON",
+                            "GRAMMAR",
+                            reasonCode,
                             prefix + lesson.title(),
                             "Bài ngữ pháp tiếp theo trong lộ trình.",
                             "/learn/grammar/lessons/" + lesson.id(),
@@ -94,6 +106,8 @@ final class DashboardRecommendationBuilder {
             items.add(
                     new RecommendationItem(
                             "SAVED_VOCABULARY",
+                            "VOCABULARY",
+                            "SAVED_FLASHCARDS",
                             "Xem lại " + vocab.savedSenses() + " từ đã lưu",
                             "Củng cố các từ vựng bạn đã đánh dấu.",
                             "/learn/saved-words",

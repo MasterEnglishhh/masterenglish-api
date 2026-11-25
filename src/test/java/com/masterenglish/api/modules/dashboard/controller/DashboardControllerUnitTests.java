@@ -9,12 +9,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.masterenglish.api.common.error.GlobalExceptionHandler;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarLessonProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarPracticeProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarWeaknessScopeSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.LearningGoalSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.NotificationSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.OverviewSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.PracticeStatisticsSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.RecommendationItem;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyGoalSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyPlanSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyScheduleSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudySessionSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.TodayReviewSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicSkillProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicTargetSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicWeaknessScopeSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.VocabularyProgressSummary;
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeaknessAnalysisSummary;
 import com.masterenglish.api.modules.dashboard.service.DashboardService;
@@ -88,12 +98,72 @@ class DashboardControllerUnitTests {
                         new TodayReviewSummary(3, 7, List.of()),
                         new LearningGoalSummary(
                                 false, null, null, null, null, 3, true, null, false),
-                        new PracticeStatisticsSummary(2, 1, 5, 4, 0, 80, false, List.of()),
+                        new StudyPlanSummary(
+                                new StudyGoalSummary(false, null, null),
+                                new ToeicTargetSummary(
+                                        false, null, null, null, null, null, "NOT_CONFIGURED"),
+                                new StudyScheduleSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
+                                        null,
+                                        0),
+                                new StudySessionSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        null,
+                                        null,
+                                        null,
+                                        3,
+                                        true)),
+                        new PracticeStatisticsSummary(
+                                2,
+                                1,
+                                5,
+                                4,
+                                0,
+                                80,
+                                false,
+                                new GrammarLessonProgressSummary(true, "READY", 2, 1, 5),
+                                new GrammarPracticeProgressSummary(true, "READY", 4, 0, 80),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        0,
+                                        null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        0,
+                                        null),
+                                List.of()),
                         new WeaknessAnalysisSummary(
-                                "INSUFFICIENT_DATA", 30, 20, 70, 12, false, List.of()),
+                                "INSUFFICIENT_DATA",
+                                30,
+                                20,
+                                70,
+                                12,
+                                false,
+                                new GrammarWeaknessScopeSummary(
+                                        true, "INSUFFICIENT_DATA", 1, 0, 12),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        List.of()),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        List.of()),
+                                List.of()),
                         List.of(
                                 new RecommendationItem(
                                         "FLASHCARD_REVIEW",
+                                        "VOCABULARY",
+                                        "DUE_FLASHCARDS",
                                         "Ôn tập 3 thẻ Flashcard đến hạn",
                                         "Hoàn thành hàng ôn SRS hôm nay.",
                                         "/learn/review",
@@ -107,9 +177,20 @@ class DashboardControllerUnitTests {
                 .andExpect(jsonPath("$.vocabularyProgress.studiedSenses").value(12))
                 .andExpect(jsonPath("$.todayReview.dueNow").value(3))
                 .andExpect(jsonPath("$.learningGoal.studyTimeTrackingAvailable").value(false))
+                .andExpect(
+                        jsonPath("$.studyPlan.studySchedule.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
+                .andExpect(jsonPath("$.studyPlan.studySession.trackingAvailable").value(false))
                 .andExpect(jsonPath("$.practiceStatistics.completedGrammarLessons").value(2))
+                .andExpect(
+                        jsonPath("$.practiceStatistics.toeicListening.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
+                .andExpect(
+                        jsonPath("$.practiceStatistics.toeicReading.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
                 .andExpect(jsonPath("$.weaknessAnalysis.status").value("INSUFFICIENT_DATA"))
                 .andExpect(jsonPath("$.recommendations[0].type").value("FLASHCARD_REVIEW"))
+                .andExpect(jsonPath("$.recommendations[0].skill").value("VOCABULARY"))
                 .andExpect(jsonPath("$.notificationSummary.unreadCount").value(2));
     }
 }
