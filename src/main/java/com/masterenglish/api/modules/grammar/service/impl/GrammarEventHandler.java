@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.grammar.service.impl;
 
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRequested;
 import com.masterenglish.api.common.events.GrammarEvents.TopicVisibilityRequested;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalogRequested;
 import com.masterenglish.api.modules.grammar.service.GrammarQueryService;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -23,5 +24,10 @@ class GrammarEventHandler {
     @EventListener
     void on(TopicVisibilityRequested event) {
         event.reply().complete(grammar.isVisibleTopic(event.topicId()));
+    }
+
+    @EventListener
+    void on(VisibleCatalogRequested event) {
+        event.reply().complete(grammar.visibleCatalog());
     }
 }

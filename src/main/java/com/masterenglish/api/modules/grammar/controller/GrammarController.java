@@ -1,6 +1,8 @@
 package com.masterenglish.api.modules.grammar.controller;
 
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
@@ -23,6 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class GrammarController {
 
     private static final Set<String> TOPIC_SORT_FIELDS = Set.of("sortOrder", "name", "id");
+    private static final Set<String> DIFFICULTIES = Set.of("BASIC", "INTERMEDIATE", "ADVANCED");
+    private static final int MAX_SEARCH_LENGTH = 200;
 
     private final GrammarQueryService queryService;
 
@@ -32,6 +36,8 @@ public class GrammarController {
 
     @GetMapping("/topics")
     public PageResponse<GrammarTopicResponse> listTopics(
+            @RequestParam(required = false) String difficulty,
+            @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sortBy,
@@ -43,7 +49,32 @@ public class GrammarController {
                         sortBy != null && !sortBy.isBlank() ? sortBy : "sortOrder",
                         sortDirection != null && !sortDirection.isBlank() ? sortDirection : "asc",
                         TOPIC_SORT_FIELDS);
-        return queryService.listTopics(pageable);
+        return queryService.listTopics(difficultyFilter(difficulty), searchText(q), pageable);
+    }
+
+    private static String difficultyFilter(String difficulty) {
+        if (difficulty == null || difficulty.isBlank()) {
+            return null;
+        }
+        String value = difficulty.trim();
+        if (!DIFFICULTIES.contains(value)) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "difficulty must be BASIC, INTERMEDIATE or ADVANCED.");
+        }
+        return value;
+    }
+
+    private static String searchText(String q) {
+        if (q == null || q.isBlank()) {
+            return null;
+        }
+        String value = q.trim();
+        if (value.length() > MAX_SEARCH_LENGTH) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "q must be at most 200 characters.");
+        }
+        return value;
     }
 
     @GetMapping("/topics/{topicId}/lessons")

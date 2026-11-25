@@ -83,11 +83,7 @@ class GrammarPublicationIntegrationTests {
         UUID topicRevision = publish(topicId, TOPIC, topicSnapshot("articles-b", "Articles"));
 
         UUID lessonId = UUID.randomUUID();
-        publish(
-                lessonId,
-                LESSON,
-                lessonSnapshot(
-                        topicId, topicRevision, "definite-article", "Use the before nouns."));
+        publish(lessonId, LESSON, lessonSnapshot(topicId, topicRevision, "Use the before nouns."));
 
         GrammarLesson lesson = lessons.findById(lessonId).orElseThrow();
         assertThat(lesson.getTopicId()).isEqualTo(topicId);
@@ -102,15 +98,9 @@ class GrammarPublicationIntegrationTests {
         UUID topicRevision = publish(topicId, TOPIC, topicSnapshot("pin-" + suffix, "Pinned"));
         UUID lessonId = UUID.randomUUID();
         UUID first =
-                publish(
-                        lessonId,
-                        LESSON,
-                        lessonSnapshot(topicId, topicRevision, "pin-lesson", "First pin."));
+                publish(lessonId, LESSON, lessonSnapshot(topicId, topicRevision, "First pin."));
         UUID second =
-                publish(
-                        lessonId,
-                        LESSON,
-                        lessonSnapshot(topicId, topicRevision, "pin-lesson", "Second pin."));
+                publish(lessonId, LESSON, lessonSnapshot(topicId, topicRevision, "Second pin."));
 
         assertThat(pinnedTopicRevision(first, topicId)).isEqualTo(topicRevision);
         assertThat(pinnedTopicRevision(second, topicId)).isEqualTo(topicRevision);
@@ -130,7 +120,6 @@ class GrammarPublicationIntegrationTests {
                                         lessonSnapshot(
                                                 topicId,
                                                 topicRevision,
-                                                "unsafe-lesson",
                                                 "<b>Use the</b> before nouns.")))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
@@ -149,10 +138,7 @@ class GrammarPublicationIntegrationTests {
                                         UUID.randomUUID(),
                                         LESSON,
                                         lessonSnapshot(
-                                                missingTopic,
-                                                UUID.randomUUID(),
-                                                "orphan-lesson",
-                                                "Orphan text.")))
+                                                missingTopic, UUID.randomUUID(), "Orphan text.")))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR))
@@ -169,11 +155,7 @@ class GrammarPublicationIntegrationTests {
                                 publish(
                                         UUID.randomUUID(),
                                         LESSON,
-                                        lessonSnapshot(
-                                                topicId,
-                                                UUID.randomUUID(),
-                                                "wrong-pin",
-                                                "Pinned text.")))
+                                        lessonSnapshot(topicId, UUID.randomUUID(), "Pinned text.")))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR))
@@ -227,13 +209,13 @@ class GrammarPublicationIntegrationTests {
                 .formatted(slug, name);
     }
 
-    private static String lessonSnapshot(UUID topicId, UUID pinned, String slug, String text) {
+    private static String lessonSnapshot(UUID topicId, UUID pinned, String text) {
         return """
                 {"schema_version": 1, "content_type": "GRAMMAR_LESSON",
                  "topic_id": "%s", "pinned_topic_revision_id": "%s", "title": "Definite article",
-                 "slug": "%s", "position": 1, "estimated_minutes": 5,
+                 "position": 1, "estimated_minutes": 5,
                  "body": {"blocks": [{"type": "paragraph", "text": "%s"}]}}
                 """
-                .formatted(topicId, pinned, slug, text);
+                .formatted(topicId, pinned, text);
     }
 }

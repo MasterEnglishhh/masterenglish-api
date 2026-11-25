@@ -84,12 +84,12 @@ public class GrammarSnapshotValidator {
 
     private void validateLesson(JsonNode data) {
         requireObject(data);
+        // No slug on lessons: grammar_lessons has no slug column (Data Dictionary v3.0).
         onlyFields(
                 data,
                 "topic_id",
                 "pinned_topic_revision_id",
                 "title",
-                "slug",
                 "position",
                 "body",
                 "body_schema_version",
@@ -103,10 +103,6 @@ public class GrammarSnapshotValidator {
             fail("pinned_topic_revision_id must be a published revision of that topic.");
         }
         plainText(data, "title", 200, true);
-        String slug = requiredText(data, "slug", 120);
-        if (!SLUG.matcher(slug).matches()) {
-            fail("slug must use lowercase letters, digits and hyphens.");
-        }
         optionalInt(data, "position", 0, MAX_POSITION, true);
         if (data.hasNonNull("body_schema_version")
                 && (!data.path("body_schema_version").isIntegralNumber()

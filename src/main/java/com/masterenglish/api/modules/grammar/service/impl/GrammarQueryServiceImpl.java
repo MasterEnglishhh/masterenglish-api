@@ -7,21 +7,24 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleLesson;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleTopic;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
 import com.masterenglish.api.modules.grammar.entity.GrammarLesson;
+import com.masterenglish.api.modules.grammar.entity.GrammarTopic;
 import com.masterenglish.api.modules.grammar.repository.GrammarLessonRepository;
 import com.masterenglish.api.modules.grammar.repository.GrammarTopicRepository;
 import com.masterenglish.api.modules.grammar.service.GrammarQueryService;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,48 +42,48 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
         this.mapper = mapper;
     }
 
-    // shortcut: sorts and pages the whole visible catalog in memory; move paging into SQL once
-    // topics reach a few hundred.
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<GrammarTopicResponse> listTopics(Pageable pageable) {
-        List<GrammarTopicResponse> all =
-                topics.findVisibleTopics().stream()
-                        .map(
-                                t ->
-                                        new GrammarTopicResponse(
-                                                t.getId(),
-                                                t.getSlug(),
-                                                t.getName(),
-                                                t.getDescription(),
-                                                t.getDifficulty(),
-                                                t.getSortOrder()))
-                        .sorted(topicOrder(pageable.getSort()))
-                        .toList();
-        int from =
-                (int)
-                        Math.min(
-                                (long) pageable.getPageNumber() * pageable.getPageSize(),
-                                all.size());
-        int to = Math.min(from + pageable.getPageSize(), all.size());
-        return PageResponse.from(new PageImpl<>(all.subList(from, to), pageable, all.size()));
+    public PageResponse<GrammarTopicResponse> listTopics(
+            String difficulty, String q, Pageable pageable) {
+        String pattern = q == null ? null : containsPattern(q);
+        Page<GrammarTopic> page = topics.searchVisible(difficulty, pattern, pageable);
+        return PageResponse.from(page, GrammarQueryServiceImpl::topicResponse);
     }
 
-    /** Sort keys come from the controller's allowlist; id is always the final tie-breaker. */
-    private static Comparator<GrammarTopicResponse> topicOrder(Sort sort) {
-        Comparator<GrammarTopicResponse> order = (a, b) -> 0;
-        for (Sort.Order o : sort) {
-            Comparator<GrammarTopicResponse> field =
-                    switch (o.getProperty()) {
-                        case "sortOrder" ->
-                                Comparator.comparingInt(GrammarTopicResponse::sortOrder);
-                        case "name" -> Comparator.comparing(GrammarTopicResponse::name);
-                        case "id" -> Comparator.comparing(GrammarTopicResponse::id);
-                        default -> throw new IllegalArgumentException("Unsupported sort property.");
-                    };
-            order = order.thenComparing(o.isDescending() ? field.reversed() : field);
-        }
-        return order.thenComparing(Comparator.comparing(GrammarTopicResponse::id));
+    /** Case-insensitive "contains" pattern; '!' escapes the LIKE wildcards in the user's text. */
+    static String containsPattern(String q) {
+        String escaped = q.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        return "%" + escaped.toLowerCase(Locale.ROOT) + "%";
+    }
+
+    private static GrammarTopicResponse topicResponse(GrammarTopic t) {
+        return new GrammarTopicResponse(
+                t.getId(),
+                t.getSlug(),
+                t.getName(),
+                t.getDescription(),
+                t.getDifficulty(),
+                t.getSortOrder());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public VisibleCatalog visibleCatalog() {
+        List<VisibleTopic> topicRefs =
+                topics.findVisibleTopicRefs().stream()
+                        .map(t -> new VisibleTopic(t.getId(), t.getName(), t.getSortOrder()))
+                        .toList();
+        List<VisibleLesson> lessonRefs =
+                lessons.findAllVisibleRefs().stream()
+                        .map(
+                                l ->
+                                        new VisibleLesson(
+                                                l.getId(),
+                                                l.getTopicId(),
+                                                l.getPublishedRevisionId()))
+                        .toList();
+        return new VisibleCatalog(topicRefs, lessonRefs);
     }
 
     @Override

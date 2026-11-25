@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.grammar.service;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
@@ -12,7 +13,10 @@ import org.springframework.data.domain.Pageable;
 
 public interface GrammarQueryService {
 
-    PageResponse<GrammarTopicResponse> listTopics(Pageable pageable);
+    /** {@code difficulty} and {@code q} are already validated; null means no filter. */
+    PageResponse<GrammarTopicResponse> listTopics(String difficulty, String q, Pageable pageable);
+
+    VisibleCatalog visibleCatalog();
 
     List<GrammarLessonSummaryResponse> listLessons(UUID topicId);
 

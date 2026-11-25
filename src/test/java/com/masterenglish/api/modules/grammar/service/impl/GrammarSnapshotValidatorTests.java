@@ -184,6 +184,15 @@ class GrammarSnapshotValidatorTests {
     }
 
     @Test
+    void lessonRejectsSlugBecauseLessonsHaveNoSlugColumn() {
+        UUID topicId = publishedTopic();
+        ObjectNode lesson = lesson(topicId);
+        lesson.put("slug", "definite-article");
+
+        assertRejected(LESSON, lesson, "Unsupported snapshot field: slug");
+    }
+
+    @Test
     void lessonRejectsUnknownFieldsInsideABlock() {
         UUID topicId = publishedTopic();
         ObjectNode lesson = lesson(topicId);
@@ -330,7 +339,6 @@ class GrammarSnapshotValidatorTests {
         lesson.put("topic_id", topicId.toString());
         lesson.put("pinned_topic_revision_id", UUID.randomUUID().toString());
         lesson.put("title", "Definite article");
-        lesson.put("slug", "definite-article");
         lesson.put("position", 1);
         lesson.put("estimated_minutes", 5);
         ObjectNode body = lesson.putObject("body");

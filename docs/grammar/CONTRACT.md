@@ -1,6 +1,6 @@
 # Hợp đồng Grammar (Giai đoạn 1)
 
-Trạng thái: phần đọc và luồng publish đã triển khai trên nhánh `feat/grammar-m04`. Phần tiến độ học và bản nháp quản trị **chưa triển khai, chờ duyệt**. Các chỗ chưa được duyệt đánh dấu **[cần duyệt]**.
+Trạng thái: phần đọc, luồng publish, tiến độ bài học và tổng hợp tiến độ theo chủ điểm đã triển khai trên nhánh `feat/m04-grammar-complete` (Slice 1). Bản nháp quản trị grammar **chưa triển khai** (Slice 4). Các chỗ chưa được duyệt đánh dấu **[cần duyệt]**.
 
 Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5, mục 7) và `docs/database/DATA_DICTIONARY.md` (`grammar_topics`, `grammar_lessons`, `lesson_progress`).
 
@@ -27,6 +27,7 @@ Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5
 | `GET /api/v1/grammar/lessons/{lessonId}` | Đã triển khai |
 | `PUT /api/v1/grammar/lessons/{lessonId}/progress` | Đã triển khai (module `learning`, xem mục 4.4) |
 | `GET /api/v1/grammar/progress` | Đã triển khai (mở rộng, chờ FE duyệt) |
+| `GET /api/v1/grammar/progress/topics` | Đã triển khai (module `learning`, xem mục 8.3; **[cần FE duyệt]**) |
 | Validate snapshot khi duyệt và xuất bản | Đã triển khai |
 | Chiếu bản xuất bản vào `grammar_topics` và `grammar_lessons` | Đã triển khai |
 | Bảng `lesson_progress` | Đã triển khai (migration V12) |
@@ -44,7 +45,8 @@ Không có token: `401`. Có token nhưng không có vai trò học viên: `403`
 - Chỉ trả chủ điểm đang hiển thị (đã xuất bản, chưa lưu trữ, chưa bị thu hồi quyền truy cập).
 - Mặc định sắp theo `sortOrder` tăng dần, rồi theo `id`.
 - Trả `PageResponse<T>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Mặc định `page` 0 và `size` 20, tối đa 100. `sortBy` nhận `sortOrder`, `name`, `id` (mặc định `sortOrder`). `sortDirection` nhận `asc` hoặc `desc` (mặc định `asc`). `id` luôn là tie-breaker. **Đã triển khai.** Hình dạng phản hồi đổi từ mảng sang trang, FE cần đồng bộ. Trường kích thước trang là `size`, khớp `common/api/PageResponse`. Tài liệu SRS v5.0 ghi `pageSize`; code giữ `size` và không đổi module `common` để khớp SRS. FE dùng `size`.
-- Phân trang hiện làm trong bộ nhớ trên toàn bộ chủ điểm hiển thị (shortcut trong `GrammarQueryServiceImpl`, nâng cấp sang SQL khi số chủ điểm lớn).
+- Lọc: `difficulty` (`BASIC`, `INTERMEDIATE`, `ADVANCED`; giá trị khác trả `400 VALIDATION_ERROR`) và `q` (chứa, không phân biệt hoa thường, tối đa 200 ký tự; `%` và `_` là ký tự thường, không phải ký tự đại diện).
+- Phân trang và sắp xếp thực hiện trong SQL, lọc theo `catalog_visible_items`.
 
 Phản hồi `PageResponse<GrammarTopicResponse>`:
 
@@ -91,7 +93,9 @@ Phản hồi `GrammarLessonResponse`:
 
 `GET /api/v1/grammar/progress` trả mảng `LessonProgressResponse` của chính người học, sắp theo `updatedAt` giảm dần. Endpoint này không có trong bản nháp cũ; **[cần FE duyệt]**.
 
-Chưa triển khai: trường `hasNewerRevision` trong phản hồi bài học và trường `state` trong `GET /lessons/{lessonId}`. Thêm các trường này sẽ làm module `grammar` phụ thuộc `learning`, nên cần duyệt riêng.
+Mỗi phần tử có thêm `hasUpdate` (boolean): `true` khi bài đã `COMPLETED` và bản xuất bản hiện tại khác `lastCompletedRevisionId`. Bản ghi hoàn thành được giữ nguyên khi có bản mới. `PUT` cũng trả `hasUpdate`, luôn `false` ngay sau khi hoàn thành.
+
+Chưa triển khai: trường `hasNewerRevision` và `state` trong phản hồi `GET /lessons/{lessonId}` của `grammar`. Thêm các trường này sẽ làm `grammar` phụ thuộc `learning`, nên cần duyệt riêng. Cờ cập nhật đã có trong phản hồi tiến độ của `learning` (xem trên).
 
 **Đã chốt:** không tự tạo `IN_PROGRESS` khi học viên chỉ mở bài. Chỉ PUT mới tạo dòng.
 
@@ -118,7 +122,7 @@ Trường khác bị từ chối với thông báo `Unsupported snapshot field: 
 | `topic_id` | Bắt buộc. Phải là chủ điểm đang hiển thị. |
 | `pinned_topic_revision_id` | Bắt buộc. Phải là một revision **đã xuất bản** của chính chủ điểm đó. Revision mới hơn của chủ điểm không làm bài học mất hiệu lực. |
 | `title` | Bắt buộc, không rỗng, tối đa 200 ký tự, không chứa HTML. |
-| `slug` | Bắt buộc, cùng quy tắc với chủ điểm. Không kiểm tra trùng. |
+| `slug` | Không có. `grammar_lessons` không có cột `slug` theo Data Dictionary v3.0, chỉ `grammar_topics` có. Trường này bị từ chối với `Unsupported snapshot field: slug`. |
 | `position` | Bắt buộc. Số nguyên từ 0 đến 100000. Lưu vào `sort_order`. |
 | `body_schema_version` | Tùy chọn. Chỉ nhận `1`. |
 | `estimated_minutes` | Tùy chọn. Từ 1 đến 600. |
@@ -172,7 +176,7 @@ Người dùng đã chốt sáu quyết định dưới đây. Trạng thái ghi
 
 1. **Khối nội dung và giới hạn `body`.** Trạng thái: đã triển khai trong `modules/grammar`. Giữ 5 loại khối làm allowlist, không thêm `media`. Ràng buộc `revision_media_refs` rỗng cho lesson v1 không kiểm tra được ở `grammar`, xem mục 5.3.
 2. **Không tự tạo `IN_PROGRESS` khi mở bài.** Trạng thái: khớp triển khai.
-3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress` của module `learning`. Trạng thái: chưa triển khai.
+3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress/topics` của module `learning`. Trạng thái: đã triển khai (Slice 1). Đường dẫn đổi khỏi `GET /api/v1/grammar/progress` vì endpoint đó đã trả danh sách bài học theo mục 4.4; đổi đường dẫn cần FE duyệt. Facade `GrammarEvents.visibleCatalog()` trong `common/events` cung cấp dữ liệu cho `learning`; facade này cần duyệt riêng.
 4. **`difficulty`** chỉ nhận `BASIC`, `INTERMEDIATE`, `ADVANCED`. Trạng thái: khớp bảng `grammar_topics` (V10) và validator.
 5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: đã triển khai. Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
 6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: chưa triển khai (Chặng B).
@@ -185,7 +189,7 @@ Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) 
 
 ## 9. Bàn giao
 
-- **`learning`:** tổng hợp tiến độ theo chủ điểm (`completedLessonCount`, `totalLessonCount`, `hasUpdate`) nằm trong `GET /api/v1/grammar/progress`. `grammar` cần cung cấp public facade đếm bài đã xuất bản theo chủ điểm, và `learning` đọc qua facade đó. Facade chưa có. Vì facade đặt trong `common/events`, cần duyệt riêng, ngoài phạm vi module `grammar`.
+- **`learning`:** đã triển khai tổng hợp theo chủ điểm tại `GET /api/v1/grammar/progress/topics`, đọc qua `GrammarEvents.visibleCatalog()` (`common/events`, đã thêm trong Slice 1, cần duyệt).
 - **`admin`/`content`:** API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`). `AdminContentController` hiện chỉ có `/words` và `/decks`. Cần sự kiện tạo bản nháp trong `common/events` và handler ở `content`.
 - **`content` (kiểm tra `revision_media_refs`):** lesson v1 phải có tập `revision_media_refs` rỗng khi xuất bản. `SnapshotValidationRequested` không mang thông tin media nên `grammar` không kiểm tra được. `content` cần kiểm tra trước khi phát sự kiện.
 - **Frontend:** `GET /api/v1/grammar/topics` trả `PageResponse<GrammarTopicResponse>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Phản hồi cũ là mảng, FE cần cập nhật. Trường kích thước là `size`, không phải `pageSize` như SRS v5.0.
