@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * Claims one delivery at a time so each email gets a fresh lease, and sends it outside any database
- * transaction. A failed email never touches the in-app notification.
+ * transaction. Provides at-least-once delivery semantics (if SMTP succeeds but persisting SENT
+ * fails or the 60s lease expires mid-send, another worker may reclaim and re-send). A failed email
+ * never touches the in-app notification.
  */
 @Slf4j
 @Service
@@ -23,6 +25,7 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
     static final String USER_INACTIVE = "USER_INACTIVE";
     static final String MAIL_ERROR = "MAIL_ERROR";
     static final String SETTINGS_PATH = "/learn/notifications/settings";
+    private static final int MAX_PROVIDER_MESSAGE_ID_LENGTH = 180;
 
     private final DeliveryClaimStore store;
     private final ReminderMailer mailer;
@@ -62,16 +65,26 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
                     delivery.deliveryId(), delivery.claimToken(), USER_INACTIVE, clock.instant());
             return;
         }
+        String providerId;
         try {
-            String providerId = mailer.send(delivery.recipient(), delivery.title(), text(delivery));
-            store.recordSent(
-                    delivery.deliveryId(), delivery.claimToken(), providerId, clock.instant());
+            providerId =
+                    sanitizeProviderId(
+                            mailer.send(delivery.recipient(), delivery.title(), text(delivery)));
         } catch (ReminderMailException exception) {
-            store.recordFailure(
-                    delivery.deliveryId(),
-                    delivery.claimToken(),
-                    exception.getFailureCode(),
-                    clock.instant());
+            if (exception.isPermanent()) {
+                store.recordPermanentFailure(
+                        delivery.deliveryId(),
+                        delivery.claimToken(),
+                        exception.getFailureCode(),
+                        clock.instant());
+            } else {
+                store.recordFailure(
+                        delivery.deliveryId(),
+                        delivery.claimToken(),
+                        exception.getFailureCode(),
+                        clock.instant());
+            }
+            return;
         } catch (RuntimeException exception) {
             log.warn(
                     "Delivery {} send error: {}",
@@ -79,7 +92,29 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
                     exception.getClass().getSimpleName());
             store.recordFailure(
                     delivery.deliveryId(), delivery.claimToken(), MAIL_ERROR, clock.instant());
+            return;
         }
+        try {
+            store.recordSent(
+                    delivery.deliveryId(), delivery.claimToken(), providerId, clock.instant());
+        } catch (RuntimeException exception) {
+            // Do not convert a DB persistence error after SMTP success into MAIL_ERROR;
+            // keeping PROCESSING lets lease expiry recover if the write did not commit.
+            log.warn(
+                    "Delivery {} sent via SMTP but failed to persist SENT state: {}",
+                    delivery.deliveryId(),
+                    exception.getClass().getSimpleName());
+        }
+    }
+
+    private static String sanitizeProviderId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.strip();
+        return trimmed.length() <= MAX_PROVIDER_MESSAGE_ID_LENGTH
+                ? trimmed
+                : trimmed.substring(0, MAX_PROVIDER_MESSAGE_ID_LENGTH);
     }
 
     private String text(ClaimedDelivery delivery) {

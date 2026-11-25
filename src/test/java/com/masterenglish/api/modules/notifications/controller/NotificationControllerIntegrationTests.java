@@ -296,8 +296,47 @@ class NotificationControllerIntegrationTests {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].id").value(unreadId.toString()));
 
+        mockMvc.perform(get("/api/v1/notifications").param("unreadOnly", "false").with(as(learner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2));
+
         mockMvc.perform(get("/api/v1/notifications").param("type", "SECURITY").with(as(learner)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName(
+            "PUT /preferences thay thế toàn bộ: cho phép dailyReminderTime = null, quiet hours = null và timezone = UTC")
+    void fullReplacementSupportsNullDailyReminderAndClearedQuietHours() throws Exception {
+        mockMvc.perform(
+                        put("/api/v1/notifications/preferences")
+                                .with(as(learner))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(validPreferences()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dailyReminderTime").value("20:00"));
+
+        mockMvc.perform(
+                        put("/api/v1/notifications/preferences")
+                                .with(as(learner))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body("false", "true", "null", "\"UTC\"", "null", "null")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inAppEnabled").value(false))
+                .andExpect(jsonPath("$.emailEnabled").value(true))
+                .andExpect(jsonPath("$.dailyReminderTime").doesNotExist())
+                .andExpect(jsonPath("$.timezone").value("UTC"))
+                .andExpect(jsonPath("$.quietHoursStart").doesNotExist())
+                .andExpect(jsonPath("$.quietHoursEnd").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/notifications/preferences").with(as(learner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inAppEnabled").value(false))
+                .andExpect(jsonPath("$.emailEnabled").value(true))
+                .andExpect(jsonPath("$.dailyReminderTime").doesNotExist())
+                .andExpect(jsonPath("$.timezone").value("UTC"));
     }
 
     @Test
@@ -326,6 +365,21 @@ class NotificationControllerIntegrationTests {
                                 .param("type", "SECURITY")
                                 .with(as(learner)))
                 .andExpect(status().isBadRequest());
+
+        mockMvc.perform(
+                        get("/api/v1/notifications/reminders/history")
+                                .param("from", BASE.minusSeconds(10).toString())
+                                .param("to", BASE.plusSeconds(10).toString())
+                                .with(as(learner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1));
+
+        mockMvc.perform(
+                        get("/api/v1/notifications/reminders/history")
+                                .param("ruleCode", "NON_EXISTENT")
+                                .with(as(learner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
     }
 
     private static String validPreferences() {

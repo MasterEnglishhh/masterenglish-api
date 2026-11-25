@@ -6,6 +6,8 @@ import com.masterenglish.api.modules.notifications.service.ReminderMailer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailException;
+import org.springframework.mail.MailParseException;
+import org.springframework.mail.MailPreparationException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -26,7 +28,7 @@ public class SmtpReminderMailer implements ReminderMailer {
     public String send(String recipient, String subject, String text) {
         JavaMailSender mailSender = sender.getIfAvailable();
         if (mailSender == null || properties.mail().from().isBlank()) {
-            throw new ReminderMailException("MAIL_NOT_CONFIGURED");
+            throw ReminderMailException.permanent("MAIL_NOT_CONFIGURED");
         }
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(properties.mail().from());
@@ -38,6 +40,8 @@ public class SmtpReminderMailer implements ReminderMailer {
             return null;
         } catch (MailAuthenticationException exception) {
             throw new ReminderMailException("MAIL_AUTH_FAILED");
+        } catch (MailParseException | MailPreparationException exception) {
+            throw ReminderMailException.permanent("MAIL_SEND_FAILED");
         } catch (MailException exception) {
             throw new ReminderMailException("MAIL_SEND_FAILED");
         }

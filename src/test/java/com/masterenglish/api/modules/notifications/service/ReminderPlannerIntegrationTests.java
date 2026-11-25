@@ -231,6 +231,71 @@ class ReminderPlannerIntegrationTests {
         assertThat(count(scheduled)).isZero();
     }
 
+    @Test
+    @DisplayName("Múi giờ không hợp lệ bị bỏ qua an toàn mà không làm hỏng người học hợp lệ khác")
+    void skipsInvalidTimezoneSafelyWithoutBreakingValidLearners() {
+        UUID invalidZoneUser = user("ACTIVE");
+        preference(invalidZoneUser, true, false, "20:00", "Mars/Base", null, null);
+        UUID validUser = user("ACTIVE");
+        preference(validUser, true, false, "20:00", "Asia/Ho_Chi_Minh", null, null);
+
+        assertThat(planner.planReviewDueReminders(NOW)).isEqualTo(1);
+        assertThat(count(invalidZoneUser)).isZero();
+        assertThat(count(validUser)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName(
+            "Quiet hours cùng ngày [start, end) chặn đúng trong khoảng và nhắc khi hết giờ yên lặng")
+    void respectsSameDayQuietHoursAndBoundaries() {
+        UUID user = user("ACTIVE");
+        preference(user, true, false, "12:00", "UTC", "13:00", "15:00");
+
+        // 13:00 UTC: start is inclusive -> skipped.
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-19T13:00:00Z"))).isZero();
+        // 14:30 UTC: inside [13:00, 15:00) -> skipped.
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-19T14:30:00Z"))).isZero();
+        // 15:00 UTC: end is exclusive -> created.
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-19T15:00:00Z")))
+                .isEqualTo(1);
+        assertThat(dedupeKey(user)).isEqualTo("REVIEW_DUE:" + user + ":2026-11-19");
+    }
+
+    @Test
+    @DisplayName(
+            "Ranh giới minimum_gap 720 phút: 719 phút bị chặn, đúng 720 phút ở ngày mới được nhắc")
+    void respectsExactMinimumGapBoundaryAcrossLocalDay() {
+        UUID user = user("ACTIVE");
+        preference(user, true, false, "00:00", "UTC", null, null);
+        Instant first = Instant.parse("2026-11-18T12:00:00Z");
+        jdbc.update(
+                "INSERT INTO notifications(id,user_id,reminder_rule_id,type,title,body,dedupe_key,created_at) "
+                        + "SELECT ?,?,id,'REVIEW_DUE','t','b','REVIEW_DUE:'||?||':2026-11-18',? FROM reminder_rules WHERE code='REVIEW_DUE'",
+                UUID.randomUUID(),
+                user,
+                user.toString(),
+                java.sql.Timestamp.from(first));
+
+        // 23:59Z on Nov 18 (same day) / 11h59m elapsed on Nov 19 if shifted -> test exact gap:
+        // At 2026-11-19T00:00:00Z (exact 720m later, new local day 2026-11-19), gap is satisfied.
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-18T23:59:00Z"))).isZero();
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-19T00:00:00Z")))
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Chuyển giờ DST fall-back lặp lại 01:30 tại America/New_York không tạo nhắc trùng")
+    void handlesDstFallBackWithoutDuplicateReminder() {
+        UUID user = user("ACTIVE");
+        preference(user, true, false, "01:00", "America/New_York", null, null);
+
+        // 2026-11-01 01:30 EDT = 05:30Z; 2026-11-01 01:30 EST = 06:30Z (both local day 2026-11-01).
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-01T05:30:00Z")))
+                .isEqualTo(1);
+        assertThat(planner.planReviewDueReminders(Instant.parse("2026-11-01T06:30:00Z"))).isZero();
+        assertThat(count(user)).isEqualTo(1);
+    }
+
     private int count(UUID user) {
         return jdbc.queryForObject(
                 "SELECT count(*) FROM notifications WHERE user_id=?", Integer.class, user);

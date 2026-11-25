@@ -277,6 +277,40 @@ class EmailDeliveryWorkerIntegrationTests {
         assertThat(mailer.sends("off@example.test")).isZero();
     }
 
+    @Test
+    @DisplayName(
+            "Lưu providerMessageId khi SMTP trả mã phản hồi và tôn trọng lease hết hạn đúng mốc")
+    void storesProviderMessageIdAndReclaimsAtExactLeaseExpiry() {
+        NotificationDelivery email =
+                processing(reminder(user("ACTIVE")), "provider@example.test", 1, T);
+        mailer.nextProviderId = "smtp-queue-id-12345";
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(1);
+        NotificationDelivery sent = reload(email.getId());
+        assertThat(sent.getStatus()).isEqualTo(DeliveryStatus.SENT);
+        assertThat(sent.getAttemptCount()).isEqualTo((short) 2);
+        assertThat(sent.getProviderMessageId()).isEqualTo("smtp-queue-id-12345");
+    }
+
+    @Test
+    @DisplayName("Lỗi vĩnh viễn từ mailer chuyển FAILED ngay ở lần đầu, không retry")
+    void permanentMailerFailureDoesNotRetry() {
+        NotificationDelivery email = pendingEmail(reminder(user("ACTIVE")), "perm@example.test");
+        mailer.permanentFailureCode = "MAIL_NOT_CONFIGURED";
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(1);
+        NotificationDelivery failed = reload(email.getId());
+        assertThat(failed.getStatus()).isEqualTo(DeliveryStatus.FAILED);
+        assertThat(failed.getAttemptCount()).isEqualTo((short) 1);
+        assertThat(failed.getNextRetryAt()).isNull();
+        assertThat(failed.getFinishedAt()).isEqualTo(T);
+        assertThat(failed.getLastFailureCode()).isEqualTo("MAIL_NOT_CONFIGURED");
+        assertThat(mailer.sends("perm@example.test")).isEqualTo(1);
+
+        clock.set(T.plusSeconds(3600));
+        assertThat(worker.deliverDueEmails()).isZero();
+    }
+
     private NotificationDelivery reload(UUID id) {
         return deliveries.findById(id).orElseThrow();
     }
@@ -350,6 +384,8 @@ class EmailDeliveryWorkerIntegrationTests {
         final java.util.concurrent.atomic.AtomicReference<String> lastSubject =
                 new java.util.concurrent.atomic.AtomicReference<>();
         volatile long delayMillis;
+        volatile String nextProviderId;
+        volatile String permanentFailureCode;
 
         @Override
         public String send(String recipient, String subject, String text) {
@@ -364,10 +400,13 @@ class EmailDeliveryWorkerIntegrationTests {
                     Thread.currentThread().interrupt();
                 }
             }
+            if (permanentFailureCode != null) {
+                throw ReminderMailException.permanent(permanentFailureCode);
+            }
             if (failuresRemaining.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0) {
                 throw new ReminderMailException("MAIL_SEND_FAILED");
             }
-            return null;
+            return nextProviderId;
         }
 
         int sends(String recipient) {
@@ -380,6 +419,8 @@ class EmailDeliveryWorkerIntegrationTests {
             recipients.clear();
             failuresRemaining.set(0);
             delayMillis = 0;
+            nextProviderId = null;
+            permanentFailureCode = null;
         }
     }
 

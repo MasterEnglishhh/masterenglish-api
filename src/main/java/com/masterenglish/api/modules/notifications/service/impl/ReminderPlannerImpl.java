@@ -133,10 +133,16 @@ public class ReminderPlannerImpl implements ReminderPlanner {
 
     /** The learner's local day when the reminder time has passed outside quiet hours. */
     static Optional<LocalDate> localDayIfDue(NotificationPreference preference, Instant now) {
+        String zoneId = preference.getTimezone();
+        if (zoneId == null || zoneId.isBlank()) {
+            log.warn("Skipping reminder for user {}: blank timezone", preference.getUserId());
+            return Optional.empty();
+        }
         ZonedDateTime local;
         try {
-            local = now.atZone(ZoneId.of(preference.getTimezone()));
+            local = now.atZone(ZoneId.of(zoneId));
         } catch (DateTimeException exception) {
+            log.warn("Skipping reminder for user {}: invalid timezone", preference.getUserId());
             return Optional.empty();
         }
         LocalTime time = local.toLocalTime();

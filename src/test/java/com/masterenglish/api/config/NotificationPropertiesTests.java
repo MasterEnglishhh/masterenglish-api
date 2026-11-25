@@ -59,5 +59,49 @@ class NotificationPropertiesTests {
                                         "Asia/Ho_Chi_Minh", false, 3, 60, backoff, 200, 20, mail)
                                 .maxAttempts())
                 .isEqualTo(4);
+        assertThat(
+                        new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh", false, 0, 60, List.of(), 200, 20, mail)
+                                .maxAttempts())
+                .isEqualTo(1);
+        assertThatThrownBy(
+                        () ->
+                                new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh",
+                                        false,
+                                        1,
+                                        60,
+                                        List.of(Duration.ofMinutes(-1)),
+                                        200,
+                                        20,
+                                        mail))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh",
+                                        false,
+                                        3,
+                                        60,
+                                        List.of(Duration.ofMinutes(1)),
+                                        200,
+                                        20,
+                                        mail))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh", false, 3, 0, backoff, 200, 20, mail))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh", false, 3, 60, backoff, 0, 20, mail))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () ->
+                                new NotificationProperties(
+                                        "Asia/Ho_Chi_Minh", false, 3, 60, backoff, 200, 0, mail))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

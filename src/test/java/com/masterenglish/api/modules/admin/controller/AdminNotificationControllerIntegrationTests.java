@@ -143,6 +143,28 @@ class AdminNotificationControllerIntegrationTests {
         assertThat(updated.isEnabled()).isFalse();
         assertThat(updated.getMinimumGapMinutes()).isEqualTo(360);
         assertThat(auditLogs.count()).isEqualTo(beforeAudits + 1);
+
+        mockMvc.perform(
+                        put("/api/v1/admin/notifications/rules/" + UUID.randomUUID())
+                                .with(as(systemAdmin))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"enabled\":true,\"minimumGapMinutes\":60}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(
+                        put("/api/v1/admin/notifications/rules/" + rule.getId())
+                                .with(as(systemAdmin))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"enabled\":true,\"minimumGapMinutes\":-1}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(
+                        get("/api/v1/admin/notifications/deliveries")
+                                .param("channel", "SMS")
+                                .with(as(systemAdmin)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
