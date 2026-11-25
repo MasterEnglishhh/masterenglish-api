@@ -1,12 +1,15 @@
 package com.masterenglish.api.modules.notifications.repository;
 
 import com.masterenglish.api.modules.notifications.entity.NotificationPreference;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +18,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface NotificationPreferenceRepository
         extends JpaRepository<NotificationPreference, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM NotificationPreference p WHERE p.userId = :userId")
+    Optional<NotificationPreference> findForUpdate(@Param("userId") UUID userId);
 
     /** Keyset page of learners with a reminder time and at least one enabled channel. */
     @Query(

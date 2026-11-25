@@ -3,6 +3,7 @@ package com.masterenglish.api.modules.notifications.service.impl;
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.config.NotificationProperties;
 import com.masterenglish.api.modules.notifications.dto.request.UpdateNotificationPreferencesRequest;
 import com.masterenglish.api.modules.notifications.dto.response.NotificationPreferencesResponse;
@@ -152,12 +153,13 @@ public class NotificationServiceImpl implements NotificationService {
     public NotificationPreferencesResponse updatePreferences(
             UUID userId, UpdateNotificationPreferencesRequest request) {
         Instant now = clock.instant();
+        String canonicalTimezone = TimeZones.requireCanonical(request.timezone());
         preferences.upsertPreference(
                 userId,
                 request.inAppEnabled(),
                 request.emailEnabled(),
                 request.dailyReminderTime(),
-                request.timezone(),
+                canonicalTimezone,
                 request.quietHoursStart(),
                 request.quietHoursEnd(),
                 now);
@@ -165,7 +167,7 @@ public class NotificationServiceImpl implements NotificationService {
                 request.inAppEnabled(),
                 request.emailEnabled(),
                 request.dailyReminderTime(),
-                request.timezone(),
+                canonicalTimezone,
                 request.quietHoursStart(),
                 request.quietHoursEnd(),
                 now);

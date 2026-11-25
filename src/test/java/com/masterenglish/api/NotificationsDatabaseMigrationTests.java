@@ -3,6 +3,7 @@ package com.masterenglish.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.modules.notifications.entity.DeliveryChannel;
 import com.masterenglish.api.modules.notifications.entity.DeliveryStatus;
 import com.masterenglish.api.modules.notifications.entity.Notification;
@@ -43,7 +44,7 @@ class NotificationsDatabaseMigrationTests {
 
     @Test
     @DisplayName(
-            "V10 tạo đủ bốn bảng thông báo và seed quy tắc REVIEW_DUE với khoảng cách 720 phút")
+            "V11 tạo đủ bốn bảng thông báo và seed quy tắc REVIEW_DUE với khoảng cách 720 phút")
     void createsTablesAndSeedsReviewDueRule() {
         for (String table :
                 List.of(
@@ -59,6 +60,15 @@ class NotificationsDatabaseMigrationTests {
         assertThat(rule.getMinimumGapMinutes()).isEqualTo(720);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reminder_rules", Integer.class))
                 .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName(
+            "Mọi timezone canonical hỗ trợ bởi JVM đều tồn tại trong PostgreSQL pg_timezone_names")
+    void allSupportedCanonicalZonesExistInPostgres() {
+        List<String> pgZones =
+                jdbc.queryForList("SELECT name FROM pg_timezone_names", String.class);
+        assertThat(pgZones).containsAll(TimeZones.canonicalZones());
     }
 
     @Test

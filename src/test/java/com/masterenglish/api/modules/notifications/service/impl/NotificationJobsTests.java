@@ -30,7 +30,7 @@ class NotificationJobsTests {
                     List.of(Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(30)),
                     200,
                     20,
-                    new NotificationProperties.Mail(false, "", ""));
+                    new NotificationProperties.Mail(false, "", "", ""));
     private final NotificationJobs jobs =
             new NotificationJobs(planner, worker, properties, Clock.fixed(NOW, ZoneOffset.UTC));
 

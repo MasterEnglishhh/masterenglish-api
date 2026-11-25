@@ -1,8 +1,7 @@
 package com.masterenglish.api.config;
 
-import java.time.DateTimeException;
+import com.masterenglish.api.common.time.TimeZones;
 import java.time.Duration;
-import java.time.ZoneId;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
@@ -26,13 +25,20 @@ public record NotificationProperties(
     public record Mail(
             @DefaultValue("false") boolean enabled,
             @DefaultValue("") String from,
-            @DefaultValue("") String webBaseUrl) {
+            @DefaultValue("") String webBaseUrl,
+            @DefaultValue("") String settingsPath) {
 
         public Mail {
             webBaseUrl = webBaseUrl == null ? "" : webBaseUrl.strip().replaceAll("/+$", "");
             if (!webBaseUrl.isEmpty() && !webBaseUrl.matches("https?://[^\\s/?#]+(/[^\\s?#]*)?")) {
                 throw new IllegalArgumentException(
                         "notification.mail.web-base-url must be an absolute http(s) URL.");
+            }
+            settingsPath = settingsPath == null ? "" : settingsPath.strip();
+            if (!settingsPath.isEmpty()
+                    && (!settingsPath.startsWith("/") || settingsPath.startsWith("//"))) {
+                throw new IllegalArgumentException(
+                        "notification.mail.settings-path must be a relative path starting with '/'.");
             }
         }
 
@@ -43,12 +49,16 @@ public record NotificationProperties(
         public boolean deliverable() {
             return enabled && from != null && !from.isBlank() && !webBaseUrl.isEmpty();
         }
+
+        public boolean hasSettingsPath() {
+            return settingsPath != null && !settingsPath.isEmpty();
+        }
     }
 
     public NotificationProperties {
         try {
-            ZoneId.of(defaultTimezone);
-        } catch (DateTimeException | NullPointerException exception) {
+            defaultTimezone = TimeZones.requireCanonical(defaultTimezone);
+        } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(
                     "Set notification.default-timezone to an IANA time zone.", exception);
         }
@@ -56,13 +66,15 @@ public record NotificationProperties(
         if (maxRetries < 0 || maxRetries > 3) {
             throw new IllegalArgumentException("notification.max-retries must be between 0 and 3.");
         }
-        if (leaseSeconds < 1) {
-            throw new IllegalArgumentException("notification.lease-seconds must be positive.");
+        // SMTP connect/read/write timeouts in application.properties are 5s each (~15s worst case).
+        if (leaseSeconds < 15) {
+            throw new IllegalArgumentException(
+                    "notification.lease-seconds must be at least 15 seconds.");
         }
         if (retryBackoff == null
-                || retryBackoff.stream().anyMatch(d -> d == null || d.isNegative())) {
+                || retryBackoff.stream().anyMatch(d -> d == null || !d.isPositive())) {
             throw new IllegalArgumentException(
-                    "notification.retry-backoff delays must be non-null and non-negative.");
+                    "notification.retry-backoff delays must be non-null and positive.");
         }
         retryBackoff = List.copyOf(retryBackoff);
         if (retryBackoff.size() < maxRetries) {

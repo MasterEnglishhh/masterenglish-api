@@ -70,7 +70,7 @@ class NotificationServiceImplTests {
                                 200,
                                 20,
                                 new NotificationProperties.Mail(
-                                        false, "", "http://localhost:3000")),
+                                        false, "", "http://localhost:3000", "")),
                         Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

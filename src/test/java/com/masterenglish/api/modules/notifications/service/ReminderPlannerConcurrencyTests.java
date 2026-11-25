@@ -91,6 +91,37 @@ class ReminderPlannerConcurrencyTests {
     }
 
     @Test
+    @DisplayName(
+            "Hai scheduler chạy song song vắt qua nửa đêm địa phương vẫn giữ minimum_gap nhờ khóa notification_preferences")
+    void concurrentSchedulersAcrossLocalMidnightEnforceMinimumGap() throws Exception {
+        UUID user = createUserAndPref(true, false, LocalTime.of(0, 0));
+        mockDueCards(4L);
+
+        // 2026-11-19T16:59:59Z = 23:59:59 (Nov 19 Asia/Ho_Chi_Minh)
+        // 2026-11-19T17:00:01Z = 00:00:01 (Nov 20 Asia/Ho_Chi_Minh) -> different dedupe keys, 2s
+        // apart!
+        Instant beforeMidnight = Instant.parse("2026-11-19T16:59:59Z");
+        Instant afterMidnight = Instant.parse("2026-11-19T17:00:01Z");
+        var callTurn = new java.util.concurrent.atomic.AtomicInteger();
+        List<Integer> createdCounts =
+                ConcurrentRequests.runAtOnce(
+                        2,
+                        () ->
+                                planner.planReviewDueReminders(
+                                        callTurn.getAndIncrement() == 0
+                                                ? beforeMidnight
+                                                : afterMidnight));
+
+        assertThat(createdCounts).containsExactlyInAnyOrder(1, 0);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM notifications WHERE user_id = ?",
+                                Integer.class,
+                                user))
+                .isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("Keyset pagination với batchSize = 2 xử lý hết toàn bộ các trang người học")
     void keysetPaginationProcessesAllPages() {
         UUID u1 = createUserAndPref(true, false);
@@ -122,6 +153,10 @@ class ReminderPlannerConcurrencyTests {
     }
 
     private UUID createUserAndPref(boolean inApp, boolean email) {
+        return createUserAndPref(inApp, email, LocalTime.of(20, 0));
+    }
+
+    private UUID createUserAndPref(boolean inApp, boolean email, LocalTime reminderTime) {
         UUID id = UUID.randomUUID();
         jdbc.update(
                 "INSERT INTO users (id, email, password_hash, first_name, last_name, status, email_verified_at) VALUES (?, ?, 'fixture-only', 'Conc', 'Planner', 'ACTIVE', NOW())",
@@ -129,7 +164,7 @@ class ReminderPlannerConcurrencyTests {
                 id + "@example.test");
         createdUsers.add(id);
         var pref = new NotificationPreference(id);
-        pref.update(inApp, email, LocalTime.of(20, 0), "Asia/Ho_Chi_Minh", null, null, NOW);
+        pref.update(inApp, email, reminderTime, "Asia/Ho_Chi_Minh", null, null, NOW);
         preferences.saveAndFlush(pref);
         return id;
     }

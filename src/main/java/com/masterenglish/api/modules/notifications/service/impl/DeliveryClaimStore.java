@@ -8,8 +8,10 @@ import com.masterenglish.api.modules.notifications.repository.NotificationDelive
 import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,8 +47,18 @@ class DeliveryClaimStore {
      */
     @Transactional
     public Optional<ClaimedDelivery> claimNext(Instant now) {
-        while (true) {
-            List<UUID> locked = deliveries.lockClaimable(now, 1);
+        return claimNext(now, Set.of());
+    }
+
+    @Transactional
+    public Optional<ClaimedDelivery> claimNext(Instant now, Collection<UUID> excludedIds) {
+        int skippedExhausted = 0;
+        int maxSkips = Math.max(1, properties.workerBatchSize());
+        while (skippedExhausted <= maxSkips) {
+            List<UUID> locked =
+                    excludedIds == null || excludedIds.isEmpty()
+                            ? deliveries.lockClaimable(now, 1)
+                            : deliveries.lockClaimableExcluding(now, excludedIds, 1);
             if (locked.isEmpty()) return Optional.empty();
             NotificationDelivery delivery = deliveries.findById(locked.getFirst()).orElseThrow();
             if (delivery.getAttemptCount() >= properties.maxAttempts()) {
@@ -57,6 +69,7 @@ class DeliveryClaimStore {
                 delivery.markFailed(code, now);
                 deliveries.saveAndFlush(delivery);
                 log.warn("Delivery {} failed: {}", delivery.getId(), code);
+                skippedExhausted++;
                 continue;
             }
             UUID token = UUID.randomUUID();
@@ -74,6 +87,7 @@ class DeliveryClaimStore {
                             notification.getBody(),
                             notification.getTargetUrl()));
         }
+        return Optional.empty();
     }
 
     @Transactional

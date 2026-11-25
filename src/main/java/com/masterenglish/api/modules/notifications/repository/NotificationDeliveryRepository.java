@@ -126,6 +126,24 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
             nativeQuery = true)
     List<UUID> lockClaimable(@Param("now") Instant now, @Param("limit") int limit);
 
+    @Query(
+            value =
+                    """
+                    SELECT id FROM notification_deliveries
+                    WHERE channel = 'EMAIL'
+                      AND id NOT IN (:excludedIds)
+                      AND ((status = 'PENDING' AND (next_retry_at IS NULL OR next_retry_at <= :now))
+                        OR (status = 'PROCESSING' AND lease_until <= :now))
+                    ORDER BY created_at, id
+                    LIMIT :limit
+                    FOR UPDATE SKIP LOCKED
+                    """,
+            nativeQuery = true)
+    List<UUID> lockClaimableExcluding(
+            @Param("now") Instant now,
+            @Param("excludedIds") Collection<UUID> excludedIds,
+            @Param("limit") int limit);
+
     /** Finds the delivery only while the caller still holds its claim. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<NotificationDelivery> findByIdAndClaimToken(UUID id, UUID claimToken);

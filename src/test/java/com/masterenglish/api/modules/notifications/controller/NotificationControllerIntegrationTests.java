@@ -258,6 +258,9 @@ class NotificationControllerIntegrationTests {
         String[] invalid = {
             body("true", "false", "\"20:00\"", "\"Mars/Base\"", "null", "null"),
             body("true", "false", "\"20:00\"", "\"+07:00\"", "null", "null"),
+            body("true", "false", "\"20:00\"", "\"UTC+07:00\"", "null", "null"),
+            body("true", "false", "\"20:00\"", "\"GMT+07:00\"", "null", "null"),
+            body("true", "false", "\"20:00\"", "\"SystemV/AST4\"", "null", "null"),
             body("true", "false", "\"20:00\"", "\"Asia/Ho_Chi_Minh\"", "\"22:00\"", "null"),
             body("true", "false", "\"20:00\"", "\"Asia/Ho_Chi_Minh\"", "\"22:00\"", "\"22:00\""),
             body("true", "false", "\"20:00:30\"", "\"Asia/Ho_Chi_Minh\"", "null", "null"),
@@ -277,6 +280,46 @@ class NotificationControllerIntegrationTests {
                     .andExpect(jsonPath("$.status").value(400));
         }
         assertThat(preferences.findById(learner.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName(
+            "Legacy IANA aliases được chuẩn hóa sang canonical timezone tương thích PostgreSQL")
+    void canonicalizesLegacyTimezoneAliasesOnSave() throws Exception {
+        mockMvc.perform(
+                        put("/api/v1/notifications/preferences")
+                                .with(as(learner))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        body(
+                                                "true",
+                                                "false",
+                                                "\"20:00\"",
+                                                "\"Asia/Saigon\"",
+                                                "null",
+                                                "null")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timezone").value("Asia/Ho_Chi_Minh"));
+
+        assertThat(preferences.findById(learner.getId()).orElseThrow().getTimezone())
+                .isEqualTo("Asia/Ho_Chi_Minh");
+
+        mockMvc.perform(
+                        put("/api/v1/notifications/preferences")
+                                .with(as(learner))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        body(
+                                                "true",
+                                                "false",
+                                                "\"20:00\"",
+                                                "\"Europe/Kiev\"",
+                                                "null",
+                                                "null")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timezone").value("Europe/Kyiv"));
     }
 
     @Test
