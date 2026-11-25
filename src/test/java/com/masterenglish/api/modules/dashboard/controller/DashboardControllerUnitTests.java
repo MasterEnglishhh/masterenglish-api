@@ -191,6 +191,90 @@ class DashboardControllerUnitTests {
                 .andExpect(jsonPath("$.weaknessAnalysis.status").value("INSUFFICIENT_DATA"))
                 .andExpect(jsonPath("$.recommendations[0].type").value("FLASHCARD_REVIEW"))
                 .andExpect(jsonPath("$.recommendations[0].skill").value("VOCABULARY"))
-                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(2));
+                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(2))
+                .andExpect(jsonPath("$.notificationSummary.available").value(true))
+                .andExpect(jsonPath("$.notificationSummary.status").value("READY"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/dashboard giữ 200 và báo UNAVAILABLE khi thông báo bị suy giảm")
+    void getDashboardReportsUnavailableNotificationSummaryCleanly() throws Exception {
+        var degraded =
+                new DashboardResponse(
+                        new OverviewSummary(
+                                LocalDate.of(2026, 11, 25), "Asia/Ho_Chi_Minh", 0, false, 0),
+                        new VocabularyProgressSummary(0, 0, 0, 0, 0, 0),
+                        new TodayReviewSummary(0, 0, List.of()),
+                        new LearningGoalSummary(
+                                false, null, null, null, null, 0, false, null, false),
+                        new StudyPlanSummary(
+                                new StudyGoalSummary(false, null, null),
+                                new ToeicTargetSummary(
+                                        false, null, null, null, null, null, "NOT_CONFIGURED"),
+                                new StudyScheduleSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
+                                        null,
+                                        0),
+                                new StudySessionSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        null,
+                                        null,
+                                        null,
+                                        0,
+                                        false)),
+                        new PracticeStatisticsSummary(
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                null,
+                                false,
+                                new GrammarLessonProgressSummary(true, "NO_DATA", 0, 0, 0),
+                                new GrammarPracticeProgressSummary(true, "NO_DATA", 0, 0, null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        0,
+                                        null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        0,
+                                        null),
+                                List.of()),
+                        new WeaknessAnalysisSummary(
+                                "NO_DATA",
+                                30,
+                                20,
+                                70,
+                                0,
+                                false,
+                                new GrammarWeaknessScopeSummary(true, "NO_DATA", 0, 0, 0),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        List.of()),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        List.of()),
+                                List.of()),
+                        List.of(),
+                        new NotificationSummary(0, false, "UNAVAILABLE"));
+        when(serviceMock.getLearnerDashboard(learnerId)).thenReturn(degraded);
+
+        mockMvc.perform(get("/api/v1/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(0))
+                .andExpect(jsonPath("$.notificationSummary.available").value(false))
+                .andExpect(jsonPath("$.notificationSummary.status").value("UNAVAILABLE"));
     }
 }

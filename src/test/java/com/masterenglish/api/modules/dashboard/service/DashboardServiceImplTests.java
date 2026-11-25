@@ -296,5 +296,167 @@ class DashboardServiceImplTests {
                         "DUE_DECK_CARDS",
                         "WEAK_GRAMMAR_TOPIC",
                         "RESUME_GRAMMAR_LESSON");
+        assertThat(result.recommendations())
+                .extracting(r -> r.targetUrl())
+                .containsExactly(
+                        "/learn/review",
+                        "/learn/review?deck=" + deckId,
+                        "/learn/grammar?topic=" + topicId + "&mode=practice",
+                        "/learn/grammar?lesson=" + lessonInProgress);
+        assertThat(result.notificationSummary().available()).isTrue();
+        assertThat(result.notificationSummary().status()).isEqualTo("READY");
+    }
+
+    @Test
+    @DisplayName("Không tính ngày tương lai, không đếm trùng cùng ngày và streak đứt trả 0")
+    void excludesFutureDaysDeduplicatesSameDayAndHandlesBrokenStreak() {
+        when(learning.findActivityLocalDays(userId, TZ))
+                .thenReturn(Set.of(LocalDate.of(2026, 11, 25), LocalDate.of(2026, 11, 26)));
+        when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
+                .thenReturn(
+                        new PracticeSummaryView(
+                                1,
+                                0,
+                                90,
+                                List.of(),
+                                List.of(),
+                                Set.of(LocalDate.of(2026, 11, 25), LocalDate.of(2026, 11, 27))));
+
+        var sameDayWithFuture = service.getLearnerDashboard(userId);
+        assertThat(sameDayWithFuture.overview().activeToday()).isTrue();
+        assertThat(sameDayWithFuture.overview().streakDays()).isEqualTo(1);
+        assertThat(sameDayWithFuture.overview().totalActivityDays()).isEqualTo(1);
+
+        // Broken streak: only 2 days ago active -> streakDays = 0, totalActivityDays = 1
+        when(learning.findActivityLocalDays(userId, TZ))
+                .thenReturn(Set.of(LocalDate.of(2026, 11, 23)));
+        when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
+                .thenReturn(new PracticeSummaryView(0, 0, null, List.of(), List.of(), Set.of()));
+
+        var broken = service.getLearnerDashboard(userId);
+        assertThat(broken.overview().activeToday()).isFalse();
+        assertThat(broken.overview().streakDays()).isZero();
+        assertThat(broken.overview().totalActivityDays()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Streak giữ liên tiếp qua ngày đổi giờ DST (23 giờ / 25 giờ)")
+    void preservesStreakAcrossDstTransitions() {
+        String nyZone = "America/New_York";
+        // 2026-03-09T12:00:00Z is 2026-03-09 in New York right after 2026-03-08 spring-forward DST.
+        var dstService =
+                new DashboardServiceImpl(
+                        identity,
+                        learning,
+                        vocabulary,
+                        grammar,
+                        practice,
+                        notifications,
+                        Clock.fixed(Instant.parse("2026-03-09T12:00:00Z"), ZoneOffset.UTC));
+        when(notifications.findLearnerTimezone(userId)).thenReturn(nyZone);
+        when(learning.findActivityLocalDays(userId, nyZone))
+                .thenReturn(Set.of(LocalDate.of(2026, 3, 7), LocalDate.of(2026, 3, 8)));
+        when(practice.getPracticeSummary(eq(userId), any(), eq(nyZone)))
+                .thenReturn(
+                        new PracticeSummaryView(
+                                1, 0, 85, List.of(), List.of(), Set.of(LocalDate.of(2026, 3, 9))));
+
+        var result = dstService.getLearnerDashboard(userId);
+
+        assertThat(result.overview().todayLocal()).isEqualTo(LocalDate.of(2026, 3, 9));
+        assertThat(result.overview().timezone()).isEqualTo(nyZone);
+        assertThat(result.overview().activeToday()).isTrue();
+        assertThat(result.overview().streakDays()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Timezone không hợp lệ hoặc lỗi từ module Notification không làm hỏng Dashboard")
+    void isolatesNotificationFailuresAndInvalidTimezone() {
+        when(notifications.findLearnerTimezone(userId)).thenReturn("Mars/Base");
+        when(notifications.countUnreadInFeed(userId))
+                .thenThrow(new IllegalStateException("notifications unavailable"));
+        when(learning.getVocabularyProgress(userId))
+                .thenReturn(new VocabularyProgressView(5, 2, 0, 1, 10, 4));
+
+        var invalidTzResult = service.getLearnerDashboard(userId);
+        assertThat(invalidTzResult.overview().timezone()).isEqualTo("Asia/Ho_Chi_Minh");
+        assertThat(invalidTzResult.overview().todayLocal()).isEqualTo(LocalDate.of(2026, 11, 25));
+        assertThat(invalidTzResult.vocabularyProgress().studiedSenses()).isEqualTo(5);
+        assertThat(invalidTzResult.notificationSummary().available()).isFalse();
+        assertThat(invalidTzResult.notificationSummary().status()).isEqualTo("UNAVAILABLE");
+        assertThat(invalidTzResult.notificationSummary().unreadCount()).isZero();
+
+        when(notifications.findLearnerTimezone(userId))
+                .thenThrow(new IllegalStateException("timezone lookup down"));
+        var throwingTzResult = service.getLearnerDashboard(userId);
+        assertThat(throwingTzResult.overview().timezone()).isEqualTo("Asia/Ho_Chi_Minh");
+        assertThat(throwingTzResult.vocabularyProgress().studiedSenses()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName(
+            "Weakness giới hạn tối đa 5 chủ điểm yếu và Recommendation fallback sang từ đã lưu khi không có thẻ đến hạn")
+    void capsWeakTopicsAndUsesSavedVocabularyFallbackAndMaxLimit() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        UUID t3 = UUID.randomUUID();
+        UUID t4 = UUID.randomUUID();
+        UUID t5 = UUID.randomUUID();
+        UUID t6 = UUID.randomUUID();
+        when(grammar.listVisibleTopics())
+                .thenReturn(
+                        List.of(
+                                new VisibleTopicView(t1, "t1", "Topic 1", "BASIC", 1),
+                                new VisibleTopicView(t2, "t2", "Topic 2", "BASIC", 2),
+                                new VisibleTopicView(t3, "t3", "Topic 3", "BASIC", 3),
+                                new VisibleTopicView(t4, "t4", "Topic 4", "BASIC", 4),
+                                new VisibleTopicView(t5, "t5", "Topic 5", "BASIC", 5),
+                                new VisibleTopicView(t6, "t6", "Topic 6", "BASIC", 6)));
+        when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
+                .thenReturn(
+                        new PracticeSummaryView(
+                                6,
+                                0,
+                                45,
+                                List.of(),
+                                List.of(
+                                        new TopicAccuracyView(t1, 1, 20, 13, 65),
+                                        new TopicAccuracyView(t2, 1, 20, 10, 50),
+                                        new TopicAccuracyView(t3, 1, 25, 10, 40),
+                                        new TopicAccuracyView(t4, 1, 20, 6, 30),
+                                        new TopicAccuracyView(t5, 1, 20, 4, 20),
+                                        new TopicAccuracyView(t6, 1, 30, 6, 20)),
+                                Set.of()));
+        UUID l1 = UUID.randomUUID();
+        UUID l2 = UUID.randomUUID();
+        when(grammar.listVisibleLessons())
+                .thenReturn(
+                        List.of(
+                                new VisibleLessonView(l1, t1, "Lesson 1", 1, (short) 5),
+                                new VisibleLessonView(l2, t1, "Lesson 2", 2, (short) 5)));
+        when(learning.getVocabularyProgress(userId))
+                .thenReturn(new VocabularyProgressView(10, 4, 0, 3, 20, 5));
+
+        var result = service.getLearnerDashboard(userId);
+
+        // Weak topics: capped at 5; t6 (20%, 30q) beats t5 (20%, 20q); t1 (65%) is pushed out.
+        assertThat(result.weaknessAnalysis().weakTopics())
+                .extracting(w -> w.topicId())
+                .containsExactly(t6, t5, t4, t3, t2);
+        // Max 6 recommendations and no duplicate targetUrls.
+        assertThat(result.recommendations()).hasSize(6);
+        assertThat(result.recommendations().stream().map(r -> r.targetUrl()).distinct().count())
+                .isEqualTo(6);
+
+        // When no weak topics & no due cards, saved vocabulary fallback routes to
+        // /learn/vocabulary?view=saved.
+        when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
+                .thenReturn(new PracticeSummaryView(0, 0, null, List.of(), List.of(), Set.of()));
+        var fallbackOnly = service.getLearnerDashboard(userId);
+        assertThat(fallbackOnly.recommendations())
+                .extracting(r -> r.type())
+                .containsExactly("GRAMMAR_LESSON", "GRAMMAR_LESSON", "SAVED_VOCABULARY");
+        assertThat(fallbackOnly.recommendations().getLast().targetUrl())
+                .isEqualTo("/learn/vocabulary?view=saved");
     }
 }

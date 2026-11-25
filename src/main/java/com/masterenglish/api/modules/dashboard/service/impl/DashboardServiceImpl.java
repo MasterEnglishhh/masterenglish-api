@@ -39,6 +39,7 @@ import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.We
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeaknessAnalysisSummary;
 import com.masterenglish.api.modules.dashboard.service.DashboardService;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -53,15 +54,17 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class DashboardServiceImpl implements DashboardService {
 
     static final int WEAKNESS_PERIOD_DAYS = 30;
     static final int WEAKNESS_MIN_SAMPLE = 20;
     static final int WEAKNESS_THRESHOLD_PERCENT = 70;
+    static final String DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh";
     static final String STATUS_UNAVAILABLE_PENDING_MIGRATION = "UNAVAILABLE_PENDING_MIGRATION";
     private static final int MAX_DUE_DECKS = 5;
     private static final int MAX_WEAK_TOPICS = 5;
@@ -93,13 +96,17 @@ public class DashboardServiceImpl implements DashboardService {
         this.clock = Objects.requireNonNull(clock);
     }
 
+    /**
+     * Aggregates cross-module dashboard state. Intentionally runs without an outer transaction so
+     * optional module failures (such as notification lookup) never abort the transaction or poison
+     * core vocabulary, grammar, and practice reads.
+     */
     @Override
-    @Transactional(readOnly = true)
     public DashboardResponse getLearnerDashboard(UUID userId) {
         Objects.requireNonNull(userId, "userId must not be null");
         Instant now = clock.instant();
-        String timezone = notifications.findLearnerTimezone(userId);
-        ZoneId zone = ZoneId.of(timezone);
+        ZoneId zone = resolveZone(userId);
+        String timezone = zone.getId();
         LocalDate todayLocal = now.atZone(zone).toLocalDate();
         Instant weaknessSince = now.minus(Duration.ofDays(WEAKNESS_PERIOD_DAYS));
 
@@ -109,7 +116,7 @@ public class DashboardServiceImpl implements DashboardService {
         PracticeSummaryView practiceSummary =
                 practice.getPracticeSummary(userId, weaknessSince, timezone);
         Optional<LearningGoalView> goal = identity.findLearningGoal(userId);
-        long unreadNotifications = notifications.countUnreadInFeed(userId);
+        NotificationSummary notificationSummary = safeNotificationSummary(userId);
 
         List<VisibleTopicView> visibleTopics = grammar.listVisibleTopics();
         List<VisibleLessonView> visibleLessons = grammar.listVisibleLessons();
@@ -117,6 +124,7 @@ public class DashboardServiceImpl implements DashboardService {
         Set<LocalDate> activityDays =
                 new HashSet<>(learning.findActivityLocalDays(userId, timezone));
         activityDays.addAll(practiceSummary.activityLocalDays());
+        activityDays.removeIf(day -> day == null || day.isAfter(todayLocal));
         boolean activeToday = activityDays.contains(todayLocal);
         int streakDays = calculateStreak(activityDays, todayLocal);
 
@@ -162,7 +170,42 @@ public class DashboardServiceImpl implements DashboardService {
                 practiceStatistics,
                 weaknessAnalysis,
                 recommendations,
-                new NotificationSummary(unreadNotifications));
+                notificationSummary);
+    }
+
+    private ZoneId resolveZone(UUID userId) {
+        String rawTimezone;
+        try {
+            rawTimezone = notifications.findLearnerTimezone(userId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Falling back to default timezone {} after notification lookup error: {}",
+                    DEFAULT_TIMEZONE,
+                    exception.getClass().getSimpleName());
+            return ZoneId.of(DEFAULT_TIMEZONE);
+        }
+        if (rawTimezone == null || rawTimezone.isBlank()) {
+            return ZoneId.of(DEFAULT_TIMEZONE);
+        }
+        try {
+            return ZoneId.of(rawTimezone.trim());
+        } catch (DateTimeException exception) {
+            log.warn(
+                    "Invalid learner timezone encountered on dashboard; falling back to {}",
+                    DEFAULT_TIMEZONE);
+            return ZoneId.of(DEFAULT_TIMEZONE);
+        }
+    }
+
+    private NotificationSummary safeNotificationSummary(UUID userId) {
+        try {
+            return new NotificationSummary(notifications.countUnreadInFeed(userId), true, "READY");
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Notification unread count unavailable for dashboard: {}",
+                    exception.getClass().getSimpleName());
+            return new NotificationSummary(0L, false, "UNAVAILABLE");
+        }
     }
 
     private static StudyPlanSummary buildStudyPlan(

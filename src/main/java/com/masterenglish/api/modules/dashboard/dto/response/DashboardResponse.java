@@ -186,5 +186,9 @@ public record DashboardResponse(
             String targetUrl,
             int priority) {}
 
-    public record NotificationSummary(long unreadCount) {}
+    public record NotificationSummary(long unreadCount, boolean available, String status) {
+        public NotificationSummary(long unreadCount) {
+            this(unreadCount, true, "READY");
+        }
+    }
 }

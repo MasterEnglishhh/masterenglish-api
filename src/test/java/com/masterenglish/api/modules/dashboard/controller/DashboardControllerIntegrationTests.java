@@ -265,6 +265,8 @@ class DashboardControllerIntegrationTests {
         assertThat(dashboard.at("/notificationSummary/unreadCount").asLong())
                 .isEqualTo(unreadJson.get("count").asLong())
                 .isEqualTo(1L);
+        assertThat(dashboard.at("/notificationSummary/available").asBoolean()).isTrue();
+        assertThat(dashboard.at("/notificationSummary/status").asText()).isEqualTo("READY");
 
         assertThat(dashboard.at("/practiceStatistics/completedGrammarLessons").asLong())
                 .isEqualTo(1L);
@@ -300,6 +302,80 @@ class DashboardControllerIntegrationTests {
         assertThat(dashboard.at("/recommendations/0/skill").asText()).isEqualTo("VOCABULARY");
         assertThat(dashboard.at("/recommendations/0/reasonCode").asText())
                 .isEqualTo("DUE_FLASHCARDS");
+    }
+
+    @Test
+    @DisplayName(
+            "Weakness loại trừ dữ liệu cũ hơn 30 ngày; streak DST khớp giữa Java và PostgreSQL; timezone hỏng fallback an toàn")
+    void weaknessWindowDstBoundaryAndCorruptedTimezoneFallbackWorkOnPostgres() throws Exception {
+        Instant now = clock.instant();
+        UUID topicOldWeak = publishGrammarTopic("Past Simple", "past-simple");
+        seedSubmittedAttempt(learner.getId(), topicOldWeak, 20, 0, now.minusSeconds(31L * 86400));
+
+        // 19 questions within 30 days (< 20 min sample -> INSUFFICIENT_DATA, not READY)
+        UUID topicUnderSample = publishGrammarTopic("Prepositions", "prepositions");
+        seedSubmittedAttempt(learner.getId(), topicUnderSample, 19, 0, now.minusSeconds(3600));
+
+        // Broken timezone directly in DB must safely fall back to Asia/Ho_Chi_Minh without 500
+        jdbc.update(
+                "INSERT INTO notification_preferences (user_id, in_app_enabled, email_enabled, timezone, updated_at) VALUES (?, true, false, 'Mars/Base', now())",
+                learner.getId());
+
+        JsonNode dashboard = jsonGet("/api/v1/dashboard", learner);
+        assertThat(dashboard.at("/overview/timezone").asText()).isEqualTo("Asia/Ho_Chi_Minh");
+        assertThat(dashboard.at("/weaknessAnalysis/status").asText())
+                .isEqualTo("INSUFFICIENT_DATA");
+        assertThat(dashboard.at("/weaknessAnalysis/gradedQuestionsInPeriod").asLong())
+                .isEqualTo(19L);
+        assertThat(dashboard.at("/weaknessAnalysis/weakTopics").size()).isZero();
+    }
+
+    @Test
+    @DisplayName(
+            "Activity gộp Learning + Practice ở đúng ranh giới ngày DST America/New_York trên Postgres")
+    void combinesLearningAndPracticeDaysAcrossDstBoundaryOnPostgres() throws Exception {
+        seedService.seedVocabularyData(contentAdmin.getId());
+        UUID word1 = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        UUID sense1 = UUID.fromString("20000000-0000-0000-0000-000000000001");
+        UUID rev1 =
+                jdbc.queryForObject(
+                        "SELECT published_revision_id FROM content_items WHERE id = ?",
+                        UUID.class,
+                        word1);
+
+        var pref = new NotificationPreference(learner.getId());
+        pref.update(
+                true, false, LocalTime.of(20, 0), "America/New_York", null, null, clock.instant());
+        preferenceRepository.saveAndFlush(pref);
+
+        // Two events on different UTC days that fall on the SAME local day in America/New_York
+        Instant morningNy = Instant.parse("2026-03-08T05:30:00Z"); // 2026-03-08 00:30 EST
+        Instant lateNightNy = Instant.parse("2026-03-09T03:30:00Z"); // 2026-03-08 23:30 EDT
+        reviewRepository.saveAndFlush(
+                new WordReview(
+                        UUID.randomUUID(),
+                        learner.getId(),
+                        sense1,
+                        word1,
+                        rev1,
+                        UUID.randomUUID(),
+                        "0".repeat(64),
+                        "GOOD",
+                        "SM2_3BTN_V1",
+                        "{}",
+                        "{}",
+                        morningNy.minusSeconds(3600),
+                        morningNy.plusSeconds(3600),
+                        morningNy,
+                        "America/New_York",
+                        LocalDate.of(2026, 3, 8)));
+        UUID topic = publishGrammarTopic("DST Topic", "dst-topic");
+        seedSubmittedAttempt(learner.getId(), topic, 1, 1, lateNightNy);
+
+        JsonNode dashboard = jsonGet("/api/v1/dashboard", learner);
+        assertThat(dashboard.at("/overview/timezone").asText()).isEqualTo("America/New_York");
+        // Both fall into local 2026-03-08 (deduped to 1 distinct activity day).
+        assertThat(dashboard.at("/overview/totalActivityDays").asLong()).isEqualTo(1L);
     }
 
     private JsonNode jsonGet(String path, User actor) throws Exception {

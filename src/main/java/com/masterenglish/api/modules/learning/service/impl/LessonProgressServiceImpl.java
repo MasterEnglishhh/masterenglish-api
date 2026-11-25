@@ -102,7 +102,8 @@ public class LessonProgressServiceImpl implements LessonProgressService {
     @Override
     @Transactional(readOnly = true)
     public Set<LocalDate> findActivityLocalDays(UUID userId, String timezone) {
-        return repository.findDistinctActivityLocalDays(userId, timezone).stream()
+        String validZone = LearningProgressServiceImpl.validateTimezone(timezone);
+        return repository.findDistinctActivityLocalDays(userId, validZone).stream()
                 .map(LocalDate::parse)
                 .collect(Collectors.toSet());
     }

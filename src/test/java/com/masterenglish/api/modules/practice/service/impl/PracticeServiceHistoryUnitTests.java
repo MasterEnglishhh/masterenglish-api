@@ -121,4 +121,20 @@ class PracticeServiceHistoryUnitTests {
         assertThat(page.items().get(1).topicIds()).containsExactly(topicA, topicB);
         assertThat(page.items().get(1).score()).isNull();
     }
+
+    @Test
+    @DisplayName("getPracticeSummary từ chối timezone không hợp lệ trước khi gọi SQL")
+    void getPracticeSummaryRejectsInvalidTimezone() {
+        assertThatThrownBy(
+                        () ->
+                                service.getPracticeSummary(
+                                        userId, NOW.minusSeconds(86400), "Mars/Base"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+        assertThatThrownBy(() -> service.getPracticeSummary(userId, NOW.minusSeconds(86400), " "))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+    }
 }

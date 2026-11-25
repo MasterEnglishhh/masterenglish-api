@@ -37,8 +37,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -269,6 +271,7 @@ public class PracticeServiceImpl implements PracticeService {
     @Transactional(readOnly = true)
     public PracticeSummaryView getPracticeSummary(
             UUID userId, Instant weaknessSince, String timezone) {
+        String validZone = validateTimezone(timezone);
         long submittedCount = attempts.countByUserIdAndStatus(userId, Attempt.SUBMITTED);
         long inProgressCount = attempts.countByUserIdAndStatus(userId, Attempt.IN_PROGRESS);
         Double avgScore = attempts.averageScoreByUserId(userId);
@@ -307,7 +310,7 @@ public class PracticeServiceImpl implements PracticeService {
                         .toList();
 
         Set<LocalDate> localDays =
-                attempts.findSubmittedLocalDays(userId, timezone).stream()
+                attempts.findSubmittedLocalDays(userId, validZone).stream()
                         .map(LocalDate::parse)
                         .collect(Collectors.toSet());
 
@@ -318,6 +321,17 @@ public class PracticeServiceImpl implements PracticeService {
                 recent,
                 topicStats,
                 Set.copyOf(localDays));
+    }
+
+    private static String validateTimezone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            throw validation("timezone must not be blank.");
+        }
+        try {
+            return ZoneId.of(timezone.trim()).getId();
+        } catch (DateTimeException exception) {
+            throw validation("Invalid timezone: " + timezone);
+        }
     }
 
     private StartAttemptResult start(

@@ -8,6 +8,7 @@ import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.Re
 import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeakTopicItem;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -24,29 +25,30 @@ final class DashboardRecommendationBuilder {
             List<VisibleLessonView> visibleLessons,
             LessonProgressSummaryView lessonProgress) {
         List<RecommendationItem> items = new ArrayList<>();
-        int priority = 1;
+        Set<String> seenTargets = new HashSet<>();
 
         if (vocab.dueNow() > 0) {
-            items.add(
-                    new RecommendationItem(
-                            "FLASHCARD_REVIEW",
-                            "VOCABULARY",
-                            "DUE_FLASHCARDS",
-                            "Ôn tập " + vocab.dueNow() + " thẻ Flashcard đến hạn",
-                            "Hoàn thành hàng ôn SRS hôm nay để giữ nhịp ghi nhớ.",
-                            "/learn/review",
-                            priority++));
+            addUnique(
+                    items,
+                    seenTargets,
+                    "FLASHCARD_REVIEW",
+                    "VOCABULARY",
+                    "DUE_FLASHCARDS",
+                    "Ôn tập " + vocab.dueNow() + " thẻ Flashcard đến hạn",
+                    "Hoàn thành hàng ôn SRS hôm nay để giữ nhịp ghi nhớ.",
+                    "/learn/review");
             for (DueDeckItem deck : dueDecks) {
-                items.add(
-                        new RecommendationItem(
-                                "DUE_DECK",
-                                "VOCABULARY",
-                                "DUE_DECK_CARDS",
-                                "Ôn bộ thẻ: " + deck.title(),
-                                deck.dueCount() + " thẻ đang đến hạn trong bộ thẻ này.",
-                                "/learn/vocabulary/decks/" + deck.deckId(),
-                                priority++));
-                break;
+                if (addUnique(
+                        items,
+                        seenTargets,
+                        "DUE_DECK",
+                        "VOCABULARY",
+                        "DUE_DECK_CARDS",
+                        "Ôn bộ thẻ: " + deck.title(),
+                        deck.dueCount() + " thẻ đang đến hạn trong bộ thẻ này.",
+                        "/learn/review?deck=" + deck.deckId())) {
+                    break;
+                }
             }
         }
 
@@ -54,19 +56,19 @@ final class DashboardRecommendationBuilder {
             if (items.size() >= 5) {
                 break;
             }
-            items.add(
-                    new RecommendationItem(
-                            "WEAK_TOPIC_PRACTICE",
-                            "GRAMMAR",
-                            "WEAK_GRAMMAR_TOPIC",
-                            "Cải thiện chủ điểm: " + weak.topicName(),
-                            "Độ chính xác "
-                                    + weak.accuracyPercent()
-                                    + "% trên "
-                                    + weak.questionCount()
-                                    + " câu trong 30 ngày gần nhất.",
-                            "/learn/grammar/topics/" + weak.topicId() + "/practice",
-                            priority++));
+            addUnique(
+                    items,
+                    seenTargets,
+                    "WEAK_TOPIC_PRACTICE",
+                    "GRAMMAR",
+                    "WEAK_GRAMMAR_TOPIC",
+                    "Cải thiện chủ điểm: " + weak.topicName(),
+                    "Độ chính xác "
+                            + weak.accuracyPercent()
+                            + "% trên "
+                            + weak.questionCount()
+                            + " câu trong 30 ngày gần nhất.",
+                    "/learn/grammar?topic=" + weak.topicId() + "&mode=practice");
         }
 
         Set<UUID> completed = lessonProgress.completedLessonIds();
@@ -80,10 +82,10 @@ final class DashboardRecommendationBuilder {
                                                         !inProgress.contains(l.id()))
                                         .thenComparingInt(VisibleLessonView::sortOrder)
                                         .thenComparing(VisibleLessonView::id))
-                        .limit(2)
                         .toList();
+        int lessonsAdded = 0;
         for (VisibleLessonView lesson : nextLessons) {
-            if (items.size() >= 6) {
+            if (lessonsAdded >= 2 || items.size() >= 6) {
                 break;
             }
             String prefix = inProgress.contains(lesson.id()) ? "Học tiếp: " : "Bài học mới: ";
@@ -91,29 +93,49 @@ final class DashboardRecommendationBuilder {
                     inProgress.contains(lesson.id())
                             ? "RESUME_GRAMMAR_LESSON"
                             : "NEXT_GRAMMAR_LESSON";
-            items.add(
-                    new RecommendationItem(
-                            "GRAMMAR_LESSON",
-                            "GRAMMAR",
-                            reasonCode,
-                            prefix + lesson.title(),
-                            "Bài ngữ pháp tiếp theo trong lộ trình.",
-                            "/learn/grammar/lessons/" + lesson.id(),
-                            priority++));
+            if (addUnique(
+                    items,
+                    seenTargets,
+                    "GRAMMAR_LESSON",
+                    "GRAMMAR",
+                    reasonCode,
+                    prefix + lesson.title(),
+                    "Bài ngữ pháp tiếp theo trong lộ trình.",
+                    "/learn/grammar?lesson=" + lesson.id())) {
+                lessonsAdded++;
+            }
         }
 
         if (vocab.dueNow() == 0 && vocab.savedSenses() > 0 && items.size() < 6) {
-            items.add(
-                    new RecommendationItem(
-                            "SAVED_VOCABULARY",
-                            "VOCABULARY",
-                            "SAVED_FLASHCARDS",
-                            "Xem lại " + vocab.savedSenses() + " từ đã lưu",
-                            "Củng cố các từ vựng bạn đã đánh dấu.",
-                            "/learn/saved-words",
-                            priority));
+            addUnique(
+                    items,
+                    seenTargets,
+                    "SAVED_VOCABULARY",
+                    "VOCABULARY",
+                    "SAVED_FLASHCARDS",
+                    "Xem lại " + vocab.savedSenses() + " từ đã lưu",
+                    "Củng cố các từ vựng bạn đã đánh dấu.",
+                    "/learn/vocabulary?view=saved");
         }
 
         return List.copyOf(items);
+    }
+
+    private static boolean addUnique(
+            List<RecommendationItem> items,
+            Set<String> seenTargets,
+            String type,
+            String skill,
+            String reasonCode,
+            String title,
+            String description,
+            String targetUrl) {
+        if (!seenTargets.add(targetUrl)) {
+            return false;
+        }
+        items.add(
+                new RecommendationItem(
+                        type, skill, reasonCode, title, description, targetUrl, items.size() + 1));
+        return true;
     }
 }

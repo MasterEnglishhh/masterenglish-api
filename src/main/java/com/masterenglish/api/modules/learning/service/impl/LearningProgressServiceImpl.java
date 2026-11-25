@@ -12,9 +12,11 @@ import com.masterenglish.api.modules.learning.repository.UserWordProgressReposit
 import com.masterenglish.api.modules.learning.repository.WordReviewRepository;
 import com.masterenglish.api.modules.learning.service.LearningProgressService;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -93,10 +95,25 @@ public class LearningProgressServiceImpl implements LearningProgressService {
     @Transactional(readOnly = true)
     public Set<LocalDate> findReviewActivityLocalDays(UUID userId, String timezone) {
         Objects.requireNonNull(userId, "userId must not be null");
-        Objects.requireNonNull(timezone, "timezone must not be null");
-        return reviewRepository.findDistinctActivityLocalDays(userId, timezone).stream()
+        String validZone = validateTimezone(timezone);
+        return reviewRepository.findDistinctActivityLocalDays(userId, validZone).stream()
                 .map(LocalDate::parse)
                 .collect(Collectors.toSet());
+    }
+
+    static String validateTimezone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            throw new com.masterenglish.api.common.error.BusinessException(
+                    com.masterenglish.api.common.error.ErrorCode.VALIDATION_ERROR,
+                    "timezone must not be blank.");
+        }
+        try {
+            return ZoneId.of(timezone.trim()).getId();
+        } catch (DateTimeException exception) {
+            throw new com.masterenglish.api.common.error.BusinessException(
+                    com.masterenglish.api.common.error.ErrorCode.VALIDATION_ERROR,
+                    "Invalid timezone: " + timezone);
+        }
     }
 
     private static ReviewHistoryItemDto historyItem(WordReview review, WordSenseCardDto card) {
