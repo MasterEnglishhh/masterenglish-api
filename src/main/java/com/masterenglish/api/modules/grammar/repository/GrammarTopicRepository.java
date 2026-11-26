@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.grammar.repository;
 
 import com.masterenglish.api.modules.grammar.entity.GrammarTopic;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,6 +61,31 @@ public interface GrammarTopicRepository extends JpaRepository<GrammarTopic, UUID
 
     @Query(value = VISIBLE + "WHERE t.id = :topicId", nativeQuery = true)
     Optional<GrammarTopic> findVisibleTopicById(@Param("topicId") UUID topicId);
+
+    /**
+     * Locks the visible topics' content items {@code FOR SHARE}: {@code FOR SHARE OF v} on the view
+     * applies to its base table, so archive and publish of those items wait for the caller's
+     * transaction. The lock order is the {@code ORDER BY} of PostgreSQL; Java's UUID order differs,
+     * so the caller must not sort the ids itself.
+     */
+    @Query(
+            value =
+                    "SELECT t.id AS \"topicId\", t.published_revision_id AS \"revisionId\""
+                            + " FROM grammar_topics t"
+                            + " JOIN catalog_visible_items v"
+                            + " ON v.id = t.id AND v.published_revision_id = t.published_revision_id"
+                            + " WHERE t.id IN (:topicIds)"
+                            + " ORDER BY t.id"
+                            + " FOR SHARE OF v",
+            nativeQuery = true)
+    List<LockedTopicRef> lockVisibleTopics(@Param("topicIds") Collection<UUID> topicIds);
+
+    interface LockedTopicRef {
+
+        UUID getTopicId();
+
+        UUID getRevisionId();
+    }
 
     /** True when another topic already uses this slug; the slug is unique across topics. */
     boolean existsBySlugAndIdNot(String slug, UUID id);

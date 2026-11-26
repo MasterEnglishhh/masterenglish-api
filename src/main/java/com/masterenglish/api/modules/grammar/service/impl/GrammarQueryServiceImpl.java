@@ -19,6 +19,7 @@ import com.masterenglish.api.modules.grammar.entity.GrammarTopic;
 import com.masterenglish.api.modules.grammar.repository.GrammarLessonRepository;
 import com.masterenglish.api.modules.grammar.repository.GrammarTopicRepository;
 import com.masterenglish.api.modules.grammar.service.GrammarQueryService;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -139,6 +140,18 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
                         t ->
                                 new GrammarEvents.PublishedTopicRef(
                                         t.getId(), t.getPublishedRevisionId()));
+    }
+
+    /** Runs in the caller's transaction; the row locks it takes are released only at its end. */
+    @Override
+    @Transactional
+    public List<GrammarEvents.PublishedTopicRef> lockPublishedTopics(Collection<UUID> topicIds) {
+        if (topicIds.isEmpty()) {
+            return List.of();
+        }
+        return topics.lockVisibleTopics(topicIds).stream()
+                .map(t -> new GrammarEvents.PublishedTopicRef(t.getTopicId(), t.getRevisionId()))
+                .toList();
     }
 
     private Map<String, Object> body(GrammarLesson lesson) {

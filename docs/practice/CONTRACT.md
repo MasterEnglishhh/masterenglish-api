@@ -79,6 +79,7 @@ Quy tắc phụ thuộc:
 ### 2.3. Sự kiện đã có
 
 - `GrammarEvents.isVisibleTopic(topicId)`.
+- `GrammarEvents.lockPublishedTopics(topicIds)`: bước 3 của start (mục 5.1).
 - `IdentityEvents.verifyAndLockUser(userId)`.
 
 ## 3. API Contract (PENDING FE REVIEW)
@@ -215,7 +216,7 @@ Trong một transaction, theo thứ tự:
 2. Replay theo `Idempotency-Key` `(user_id, request_id)`:
    - Cùng hash: trả bài cũ (200), **ngay cả khi đã đủ 5 bài**. Client retry sau lỗi mạng không bị báo sai.
    - Khác hash: `IDEMPOTENCY_CONFLICT`.
-3. Chủ điểm đang hiển thị (404 nếu không).
+3. Khóa các chủ điểm đang hiển thị `FOR SHARE` qua `GrammarEvents.lockPublishedTopics`, theo thứ tự id của PostgreSQL. Revision được ghim lấy từ kết quả khóa này. Thiếu chủ điểm nào thì 404. Bước này bỏ qua khi nguồn là MISTAKES. Khóa giữ tới hết transaction, nên lưu trữ hoặc publish mới của chủ điểm phải chờ.
 4. **Lazy cleanup** (trước khi đếm), chỉ trên bài của chính người dùng, sau khi đã khóa user:
    - Bài `IN_PROGRESS` có `deadline_at IS NULL` và `last_active_at <= now - practice.abandon_days` (7 ngày): `status = ABANDONED`, `abandoned_at = now`. Không tính điểm.
    - Bài `IN_PROGRESS` có `deadline_at <= now`: **tự nộp** theo giao thức TIME_LIMIT (`submit_reason = TIME_LIMIT`, `effective_finished_at = deadline_at`, `submitted_at = now`). Không dùng quy tắc 7 ngày cho bài này.
@@ -420,7 +421,7 @@ Quy tắc bắt buộc:
 | Thống kê đa nhãn sau này | Có | `meta.topicIds` giữ đầy đủ |
 | Không cần bảng/cột mới | Có | Không đổi DD |
 
-Trade-off: `topicIds` và `attributedTopicId` không có FK. Bù bằng: server kiểm tra trước khi ghi (mục 7.2), và topic đã được xác thực qua `isVisibleTopic` tại thời điểm chọn câu.
+Trade-off: `topicIds` và `attributedTopicId` không có FK. Bù bằng: server kiểm tra trước khi ghi (mục 7.2), và topic đã được khóa `FOR SHARE` qua `lockPublishedTopics` trước khi chọn câu (mục 5.1, bước 3).
 
 ### 7.6. Truy vấn allocation
 

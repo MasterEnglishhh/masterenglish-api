@@ -1265,6 +1265,43 @@ class PracticeIntegrationTests {
                 "SELECT published_revision_id FROM content_items WHERE id = ?", UUID.class, item);
     }
 
+    @Test
+    void startingTopicAttemptPinsThePublishedTopicRevision() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Pinned one", "right", "wrong");
+
+        JsonNode attempt = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
+
+        UUID attemptId = UUID.fromString(attempt.path("id").asText());
+        UUID pinned =
+                jdbc.queryForObject(
+                        "SELECT source_revision_id FROM attempts WHERE id = ?",
+                        UUID.class,
+                        attemptId);
+        UUID published =
+                jdbc.queryForObject(
+                        "SELECT published_revision_id FROM grammar_topics WHERE id = ?",
+                        UUID.class,
+                        topic);
+        assertThat(pinned).isEqualTo(published);
+    }
+
+    @Test
+    void startingTopicAttemptRefusesArchivedTopicWithoutWriting() throws Exception {
+        UUID topic = publishTopic();
+        publishQuestion(topic, "Archived one", "right", "wrong");
+        archive(topic);
+
+        startTopic(learner, UUID.randomUUID(), 1, topic, 404);
+
+        Long attempts =
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM attempts WHERE user_id = ?",
+                        Long.class,
+                        learner.getId());
+        assertThat(attempts).isZero();
+    }
+
     private void revoke(UUID item) {
         jdbc.update(
                 "UPDATE content_items SET access_revoked_at = now(), access_revoke_reason = 'test'"

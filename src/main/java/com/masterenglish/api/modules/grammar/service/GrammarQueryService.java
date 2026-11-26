@@ -7,6 +7,7 @@ import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,4 +29,6 @@ public interface GrammarQueryService {
     boolean isVisibleTopic(UUID topicId);
 
     Optional<GrammarEvents.PublishedTopicRef> findPublishedTopic(UUID topicId);
+
+    List<GrammarEvents.PublishedTopicRef> lockPublishedTopics(Collection<UUID> topicIds);
 }

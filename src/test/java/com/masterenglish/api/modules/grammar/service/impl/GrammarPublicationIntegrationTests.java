@@ -6,12 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.masterenglish.api.TestcontainersConfiguration;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.modules.content.repository.ContentRevisionRepository;
 import com.masterenglish.api.modules.content.service.ContentAuthoringService;
 import com.masterenglish.api.modules.grammar.entity.GrammarLesson;
 import com.masterenglish.api.modules.grammar.entity.GrammarTopic;
 import com.masterenglish.api.modules.grammar.repository.GrammarLessonRepository;
 import com.masterenglish.api.modules.grammar.repository.GrammarTopicRepository;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,7 @@ class GrammarPublicationIntegrationTests {
     @Autowired private GrammarTopicRepository topics;
     @Autowired private GrammarLessonRepository lessons;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private GrammarEvents grammarEvents;
 
     private UUID adminId;
     private UUID sourceId;
@@ -160,6 +163,34 @@ class GrammarPublicationIntegrationTests {
                         BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR))
                 .hasMessage("pinned_topic_revision_id must be a published revision of that topic.");
+    }
+
+    @Test
+    void lockReturnsVisibleTopicsWithTheirRevisionAndSkipsUnknownIds() {
+        UUID topicId = UUID.randomUUID();
+        UUID revision =
+                publish(
+                        topicId,
+                        TOPIC,
+                        topicSnapshot(
+                                "lock-" + UUID.randomUUID().toString().substring(0, 8), "Lock"));
+
+        assertThat(grammarEvents.lockPublishedTopics(List.of(topicId, UUID.randomUUID())))
+                .containsExactly(new GrammarEvents.PublishedTopicRef(topicId, revision));
+        assertThat(grammarEvents.lockPublishedTopics(List.of())).isEmpty();
+    }
+
+    @Test
+    void lockSkipsArchivedTopics() {
+        UUID topicId = UUID.randomUUID();
+        publish(
+                topicId,
+                TOPIC,
+                topicSnapshot(
+                        "retired-" + UUID.randomUUID().toString().substring(0, 8), "Retired"));
+        authoringService.archiveItem(topicId, "Retired for the test", adminId);
+
+        assertThat(grammarEvents.lockPublishedTopics(List.of(topicId))).isEmpty();
     }
 
     @Test

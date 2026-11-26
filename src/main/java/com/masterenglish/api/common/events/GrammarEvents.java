@@ -1,5 +1,6 @@
 package com.masterenglish.api.common.events;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,7 +36,20 @@ public class GrammarEvents {
         return events.request(reply -> new PublishedTopicRequested(topicId, reply));
     }
 
+    /**
+     * Locks the visible topics {@code FOR SHARE} in PostgreSQL id order and returns them with their
+     * published revision. A topic that is not visible is absent from the result. The lock lasts
+     * until the caller's transaction ends, so the caller must run inside that transaction.
+     */
+    public List<PublishedTopicRef> lockPublishedTopics(Collection<UUID> topicIds) {
+        return events.request(
+                reply -> new LockPublishedTopicsRequested(List.copyOf(topicIds), reply));
+    }
+
     public record PublishedTopicRef(UUID topicId, UUID revisionId) {}
+
+    public record LockPublishedTopicsRequested(
+            List<UUID> topicIds, EventReply<List<PublishedTopicRef>> reply) {}
 
     public record PublishedTopicRequested(
             UUID topicId, EventReply<Optional<PublishedTopicRef>> reply) {}

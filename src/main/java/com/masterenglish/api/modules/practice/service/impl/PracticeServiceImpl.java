@@ -166,9 +166,10 @@ public class PracticeServiceImpl implements PracticeService {
             return new StartAttemptResult(view(existing), false);
         }
 
-        if (!source.mistakes()) {
-            source.topics().forEach(this::requireVisibleTopic);
-        }
+        // Khóa nguồn trước khi chọn câu và chụp snapshot: không còn khoảng trống giữa kiểm tra và
+        // seal.
+        Map<UUID, UUID> revisionByTopic =
+                source.mistakes() ? Map.of() : lockTopics(source.topics());
         Instant now = clock.instant();
         attempts.lockOpenByUserId(userId).forEach(open -> settle(open, now));
         long open = attempts.countByUserIdAndStatus(userId, Attempt.IN_PROGRESS);
@@ -188,7 +189,7 @@ public class PracticeServiceImpl implements PracticeService {
         }
         List<SelectionPlanner.Selection> chosen =
                 SelectionPlanner.plan(requestId, pool.wanted(), count, pool.candidates());
-        return seal(userId, requestId, hash, source, count, chosen, pool, now);
+        return seal(userId, requestId, hash, source, count, chosen, pool, revisionByTopic, now);
     }
 
     @Override
@@ -460,6 +461,7 @@ public class PracticeServiceImpl implements PracticeService {
             int count,
             List<SelectionPlanner.Selection> chosen,
             Pool pool,
+            Map<UUID, UUID> revisionByTopic,
             Instant now) {
         List<UUID> chosenIds = chosen.stream().map(SelectionPlanner.Selection::questionId).toList();
         Map<UUID, Question> loaded =
@@ -471,16 +473,6 @@ public class PracticeServiceImpl implements PracticeService {
                     .computeIfAbsent(option.getQuestionId(), k -> new java.util.ArrayList<>())
                     .add(option);
         }
-        Map<UUID, UUID> revisionByTopic = new HashMap<>();
-        if (!source.mistakes()) {
-            for (UUID topic : source.topics()) {
-                GrammarEvents.PublishedTopicRef ref =
-                        grammar.findPublishedTopic(topic)
-                                .orElseThrow(() -> notFound("Grammar topic not found."));
-                revisionByTopic.put(topic, ref.revisionId());
-            }
-        }
-
         boolean single = GRAMMAR_TOPIC.equals(source.type());
         UUID attemptId = UUID.randomUUID();
         UUID sourceTopicId = single ? source.topics().get(0) : null;
@@ -674,6 +666,20 @@ public class PracticeServiceImpl implements PracticeService {
         if (!grammar.isVisibleTopic(topicId)) {
             throw notFound("Grammar topic not found.");
         }
+    }
+
+    /**
+     * Locks every requested topic and returns its published revision; any hidden topic is a 404.
+     */
+    private Map<UUID, UUID> lockTopics(List<UUID> topics) {
+        Map<UUID, UUID> revisions = new HashMap<>();
+        for (GrammarEvents.PublishedTopicRef ref : grammar.lockPublishedTopics(topics)) {
+            revisions.put(ref.topicId(), ref.revisionId());
+        }
+        if (revisions.size() != new HashSet<>(topics).size()) {
+            throw notFound("Grammar topic not found.");
+        }
+        return revisions;
     }
 
     /**
