@@ -1,7 +1,10 @@
 package com.masterenglish.api.modules.learning.service;
 
+import com.masterenglish.api.common.events.LearningEvents.LessonProgressSummaryView;
 import com.masterenglish.api.modules.learning.dto.response.LessonProgressResponse;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public interface LessonProgressService {
@@ -13,4 +16,8 @@ public interface LessonProgressService {
     LessonProgressResponse updateProgress(UUID userId, UUID lessonId, String state);
 
     List<LessonProgressResponse> getProgress(UUID userId);
+
+    LessonProgressSummaryView getSummary(UUID userId);
+
+    Set<LocalDate> findActivityLocalDays(UUID userId, String timezone);
 }

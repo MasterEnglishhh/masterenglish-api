@@ -1,12 +1,18 @@
 package com.masterenglish.api.modules.practice.service.impl;
 
+import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.IdentityEvents;
+import com.masterenglish.api.common.events.PracticeEvents.AttemptSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.OptionResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.QuestionResponse;
+import com.masterenglish.api.modules.practice.dto.response.AttemptSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
 import com.masterenglish.api.modules.practice.dto.response.TopicStatisticsResponse;
@@ -32,13 +38,19 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -124,6 +136,82 @@ public class PracticeServiceImpl implements PracticeService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AttemptSummaryResponse> listAttempts(
+            UUID userId, String status, String sourceType, Pageable pageable) {
+        String normalizedStatus = normalizeStatus(status);
+        String normalizedSourceType = normalizeSourceType(sourceType);
+        Page<Attempt> page =
+                attempts.findHistory(
+                        userId,
+                        normalizedStatus != null,
+                        normalizedStatus == null ? "" : normalizedStatus,
+                        normalizedSourceType != null,
+                        normalizedSourceType == null ? "" : normalizedSourceType,
+                        pageable);
+        List<UUID> mixedIds =
+                page.getContent().stream()
+                        .filter(a -> MIXED_GRAMMAR.equals(a.getSourceType()))
+                        .map(Attempt::getId)
+                        .toList();
+        Map<UUID, List<UUID>> mixedTopicsByAttempt =
+                mixedIds.isEmpty()
+                        ? Map.of()
+                        : sourceTopics
+                                .findByIdAttemptIdInOrderByIdAttemptIdAscIdTopicIdAsc(mixedIds)
+                                .stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                t -> t.getId().getAttemptId(),
+                                                Collectors.mapping(
+                                                        t -> t.getId().getTopicId(),
+                                                        Collectors.toList())));
+        return PageResponse.from(
+                page,
+                attempt -> {
+                    List<UUID> topicIds =
+                            MIXED_GRAMMAR.equals(attempt.getSourceType())
+                                    ? mixedTopicsByAttempt.getOrDefault(attempt.getId(), List.of())
+                                    : (attempt.getSourceTopicId() == null
+                                            ? List.of()
+                                            : List.of(attempt.getSourceTopicId()));
+                    return new AttemptSummaryResponse(
+                            attempt.getId(),
+                            attempt.getCategory(),
+                            attempt.getSourceType(),
+                            topicIds,
+                            attempt.getStatus(),
+                            attempt.getTotalCount(),
+                            attempt.getCorrectCount(),
+                            attempt.getScore(),
+                            attempt.getStartedAt(),
+                            attempt.getSubmittedAt());
+                });
+    }
+
+    private static String normalizeStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!Attempt.IN_PROGRESS.equals(normalized) && !Attempt.SUBMITTED.equals(normalized)) {
+            throw validation("Unsupported attempt status: " + raw);
+        }
+        return normalized;
+    }
+
+    private static String normalizeSourceType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!GRAMMAR_TOPIC.equals(normalized) && !MIXED_GRAMMAR.equals(normalized)) {
+            throw validation("Unsupported attempt sourceType: " + raw);
+        }
+        return normalized;
+    }
+
+    @Override
     @Transactional
     public AttemptResponse saveAnswer(UUID userId, UUID attemptId, int position, UUID optionId) {
         identity.verifyAndLockUser(userId);
@@ -176,6 +264,70 @@ public class PracticeServiceImpl implements PracticeService {
                                                 : percent(
                                                         s.getCorrectCount(), s.getQuestionCount())))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PracticeSummaryView getPracticeSummary(
+            UUID userId, Instant weaknessSince, String timezone) {
+        String validZone = validateTimezone(timezone);
+        long submittedCount = attempts.countByUserIdAndStatus(userId, Attempt.SUBMITTED);
+        long inProgressCount = attempts.countByUserIdAndStatus(userId, Attempt.IN_PROGRESS);
+        Double avgScore = attempts.averageScoreByUserId(userId);
+        Integer avgRounded = avgScore == null ? null : (int) Math.round(avgScore);
+
+        List<AttemptSummaryView> recent =
+                attempts
+                        .findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(
+                                userId, Attempt.SUBMITTED)
+                        .stream()
+                        .map(
+                                a ->
+                                        new AttemptSummaryView(
+                                                a.getId(),
+                                                a.getSourceType(),
+                                                a.getTotalCount(),
+                                                a.getCorrectCount(),
+                                                a.getScore(),
+                                                a.getSubmittedAt()))
+                        .toList();
+
+        List<TopicAccuracyView> topicStats =
+                attempts.topicStatisticsSince(userId, weaknessSince).stream()
+                        .map(
+                                s ->
+                                        new TopicAccuracyView(
+                                                s.getTopicId(),
+                                                s.getAttemptCount(),
+                                                s.getQuestionCount(),
+                                                s.getCorrectCount(),
+                                                s.getQuestionCount() == 0
+                                                        ? null
+                                                        : percent(
+                                                                s.getCorrectCount(),
+                                                                s.getQuestionCount())))
+                        .toList();
+
+        Set<LocalDate> localDays =
+                attempts.findSubmittedLocalDays(userId, validZone).stream()
+                        .map(LocalDate::parse)
+                        .collect(Collectors.toSet());
+
+        return new PracticeSummaryView(
+                submittedCount,
+                inProgressCount,
+                avgRounded,
+                recent,
+                topicStats,
+                Set.copyOf(localDays));
+    }
+
+    private static String validateTimezone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            throw validation("timezone must not be blank.");
+        }
+        return TimeZones.resolveCanonical(timezone)
+                .orElseThrow(() -> validation("Invalid timezone: " + timezone));
     }
 
     private StartAttemptResult start(
@@ -381,6 +533,12 @@ public class PracticeServiceImpl implements PracticeService {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available.", ex);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnedAttempt(UUID userId, UUID attemptId) {
+        return attempts.findByIdAndUserId(attemptId, userId).isPresent();
     }
 
     private static BusinessException notFound(String message) {

@@ -3,6 +3,7 @@ package com.masterenglish.api.common.events;
 import com.masterenglish.api.common.api.WordSenseCardDto;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +34,15 @@ public class VocabularyEvents {
                         new ReviewCardValidationRequested(
                                 senseId, wordId, revisionId, deckId, deckRevisionId, reply));
     }
+
+    public List<DeckSummaryView> findActiveDecksByIds(Set<UUID> deckIds) {
+        return events.request(reply -> new ActiveDecksByIdsRequested(Set.copyOf(deckIds), reply));
+    }
+
+    public record DeckSummaryView(UUID id, String title, String level) {}
+
+    public record ActiveDecksByIdsRequested(
+            Set<UUID> deckIds, EventReply<List<DeckSummaryView>> reply) {}
 
     public record DeckCardsRequested(UUID deckId, EventReply<List<WordSenseCardDto>> reply) {}
 

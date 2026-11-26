@@ -7,6 +7,7 @@ import com.masterenglish.api.common.api.WordSenseCardDto;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents;
+import com.masterenglish.api.common.events.VocabularyEvents.DeckSummaryView;
 import com.masterenglish.api.modules.vocabulary.dto.response.DeckDetailDto;
 import com.masterenglish.api.modules.vocabulary.dto.response.DeckDto;
 import com.masterenglish.api.modules.vocabulary.dto.response.WordDetailDto;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -304,6 +306,17 @@ public class VocabularyQueryServiceImpl implements VocabularyQueryService {
                         new BusinessException(
                                 ErrorCode.CONFLICT,
                                 "Card context is no longer available. Reload the queue."));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DeckSummaryView> findActiveDecksByIds(Set<UUID> deckIds) {
+        if (deckIds == null || deckIds.isEmpty()) {
+            return List.of();
+        }
+        return deckRepository.findAllActiveByIds(deckIds).stream()
+                .map(d -> new DeckSummaryView(d.getId(), d.getTitle(), d.getLevel()))
+                .toList();
     }
 
     private Optional<WordSenseCardDto> cardFromSnapshot(

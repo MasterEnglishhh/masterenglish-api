@@ -1,10 +1,13 @@
 package com.masterenglish.api.modules.identity.repository;
 
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.entity.UserStatus;
 import com.masterenglish.api.modules.identity.repository.fragment.PasswordResetOperations;
 import com.masterenglish.api.modules.identity.repository.fragment.RegistrationOperations;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -27,6 +30,30 @@ public interface UserRepository
     Optional<User> findById(UUID id);
 
     @EntityGraph(attributePaths = {"userRoles", "userRoles.role"})
+    List<User> findAllByIdInAndStatus(Collection<UUID> ids, UserStatus status);
+
+    @Query(
+            """
+            SELECT u FROM User u
+            WHERE u.id IN :ids
+              AND u.status = com.masterenglish.api.modules.identity.entity.UserStatus.ACTIVE
+              AND u.emailVerifiedAt IS NOT NULL
+              AND EXISTS (
+                    SELECT 1 FROM UserRole ur
+                    WHERE ur.user = u
+                      AND ur.role.code = com.masterenglish.api.common.security.RoleCode.LEARNER
+              )
+              AND NOT EXISTS (
+                    SELECT 1 FROM UserRole adminRole
+                    WHERE adminRole.user = u
+                      AND adminRole.role.code IN (
+                          com.masterenglish.api.common.security.RoleCode.CONTENT_ADMIN,
+                          com.masterenglish.api.common.security.RoleCode.SYSTEM_ADMIN
+                      )
+              )
+            """)
+    List<User> findEligibleLearnersExcludingAdmins(@Param("ids") Collection<UUID> ids);
+
     @Query("select u from User u where lower(u.email) = lower(:email)")
     Optional<User> findForAuthenticationByEmail(@Param("email") String email);
 

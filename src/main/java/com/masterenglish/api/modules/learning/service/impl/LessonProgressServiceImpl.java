@@ -5,14 +5,19 @@ import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.common.events.IdentityEvents;
+import com.masterenglish.api.common.events.LearningEvents.LessonProgressSummaryView;
 import com.masterenglish.api.modules.learning.dto.response.LessonProgressResponse;
 import com.masterenglish.api.modules.learning.entity.LessonProgress;
 import com.masterenglish.api.modules.learning.repository.LessonProgressRepository;
 import com.masterenglish.api.modules.learning.service.LessonProgressService;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,6 +77,35 @@ public class LessonProgressServiceImpl implements LessonProgressService {
         return repository.findByIdUserIdOrderByUpdatedAtDesc(userId).stream()
                 .map(LessonProgressServiceImpl::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LessonProgressSummaryView getSummary(UUID userId) {
+        List<LessonProgress> all = repository.findByIdUserIdOrderByUpdatedAtDesc(userId);
+        Set<UUID> completedIds = new LinkedHashSet<>();
+        Set<UUID> inProgressIds = new LinkedHashSet<>();
+        for (LessonProgress item : all) {
+            if (COMPLETED.equals(item.getState())) {
+                completedIds.add(item.getId().getLessonId());
+            } else if (IN_PROGRESS.equals(item.getState())) {
+                inProgressIds.add(item.getId().getLessonId());
+            }
+        }
+        return new LessonProgressSummaryView(
+                completedIds.size(),
+                inProgressIds.size(),
+                Set.copyOf(completedIds),
+                Set.copyOf(inProgressIds));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<LocalDate> findActivityLocalDays(UUID userId, String timezone) {
+        String validZone = LearningProgressServiceImpl.validateTimezone(timezone);
+        return repository.findDistinctActivityLocalDays(userId, validZone).stream()
+                .map(LocalDate::parse)
+                .collect(Collectors.toSet());
     }
 
     private static LessonProgressResponse toResponse(LessonProgress progress) {

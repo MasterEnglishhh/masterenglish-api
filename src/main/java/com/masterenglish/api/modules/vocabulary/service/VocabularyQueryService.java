@@ -2,12 +2,14 @@ package com.masterenglish.api.modules.vocabulary.service;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.common.events.VocabularyEvents.DeckSummaryView;
 import com.masterenglish.api.modules.vocabulary.dto.response.DeckDetailDto;
 import com.masterenglish.api.modules.vocabulary.dto.response.DeckDto;
 import com.masterenglish.api.modules.vocabulary.dto.response.WordDetailDto;
 import com.masterenglish.api.modules.vocabulary.dto.response.WordListDto;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 
@@ -28,4 +30,6 @@ public interface VocabularyQueryService {
 
     WordSenseCardDto resolveReviewCard(
             UUID senseId, UUID wordId, UUID revisionId, UUID deckId, UUID deckRevisionId);
+
+    List<DeckSummaryView> findActiveDecksByIds(Set<UUID> deckIds);
 }
