@@ -257,7 +257,7 @@ class AdminControllerUnitTests {
                         "ACTIVE",
                         Instant.now());
 
-        when(contentServiceMock.findContentItems(any(), any(), any(), any()))
+        when(contentServiceMock.findContentItems(any(), any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(mockItem), 0, 10, 1, 1, false));
         when(contentServiceMock.createWordDraft(any(), eq(testActorId))).thenReturn(mockItem);
         when(contentServiceMock.createDeckDraft(any(), eq(testActorId))).thenReturn(mockItem);

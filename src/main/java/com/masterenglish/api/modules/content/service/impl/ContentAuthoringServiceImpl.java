@@ -17,6 +17,7 @@ import com.masterenglish.api.modules.content.repository.ContentRevisionRepositor
 import com.masterenglish.api.modules.content.repository.ContentSourceLinkRepository;
 import com.masterenglish.api.modules.content.repository.ContentSourceRepository;
 import com.masterenglish.api.modules.content.service.ContentAuthoringService;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -108,6 +109,71 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                                 changeSummary,
                                 sourceId)
                         .item());
+    }
+
+    /**
+     * Sửa bản nháp đang mở tại chỗ. Khi revision mới nhất đã publish, tạo phiên bản nháp mới;
+     * {@code createDraft} từ chối nếu còn revision chưa publish.
+     */
+    @Override
+    @Transactional
+    public ContentItemResponse updateDraft(
+            UUID itemId,
+            String contentType,
+            UUID actorId,
+            String snapshotJson,
+            String changeSummary,
+            UUID sourceId) {
+        identity.verifyContentAuthor(actorId);
+        ContentItem item =
+                itemRepository
+                        .findByIdForUpdate(itemId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.RESOURCE_NOT_FOUND,
+                                                "Content item not found: " + itemId));
+        if (!item.getContentType().equals(contentType) || !item.allowsRevisionChanges()) {
+            throw new BusinessException(ErrorCode.CONFLICT, "Content item cannot be edited.");
+        }
+        List<ContentRevision> revisions =
+                revisionRepository.findByContentItemIdOrderByVersionNoDesc(itemId);
+        ContentRevision latest = revisions.isEmpty() ? null : revisions.get(0);
+        if (latest == null || !"DRAFT".equals(latest.getStatus())) {
+            return response(
+                    createDraft(
+                                    itemId,
+                                    contentType,
+                                    actorId,
+                                    null,
+                                    null,
+                                    snapshotJson,
+                                    changeSummary,
+                                    sourceId)
+                            .item());
+        }
+        latest.updateDraft(snapshots.envelope(contentType, snapshotJson), changeSummary);
+        if (sourceId != null) {
+            // Xóa trước rồi flush: insert đứng trước delete khi flush và đụng khóa (revision,
+            // source).
+            sourceLinkRepository.deleteByIdRevisionId(latest.getId());
+            sourceLinkRepository.flush();
+            sourceLinkRepository.save(
+                    new ContentSourceLink(
+                            latest.getId(), sourceId, "Draft source attribution", null));
+        }
+        auditLogRepository.save(
+                new AuditLog(
+                        "USER",
+                        actorId,
+                        "CONTENT_DRAFT_UPDATED",
+                        contentType,
+                        item.getId(),
+                        String.format(
+                                "{\"revisionId\":\"%s\",\"versionNo\":%d}",
+                                latest.getId(), latest.getVersionNo()),
+                        "Updated draft content item"));
+        return response(item);
     }
 
     private Draft createDraft(

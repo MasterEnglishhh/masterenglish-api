@@ -30,6 +30,14 @@ public interface ContentAuthoringService {
             String changeSummary,
             UUID sourceId);
 
+    ContentItemResponse updateDraft(
+            UUID itemId,
+            String contentType,
+            UUID actorId,
+            String snapshotJson,
+            String changeSummary,
+            UUID sourceId);
+
     ContentRevisionResponse submitForReview(UUID revisionId, UUID actorUserId);
 
     ContentRevisionResponse approve(UUID revisionId, UUID reviewerId, String reviewNote);

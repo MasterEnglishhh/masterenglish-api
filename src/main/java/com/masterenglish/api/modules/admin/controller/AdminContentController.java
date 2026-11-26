@@ -9,6 +9,8 @@ import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceReques
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.ReviewDecisionRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarLessonDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarTopicDraftRequest;
 import com.masterenglish.api.modules.admin.dto.response.AdminContentItemDto;
 import com.masterenglish.api.modules.admin.dto.response.AdminMessageResponse;
 import com.masterenglish.api.modules.admin.dto.response.AdminRevisionDto;
@@ -24,6 +26,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,11 +49,12 @@ public class AdminContentController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String contentType,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String domain,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         Pageable pageable = PageRequestUtils.of(page, size);
         return ResponseEntity.ok(
-                contentService.findContentItems(search, contentType, status, pageable));
+                contentService.findContentItems(search, contentType, status, domain, pageable));
     }
 
     @PostMapping("/words")
@@ -67,6 +71,40 @@ public class AdminContentController {
             @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(contentService.createDeckDraft(request, currentUser.getId()));
+    }
+
+    @PostMapping("/grammar/topics")
+    public ResponseEntity<AdminContentItemDto> createGrammarTopic(
+            @RequestBody SaveGrammarTopicDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(contentService.saveGrammarTopicDraft(null, request, currentUser.getId()));
+    }
+
+    @PutMapping("/grammar/topics/{id}")
+    public ResponseEntity<AdminContentItemDto> updateGrammarTopic(
+            @PathVariable UUID id,
+            @RequestBody SaveGrammarTopicDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.ok(
+                contentService.saveGrammarTopicDraft(id, request, currentUser.getId()));
+    }
+
+    @PostMapping("/grammar/lessons")
+    public ResponseEntity<AdminContentItemDto> createGrammarLesson(
+            @RequestBody SaveGrammarLessonDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(contentService.saveGrammarLessonDraft(null, request, currentUser.getId()));
+    }
+
+    @PutMapping("/grammar/lessons/{id}")
+    public ResponseEntity<AdminContentItemDto> updateGrammarLesson(
+            @PathVariable UUID id,
+            @RequestBody SaveGrammarLessonDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.ok(
+                contentService.saveGrammarLessonDraft(id, request, currentUser.getId()));
     }
 
     @PostMapping("/revisions/{id}/submit")

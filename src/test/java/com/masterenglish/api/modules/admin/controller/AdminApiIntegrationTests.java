@@ -289,6 +289,192 @@ class AdminApiIntegrationTests {
                 .andExpect(jsonPath("$.totalItems").value(0));
     }
 
+    @Test
+    @DisplayName("Admin Content - bản nháp chủ điểm grammar: sửa tại chỗ và lọc theo domain")
+    void grammarTopicDraft_editsInPlaceAndFiltersByDomain() throws Exception {
+        var admin =
+                SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser));
+        JsonNode word =
+                postJson(
+                        "/api/v1/admin/content/words", wordBody("grammarfilter", null), admin, 201);
+        JsonNode topic =
+                postJson(
+                        "/api/v1/admin/content/grammar/topics",
+                        Map.of(
+                                "name",
+                                "Thì hiện tại đơn",
+                                "slug",
+                                "present-simple",
+                                "difficulty",
+                                "BASIC"),
+                        admin,
+                        201);
+        org.junit.jupiter.api.Assertions.assertEquals("GRAMMAR", topic.path("module").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("GRAMMAR_TOPIC", topic.path("type").asText());
+        String topicId = topic.path("id").asText();
+
+        JsonNode edited =
+                putJson(
+                        "/api/v1/admin/content/grammar/topics/" + topicId,
+                        Map.of("name", "Thì hiện tại đơn (sửa)", "slug", "present-simple"),
+                        admin,
+                        200);
+        // Bản nháp đang mở được sửa tại chỗ: giữ nguyên revision và số phiên bản.
+        org.junit.jupiter.api.Assertions.assertEquals(
+                topic.path("latestRevisionId").asText(), edited.path("latestRevisionId").asText());
+        org.junit.jupiter.api.Assertions.assertEquals(1, edited.path("versionNo").asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "Thì hiện tại đơn (sửa)", edited.path("title").asText());
+
+        JsonNode grammar =
+                getJson("/api/v1/admin/content/items?domain=GRAMMAR&search=hiện tại", admin, 200);
+        org.junit.jupiter.api.Assertions.assertEquals(1, grammar.path("items").size());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                topicId, grammar.path("items").get(0).path("id").asText());
+
+        JsonNode all = getJson("/api/v1/admin/content/items?domain=GRAMMAR", admin, 200);
+        for (JsonNode row : all.path("items")) {
+            org.junit.jupiter.api.Assertions.assertNotEquals(
+                    word.path("id").asText(), row.path("id").asText());
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    row.path("type").asText().startsWith("GRAMMAR_"));
+        }
+
+        getJson("/api/v1/admin/content/items?domain=VOCABULARY", admin, 400);
+    }
+
+    @Test
+    @DisplayName(
+            "Admin Content - bài học grammar ghim revision chủ điểm đã xuất bản và xuất bản được")
+    void grammarLessonDraft_pinsPublishedTopicRevisionAndPublishes() throws Exception {
+        var admin =
+                SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser));
+        UUID sourceId =
+                UUID.fromString(
+                        postJson(
+                                        "/api/v1/admin/content/sources",
+                                        Map.of(
+                                                "title", "Nguồn grammar",
+                                                "sourceType", "EXTERNAL",
+                                                "licenseCode", "CC-BY",
+                                                "attribution", "Thử nghiệm"),
+                                        admin,
+                                        201)
+                                .path("id")
+                                .asText());
+        JsonNode topic =
+                postJson(
+                        "/api/v1/admin/content/grammar/topics",
+                        Map.of(
+                                "name", "Thì hiện tại đơn",
+                                "slug", "present-simple",
+                                "difficulty", "BASIC",
+                                "sourceId", sourceId),
+                        admin,
+                        201);
+        String topicRevisionId = topic.path("latestRevisionId").asText();
+        publishDraft(topicRevisionId, admin);
+
+        JsonNode lesson =
+                postJson(
+                        "/api/v1/admin/content/grammar/lessons",
+                        Map.of(
+                                "topicId",
+                                topic.path("id").asText(),
+                                "title",
+                                "Bài 1",
+                                "position",
+                                1,
+                                "body",
+                                Map.of(
+                                        "blocks",
+                                        List.of(
+                                                Map.of("type", "heading", "text", "Giới thiệu"),
+                                                Map.of(
+                                                        "type",
+                                                        "paragraph",
+                                                        "text",
+                                                        "Diễn tả thói quen."))),
+                                "sourceId",
+                                sourceId),
+                        admin,
+                        201);
+        String lessonRevisionId = lesson.path("latestRevisionId").asText();
+        JsonNode lessonData =
+                objectMapper
+                        .readTree(
+                                revisions
+                                        .findById(UUID.fromString(lessonRevisionId))
+                                        .orElseThrow()
+                                        .getSnapshot())
+                        .path("data");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                topicRevisionId, lessonData.path("pinned_topic_revision_id").asText());
+
+        publishDraft(lessonRevisionId, admin);
+    }
+
+    @Test
+    @DisplayName("Admin Content - sửa bản nháp grammar yêu cầu mục đúng loại")
+    void grammarDraft_rejectsWrongTypeAndUnknownItem() throws Exception {
+        var admin =
+                SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser));
+        JsonNode topic =
+                postJson(
+                        "/api/v1/admin/content/grammar/topics",
+                        Map.of("name", "Chủ điểm"),
+                        admin,
+                        201);
+        // Mục đích là chủ điểm, gửi qua endpoint bài học phải bị từ chối.
+        putJson(
+                "/api/v1/admin/content/grammar/lessons/" + topic.path("id").asText(),
+                Map.of("title", "Sai loại"),
+                admin,
+                409);
+        putJson(
+                "/api/v1/admin/content/grammar/topics/" + UUID.randomUUID(),
+                Map.of("name", "Không tồn tại"),
+                admin,
+                404);
+    }
+
+    private void publishDraft(String revisionId, RequestPostProcessor admin) throws Exception {
+        postJson("/api/v1/admin/content/revisions/" + revisionId + "/submit", Map.of(), admin, 200);
+        postJson(
+                "/api/v1/admin/content/revisions/" + revisionId + "/approve",
+                Map.of("reviewNote", "ok"),
+                admin,
+                200);
+        postJson(
+                "/api/v1/admin/content/revisions/" + revisionId + "/publish", Map.of(), admin, 200);
+    }
+
+    private JsonNode getJson(String url, RequestPostProcessor principal, int status)
+            throws Exception {
+        String json =
+                mockMvc.perform(get(url).with(principal))
+                        .andExpect(status().is(status))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        return json.isBlank() ? objectMapper.nullNode() : objectMapper.readTree(json);
+    }
+
+    private JsonNode putJson(String url, Object body, RequestPostProcessor principal, int status)
+            throws Exception {
+        String json =
+                mockMvc.perform(
+                                put(url).contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsString(body))
+                                        .with(csrf())
+                                        .with(principal))
+                        .andExpect(status().is(status))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        return json.isBlank() ? objectMapper.nullNode() : objectMapper.readTree(json);
+    }
+
     private JsonNode postJson(String url, Object body, RequestPostProcessor principal, int status)
             throws Exception {
         String json =

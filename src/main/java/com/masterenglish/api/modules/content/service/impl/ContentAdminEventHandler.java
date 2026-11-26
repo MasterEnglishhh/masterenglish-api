@@ -21,6 +21,7 @@ class ContentAdminEventHandler {
                                 event.search(),
                                 event.contentType(),
                                 event.status(),
+                                event.domain(),
                                 event.pageable()));
     }
 
@@ -32,6 +33,11 @@ class ContentAdminEventHandler {
     @EventListener
     void on(ContentEvents.AdminCreateDeckDraft event) {
         event.reply().complete(admin.createDeckDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminSaveGrammarDraft event) {
+        event.reply().complete(admin.saveGrammarDraft(event.request(), event.actorId()));
     }
 
     @EventListener

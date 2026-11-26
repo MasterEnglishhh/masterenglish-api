@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.content.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
@@ -8,6 +9,7 @@ import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents.AdminSource;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.DeckDraft;
+import com.masterenglish.api.common.events.ContentEvents.GrammarDraft;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
 import com.masterenglish.api.common.events.ContentEvents.SourceView;
@@ -77,13 +79,19 @@ public class ContentAdminServiceImpl implements ContentAdminService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ItemView> findContentItems(
-            String search, String contentType, String status, Pageable pageable) {
+            String search, String contentType, String status, String domain, Pageable pageable) {
         String searchFilter = search == null || search.isBlank() ? null : search.strip();
+        String domainFilter = normalizeFilter(domain);
+        if (domainFilter != null && !"GRAMMAR".equals(domainFilter)) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Unsupported domain: " + domain);
+        }
         Page<ContentItem> itemsPage =
                 itemRepository.findContentItems(
                         normalizeFilter(contentType),
                         normalizeFilter(status),
                         searchFilter,
+                        domainFilter,
                         pageable);
         List<ItemView> dtos = new ArrayList<>();
 
@@ -106,7 +114,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                     latest != null && latest.getChangeSummary() != null
                             ? latest.getChangeSummary()
                             : "";
-            String level = "B1";
+            boolean grammar = item.getContentType().startsWith("GRAMMAR_");
+            String level = grammar ? "" : "B1";
 
             if (latest != null) {
                 try {
@@ -127,6 +136,12 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                         title = node.path("title").asText(title);
                         level = node.path("level").asText("B1");
                         summary = node.path("description").asText(summary);
+                    } else if ("GRAMMAR_TOPIC".equals(item.getContentType())) {
+                        title = node.path("name").asText(title);
+                        level = node.path("difficulty").asText("");
+                        summary = node.path("description").asText(summary);
+                    } else if ("GRAMMAR_LESSON".equals(item.getContentType())) {
+                        title = node.path("title").asText(title);
                     }
                 } catch (Exception ignored) {
                 }
@@ -137,7 +152,7 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                             item.getId(),
                             title,
                             code,
-                            "VOCABULARY",
+                            grammar ? "GRAMMAR" : "VOCABULARY",
                             item.getContentType(),
                             itemStatus,
                             versionNo,
@@ -340,6 +355,57 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 item.getCreatedAt(),
                 request.level() != null ? request.level().trim().toUpperCase() : "B1",
                 revId);
+    }
+
+    /** Snapshot đã được bên gọi dựng sẵn; ở đây chỉ lưu bản nháp và trả về dòng danh sách. */
+    @Override
+    @Transactional
+    public ItemView saveGrammarDraft(GrammarDraft request, UUID actorId) {
+        String contentType = request.contentType();
+        var item =
+                request.itemId() == null
+                        ? authoringService.createItemWithDraft(
+                                UUID.randomUUID(),
+                                contentType,
+                                actorId,
+                                null,
+                                null,
+                                request.snapshotJson(),
+                                request.changeSummary(),
+                                request.sourceId())
+                        : authoringService.updateDraft(
+                                request.itemId(),
+                                contentType,
+                                actorId,
+                                request.snapshotJson(),
+                                request.changeSummary(),
+                                request.sourceId());
+        ContentRevision latest =
+                revisionRepository.findByContentItemIdOrderByVersionNoDesc(item.getId()).get(0);
+        JsonNode data = snapshotData(latest.getSnapshot());
+        boolean topic = "GRAMMAR_TOPIC".equals(contentType);
+        return new ItemView(
+                item.getId(),
+                data.path(topic ? "name" : "title").asText(contentType),
+                contentType + "-" + item.getId().toString().substring(0, 8),
+                "GRAMMAR",
+                contentType,
+                "DRAFT",
+                latest.getVersionNo(),
+                data.path("description").asText(""),
+                "Admin",
+                null,
+                latest.getUpdatedAt(),
+                topic ? data.path("difficulty").asText("") : "",
+                latest.getId());
+    }
+
+    private JsonNode snapshotData(String snapshot) {
+        try {
+            return objectMapper.readTree(snapshot).path("data");
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored snapshot is not valid JSON", e);
+        }
     }
 
     @Override

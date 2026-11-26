@@ -128,9 +128,16 @@ public class ContentEvents {
             UUID sourceId) {}
 
     public PageResponse<ItemView> findContentItems(
-            String search, String contentType, String status, Pageable pageable) {
+            String search, String contentType, String status, String domain, Pageable pageable) {
         return events.request(
-                reply -> new AdminFindContentItems(search, contentType, status, pageable, reply));
+                reply ->
+                        new AdminFindContentItems(
+                                search, contentType, status, domain, pageable, reply));
+    }
+
+    /** Creates a draft when {@code request.itemId()} is null, otherwise edits that item's draft. */
+    public ItemView saveGrammarDraft(GrammarDraft request, UUID actorId) {
+        return events.request(reply -> new AdminSaveGrammarDraft(request, actorId, reply));
     }
 
     public ItemView createWordDraft(WordDraft request, UUID actorId) {
@@ -274,6 +281,14 @@ public class ContentEvents {
             UUID sourceId,
             String changeSummary) {}
 
+    /** Snapshot JSON is built by the caller; content only stores it. */
+    public record GrammarDraft(
+            UUID itemId,
+            String contentType,
+            String snapshotJson,
+            String changeSummary,
+            UUID sourceId) {}
+
     public record AdminSource(
             String title,
             String sourceType,
@@ -288,6 +303,7 @@ public class ContentEvents {
             String search,
             String contentType,
             String status,
+            String domain,
             Pageable pageable,
             EventReply<PageResponse<ItemView>> reply) {}
 
@@ -296,6 +312,9 @@ public class ContentEvents {
 
     public record AdminCreateDeckDraft(
             DeckDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminSaveGrammarDraft(
+            GrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}
 
     public record AdminSubmitRevision(
             UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}

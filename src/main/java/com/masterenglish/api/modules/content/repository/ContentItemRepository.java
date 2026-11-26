@@ -62,12 +62,15 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
             WHERE (CAST(:contentType AS text) IS NULL OR i.content_type = :contentType)
               AND (CAST(:status AS text) IS NULL OR :status =
                    CASE WHEN i.is_archived THEN 'ARCHIVED' ELSE COALESCE(latest.status, 'DRAFT') END)
+              AND (CAST(:domain AS text) IS NULL
+                   OR (CAST(:domain AS text) = 'GRAMMAR' AND i.content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')))
               AND (CAST(:search AS text) IS NULL
                    OR strpos(lower(COALESCE(i.external_key, i.content_type || '-' || left(CAST(i.id AS text), 8))),
                              lower(:search)) > 0
                    OR strpos(lower(COALESCE(
                        COALESCE(latest.snapshot -> 'data', latest.snapshot) ->>
-                           (CASE i.content_type WHEN 'WORD' THEN 'lemma' WHEN 'DECK' THEN 'title' END),
+                           (CASE i.content_type WHEN 'WORD' THEN 'lemma' WHEN 'DECK' THEN 'title'
+                                                WHEN 'GRAMMAR_TOPIC' THEN 'name' WHEN 'GRAMMAR_LESSON' THEN 'title' END),
                        i.content_type)), lower(:search)) > 0)
             """;
 
@@ -79,5 +82,6 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
             @Param("contentType") String contentType,
             @Param("status") String status,
             @Param("search") String search,
+            @Param("domain") String domain,
             Pageable pageable);
 }

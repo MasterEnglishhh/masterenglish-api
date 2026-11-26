@@ -92,6 +92,13 @@ public class ContentRevision {
         this.updatedAt = this.createdAt;
     }
 
+    /** Sửa tại chỗ chỉ khi còn là bản nháp; từ lúc nộp duyệt trở đi revision bất biến. */
+    public void updateDraft(String snapshot, String changeSummary) {
+        requireStatus("DRAFT");
+        this.snapshot = snapshot;
+        this.changeSummary = changeSummary;
+    }
+
     public void submitForReview() {
         requireStatus("DRAFT");
         this.status = "IN_REVIEW";

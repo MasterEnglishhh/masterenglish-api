@@ -4,6 +4,7 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.ContentEvents.AdminSource;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.DeckDraft;
+import com.masterenglish.api.common.events.ContentEvents.GrammarDraft;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
 import com.masterenglish.api.common.events.ContentEvents.SourceView;
@@ -15,11 +16,13 @@ import org.springframework.data.domain.Pageable;
 public interface ContentAdminService {
 
     PageResponse<ItemView> findContentItems(
-            String search, String contentType, String status, Pageable pageable);
+            String search, String contentType, String status, String domain, Pageable pageable);
 
     ItemView createWordDraft(WordDraft request, UUID actorId);
 
     ItemView createDeckDraft(DeckDraft request, UUID actorId);
+
+    ItemView saveGrammarDraft(GrammarDraft request, UUID actorId);
 
     RevisionView submitRevision(UUID revisionId, UUID actorId);
 

@@ -190,6 +190,7 @@
   - `search`: `string` (tùy chọn).
   - `contentType`: `"WORD" | "DECK" | "ALL"` (tùy chọn).
   - `status`: `"DRAFT" | "IN_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED" | "ALL"` (tùy chọn).
+  - `domain`: `"GRAMMAR"` (tùy chọn). Chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Giá trị khác trả `400`. Mục grammar có `module: "GRAMMAR"`.
   - `page`, `size`: `integer`.
 - **Response:** `200 OK`
 ```json
@@ -252,6 +253,43 @@
 }
 ```
 - **Response:** `201 Created` (`AdminContentItemDto`).
+
+#### `POST /api/v1/admin/content/grammar/topics`, `PUT /api/v1/admin/content/grammar/topics/{id}`
+- **Mô tả:** Tạo bản nháp chủ điểm `GRAMMAR_TOPIC`, hoặc sửa bản nháp của mục `{id}`. Mọi trường tùy chọn; validator của `grammar` kiểm tra khi xuất bản. Quy tắc sửa tại chỗ, 404, 409 xem [grammar/CONTRACT.md](../grammar/CONTRACT.md) mục 7.
+- **Request Body:**
+```json
+{
+  "slug": "present-simple",
+  "name": "Thì hiện tại đơn",
+  "description": "Diễn tả thói quen và sự thật hiển nhiên",
+  "difficulty": "BASIC",
+  "sortOrder": 1,
+  "sourceId": null,
+  "changeSummary": "Khởi tạo chủ điểm"
+}
+```
+- **Response:** `201 Created` khi tạo, `200 OK` khi sửa (`AdminContentItemDto`, `module: "GRAMMAR"`).
+
+#### `POST /api/v1/admin/content/grammar/lessons`, `PUT /api/v1/admin/content/grammar/lessons/{id}`
+- **Mô tả:** Tạo bản nháp bài học `GRAMMAR_LESSON`, hoặc sửa bản nháp của mục `{id}`. `pinned_topic_revision_id` được ghim theo revision đang xuất bản của chủ điểm lúc lưu.
+- **Request Body:**
+```json
+{
+  "topicId": "41000000-0000-0000-0000-000000000001",
+  "title": "Bài 1: Khẳng định",
+  "position": 1,
+  "estimatedMinutes": 10,
+  "body": {
+    "blocks": [
+      { "type": "heading", "text": "Cấu trúc" },
+      { "type": "paragraph", "text": "Chủ ngữ + động từ nguyên mẫu (s/es)." }
+    ]
+  },
+  "sourceId": null,
+  "changeSummary": "Khởi tạo bài học"
+}
+```
+- **Response:** `201 Created` khi tạo, `200 OK` khi sửa (`AdminContentItemDto`, `module: "GRAMMAR"`).
 
 #### `POST /api/v1/admin/content/revisions/{id}/submit`
 - **Mô tả:** Nộp bản thảo lên hàng đợi phê duyệt (`DRAFT` → `IN_REVIEW`).
