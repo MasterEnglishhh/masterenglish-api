@@ -126,6 +126,16 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public String findLearnerTimezone(UUID userId) {
+        return preferences
+                .findById(userId)
+                .map(NotificationPreference::getTimezone)
+                .flatMap(TimeZones::resolveCanonical)
+                .orElse(properties.defaultTimezone());
+    }
+
+    @Override
     @Transactional
     public NotificationPreferencesResponse updatePreferences(
             UUID userId, UpdateNotificationPreferencesRequest request) {

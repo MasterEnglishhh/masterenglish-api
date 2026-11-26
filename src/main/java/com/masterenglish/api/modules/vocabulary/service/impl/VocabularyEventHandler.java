@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.vocabulary.service.impl;
 
+import com.masterenglish.api.common.events.VocabularyEvents.ActiveDecksByIdsRequested;
 import com.masterenglish.api.common.events.VocabularyEvents.DeckCardsRequested;
 import com.masterenglish.api.common.events.VocabularyEvents.ReviewCardValidationRequested;
 import com.masterenglish.api.common.events.VocabularyEvents.SenseCardRequested;
@@ -41,5 +42,10 @@ class VocabularyEventHandler {
                 event.deckId(),
                 event.deckRevisionId());
         event.reply().complete(null);
+    }
+
+    @EventListener
+    void on(ActiveDecksByIdsRequested event) {
+        event.reply().complete(vocabulary.findActiveDecksByIds(event.deckIds()));
     }
 }

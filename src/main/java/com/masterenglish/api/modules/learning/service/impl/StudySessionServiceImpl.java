@@ -237,6 +237,13 @@ public class StudySessionServiceImpl implements StudySessionService {
         return getDailyStudySecondsInternal(userId, localDay);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Set<LocalDate> findActivityLocalDays(UUID userId) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        return Set.copyOf(studySessions.findDistinctLocalDaysWithActiveStudy(userId));
+    }
+
     private long getDailyStudySecondsInternal(UUID userId, LocalDate localDay) {
         return toWholeSeconds(studySessions.sumActiveSecondsForUserAndDay(userId, localDay));
     }

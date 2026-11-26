@@ -28,6 +28,8 @@ public interface NotificationService {
     /** Returns defaults without creating a row when the learner has not saved settings yet. */
     NotificationPreferencesResponse getPreferences(UUID userId);
 
+    String findLearnerTimezone(UUID userId);
+
     NotificationPreferencesResponse updatePreferences(
             UUID userId, UpdateNotificationPreferencesRequest request);
 

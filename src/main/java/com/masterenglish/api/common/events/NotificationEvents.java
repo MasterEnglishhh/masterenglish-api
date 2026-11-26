@@ -21,6 +21,10 @@ public class NotificationEvents {
         return events.request(reply -> new UnreadCountRequested(userId, reply));
     }
 
+    public String findLearnerTimezone(UUID userId) {
+        return events.request(reply -> new LearnerTimezoneRequested(userId, reply));
+    }
+
     public PageResponse<DeliveryView> findDeliveries(
             String status,
             String channel,
@@ -61,6 +65,8 @@ public class NotificationEvents {
     }
 
     public record UnreadCountRequested(UUID userId, EventReply<Long> reply) {}
+
+    public record LearnerTimezoneRequested(UUID userId, EventReply<String> reply) {}
 
     public record DeliveryView(
             UUID id,

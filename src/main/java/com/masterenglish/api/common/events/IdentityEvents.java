@@ -3,8 +3,10 @@ package com.masterenglish.api.common.events;
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.security.RoleCode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -151,4 +153,15 @@ public class IdentityEvents {
 
     public record DailyGoalTargetsRequested(
             Set<UUID> userIds, EventReply<Map<UUID, DailyGoalTarget>> reply) {}
+
+    /** Learner's current goal, or empty when none has been configured yet. */
+    public Optional<LearningGoalView> findLearningGoal(UUID userId) {
+        return events.request(reply -> new LearningGoalRequested(userId, reply));
+    }
+
+    public record LearningGoalView(
+            short targetScore, int dailyMinutes, LocalDate targetDate, Instant updatedAt) {}
+
+    public record LearningGoalRequested(
+            UUID userId, EventReply<Optional<LearningGoalView>> reply) {}
 }

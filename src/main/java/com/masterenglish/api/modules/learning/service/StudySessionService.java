@@ -20,4 +20,6 @@ public interface StudySessionService {
     Map<UUID, Long> sumDailyStudySeconds(Map<UUID, LocalDate> userLocalDays);
 
     long getDailyStudySeconds(UUID userId, LocalDate localDay);
+
+    java.util.Set<LocalDate> findActivityLocalDays(UUID userId);
 }

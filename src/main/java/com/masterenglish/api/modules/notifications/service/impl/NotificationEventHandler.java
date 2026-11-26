@@ -6,6 +6,7 @@ import com.masterenglish.api.common.events.NotificationEvents.AdminFindReminderH
 import com.masterenglish.api.common.events.NotificationEvents.AdminGetReminderRule;
 import com.masterenglish.api.common.events.NotificationEvents.AdminListReminderRules;
 import com.masterenglish.api.common.events.NotificationEvents.AdminUpdateReminderRule;
+import com.masterenglish.api.common.events.NotificationEvents.LearnerTimezoneRequested;
 import com.masterenglish.api.common.events.NotificationEvents.UnreadCountRequested;
 import com.masterenglish.api.modules.notifications.service.ContentNotificationService;
 import com.masterenglish.api.modules.notifications.service.NotificationAdminService;
@@ -39,6 +40,11 @@ class NotificationEventHandler {
     @EventListener
     void on(UnreadCountRequested event) {
         event.reply().complete(notificationService.countUnread(event.userId()).count());
+    }
+
+    @EventListener
+    void on(LearnerTimezoneRequested event) {
+        event.reply().complete(notificationService.findLearnerTimezone(event.userId()));
     }
 
     @EventListener
