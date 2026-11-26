@@ -383,6 +383,12 @@ public class PracticeServiceImpl implements PracticeService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnedAttempt(UUID userId, UUID attemptId) {
+        return attempts.findByIdAndUserId(attemptId, userId).isPresent();
+    }
+
     private static BusinessException notFound(String message) {
         return new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, message);
     }

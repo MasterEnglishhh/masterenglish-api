@@ -38,6 +38,13 @@ public class PracticeEvents {
                 reply -> new SelectionRequested(requestId, category, topicIds, limit, reply));
     }
 
+    /** True when the practice attempt exists and belongs to the learner. */
+    public boolean existsOwnedAttempt(UUID userId, UUID attemptId) {
+        return events.request(reply -> new OwnedAttemptRequested(userId, attemptId, reply));
+    }
+
+    public record OwnedAttemptRequested(UUID userId, UUID attemptId, EventReply<Boolean> reply) {}
+
     public record AvailableCountRequested(
             String category, Set<UUID> topicIds, EventReply<Long> reply) {}
 
