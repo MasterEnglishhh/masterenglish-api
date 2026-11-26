@@ -4,11 +4,13 @@ Hợp đồng kỹ thuật cho module `notifications`. Ngày ban hành: 19/11/20
 
 Trạng thái (nhánh `feat/m10-notification-complete` / PR #16):
 
-- Đã triển khai: M10.01–M10.04 (feed + lọc `type`/`unreadOnly`, đếm chưa đọc, đánh dấu đã đọc 1/tất cả, kênh nhận, giờ nhắc/múi giờ/quiet hours), M10.05 (scheduler nhắc thẻ đến hạn `REVIEW_DUE`), M10.08 (worker gửi email qua outbox), M10.09 (`GET /api/v1/admin/notifications/deliveries`), M10.10 (`GET|PUT /api/v1/admin/notifications/rules` + `audit_logs`), M10.11 (`GET /api/v1/notifications/reminders/history` & `GET /api/v1/admin/notifications/history`).
-- Bị chặn / Chờ xác nhận nghiệp vụ & Flyway baseline:
-  - M10.06 (`DAILY_GOAL` – nhắc mục tiêu/lịch học hằng ngày): phụ thuộc schema `study_sessions` + `study_schedules` và bản ghi seed `reminder_rules('DAILY_GOAL')` + chốt quy tắc kích hoạt; chưa thể tạo migration mới khi chưa truy cập `flyway_schema_history` trên DB dùng chung.
-  - M10.07 (`CONTENT_NEW` – thông báo nội dung mới): `ContentEvents.RevisionPublished` đã được phát sau bước duyệt/publish (và chặn item archived/revoked), nhưng chưa có quyết định nghiệp vụ được phê duyệt cho loại nội dung kích hoạt, điều kiện lần publish đầu vs tái xuất bản, nhóm người nhận, kênh gửi (`IN_APP`/`EMAIL`) và seed rule `CONTENT_NEW`.
-- Ngoài phạm vi M10: chuyển email OTP/bảo mật sang outbox, browser push, bảng `system_settings`.
+- Đã triển khai đầy đủ **M10.01–M10.11**:
+  - **M10.01–M10.04:** feed + lọc `type`/`unreadOnly`, đếm chưa đọc, đánh dấu đã đọc 1/tất cả, kênh nhận (`inAppEnabled`, `emailEnabled`, `contentNotificationsEnabled`), giờ nhắc/múi giờ/quiet hours.
+  - **M10.05:** scheduler nhắc thẻ đến hạn `REVIEW_DUE`.
+  - **M10.06:** scheduler nhắc mục tiêu hằng ngày `DAILY_GOAL` (đối chiếu `learning_goals.daily_minutes` và `study_sessions` thực tế theo múi giờ/ngày địa phương).
+  - **M10.07:** thông báo nội dung mới `CONTENT_NEW` qua Spring Modulith `event_publication` + `@ApplicationModuleListener` khi công bố thủ công lần đầu một `DECK` mới (opt-in `contentNotificationsEnabled`, chỉ `ACTIVE` verified `LEARNER`, loại trừ admin).
+  - **M10.08–M10.11:** worker gửi email qua outbox, theo dõi delivery, quản trị `reminder_rules` + `audit_logs`, và lịch sử nhắc Learner & Admin.
+- Ngoài phạm vi M10: chuyển email OTP/bảo mật sang outbox, browser push, bảng `system_settings`, bảng `study_schedules`.
 
 ## 1. Dữ liệu
 
@@ -18,11 +20,17 @@ Flyway `V11__create_notifications.sql` tạo bốn bảng lấy nguyên văn t�
 (`otp_challenge_id`, `encrypted_payload`, `encryption_key_id`, `sensitive_expires_at`) được giữ
 theo baseline nhưng entity chưa ánh xạ, vì email OTP vẫn gửi trực tiếp.
 
+Flyway `V16__add_content_notifications_and_daily_goal_rule.sql` bổ sung cột
+`content_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE` trên `notification_preferences` và
+seed quy tắc `DAILY_GOAL`. Flyway `V17__create_study_sessions.sql` tạo bảng `study_sessions`
+(module `learning`) theo chuẩn `approved-baseline.sql`.
+
 Seed `reminder_rules`:
 
 | code | enabled | minimum_gap_minutes |
 |---|---|---|
 | `REVIEW_DUE` | `TRUE` | `720` |
+| `DAILY_GOAL` | `TRUE` | `720` |
 
 **Lệch có chủ đích so với baseline.** Baseline đặt default `minimum_gap_minutes = 1440`. Seed dùng
 720 vì scheduler chạy 15 phút/lần và được gửi bù trong cùng ngày địa phương. Với khoảng cách 24 giờ,
@@ -106,6 +114,7 @@ Thông báo chỉ có kênh `EMAIL` (người học tắt in-app) không xuất 
 {
   "inAppEnabled": true,
   "emailEnabled": false,
+  "contentNotificationsEnabled": false,
   "dailyReminderTime": "20:00",
   "timezone": "Asia/Ho_Chi_Minh",
   "quietHoursStart": "22:30",
@@ -116,17 +125,18 @@ Thông báo chỉ có kênh `EMAIL` (người học tắt in-app) không xuất 
 
 - `GET` khi chưa lưu lần nào trả mặc định và **không tạo bản ghi**: `inAppEnabled=true`,
   `emailEnabled=notification.learning-email-default` (mặc định `false`),
+  `contentNotificationsEnabled=false`,
   `timezone=notification.default-timezone` (mặc định `Asia/Ho_Chi_Minh`), các giờ `null`,
   `updatedAt=null`.
-- `PUT` thay toàn bộ cài đặt (gửi đủ trường; trường giờ có thể `null`) và trả bản đã lưu.
-- `dailyReminderTime = null` nghĩa là chưa đặt lịch: hệ thống không tự nhắc.
+- `PUT` thay toàn bộ cài đặt (gửi đủ trường bao gồm `contentNotificationsEnabled`; trường giờ có thể `null`) và trả bản đã lưu.
+- `dailyReminderTime = null` nghĩa là chưa đặt lịch: hệ thống không tự nhắc `REVIEW_DUE` và `DAILY_GOAL`.
 - Quiet hours `[start, end)`; `start > end` nghĩa là khoảng vắt qua nửa đêm.
 
 Kiểm tra đầu vào (lỗi trả `400 ProblemDetail`):
 
 | Trường | Quy tắc |
 |---|---|
-| `inAppEnabled`, `emailEnabled` | Bắt buộc, boolean |
+| `inAppEnabled`, `emailEnabled`, `contentNotificationsEnabled` | Bắt buộc, boolean |
 | `timezone` | Bắt buộc, ≤ 60 ký tự, tên múi giờ IANA chuẩn tương thích PostgreSQL `pg_timezone_names` (hỗ trợ các backward alias tương đương lịch sử như `Asia/Saigon` → `Asia/Ho_Chi_Minh`, `US/Eastern` → `America/New_York`; từ chối offset như `+07:00`, `UTC+07:00`, `SystemV/*` và các chuỗi POSIX `EST5EDT`, `CST6CDT`, `MST7MDT`, `PST8PDT`) |
 | `dailyReminderTime`, `quietHoursStart`, `quietHoursEnd` | `HH:mm` hoặc `null`; giờ có giây như `20:00:30` bị từ chối |
 | `quietHoursStart` / `quietHoursEnd` | Cùng `null` hoặc cùng có giá trị, và hai mốc khác nhau |
@@ -164,7 +174,7 @@ phải URL tuyệt đối) làm app dừng ngay khi khởi động thay vì ch�
 
 ### Checklist deploy
 
-1. Chạy Flyway tới V11 (V10 grammar, V11 notifications).
+1. Chạy Flyway tuần tự tới V17 (`out-of-order=true` bảo đảm áp dụng sạch `V11`, `V16`, `V17` trên cả schema đang ở `V10`/`V11`/`V13`, đồng thời chừa trống `V14` cho Practice và `V15` cho M08 Content Ops).
 2. Giữ `NOTIFICATION_SCHEDULER_ENABLED` mặc định (`true`) trên một hoặc nhiều instance; dedupe và
    `SKIP LOCKED` cho phép chạy song song.
 3. Muốn gửi email nhắc: đặt `MAIL_ENABLED=true`, `MAIL_FROM`, cấu hình SMTP (`SMTP_*`) và

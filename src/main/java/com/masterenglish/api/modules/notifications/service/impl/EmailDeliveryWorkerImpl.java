@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.notifications.service.impl;
 
 import com.masterenglish.api.common.events.IdentityEvents;
 import com.masterenglish.api.config.NotificationProperties;
+import com.masterenglish.api.modules.notifications.entity.NotificationType;
 import com.masterenglish.api.modules.notifications.service.EmailDeliveryWorker;
 import com.masterenglish.api.modules.notifications.service.ReminderMailException;
 import com.masterenglish.api.modules.notifications.service.ReminderMailer;
@@ -181,8 +182,14 @@ public class EmailDeliveryWorkerImpl implements EmailDeliveryWorker {
     private String text(ClaimedDelivery delivery) {
         String base = properties.mail().webBaseUrl();
         String target = delivery.targetUrl() == null ? "/" : delivery.targetUrl();
+        String ctaLabel =
+                delivery.type() == NotificationType.CONTENT_NEW
+                        ? "Xem ngay: "
+                        : (delivery.type() == NotificationType.DAILY_GOAL
+                                ? "Học ngay: "
+                                : "Ôn ngay: ");
         StringBuilder body = new StringBuilder();
-        body.append(delivery.body()).append("\n\nÔn ngay: ").append(base).append(target);
+        body.append(delivery.body()).append("\n\n").append(ctaLabel).append(base).append(target);
         if (properties.mail().hasSettingsPath()) {
             body.append("\n\nĐổi giờ nhắc hoặc tắt email nhắc học: ")
                     .append(base)

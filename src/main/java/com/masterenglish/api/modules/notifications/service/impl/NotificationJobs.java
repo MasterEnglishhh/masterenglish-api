@@ -42,10 +42,18 @@ class NotificationJobs {
             fixedDelayString = "${notification.scheduler.interval:PT15M}",
             initialDelayString = "${notification.scheduler.initial-delay:PT1M}")
     void planReminders() {
+        java.time.Instant now = clock.instant();
         try {
-            planner.planReviewDueReminders(clock.instant());
+            planner.planReviewDueReminders(now);
         } catch (RuntimeException exception) {
-            log.error("Reminder planning failed: {}", exception.getClass().getSimpleName());
+            log.error("Review reminder planning failed: {}", exception.getClass().getSimpleName());
+        }
+        try {
+            planner.planDailyGoalReminders(now);
+        } catch (RuntimeException exception) {
+            log.error(
+                    "Daily goal reminder planning failed: {}",
+                    exception.getClass().getSimpleName());
         }
     }
 

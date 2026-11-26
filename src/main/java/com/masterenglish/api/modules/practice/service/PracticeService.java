@@ -29,4 +29,6 @@ public interface PracticeService {
     AttemptResponse submit(UUID userId, UUID attemptId);
 
     List<TopicStatisticsResponse> topicStatistics(UUID userId);
+
+    boolean existsOwnedAttempt(UUID userId, UUID attemptId);
 }

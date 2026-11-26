@@ -68,7 +68,7 @@ class NotificationPreferencesConcurrencyTests {
 
         try {
             String body =
-                    "{\"inAppEnabled\":true,\"emailEnabled\":true,\"dailyReminderTime\":\"20:00\",\"timezone\":\"Asia/Ho_Chi_Minh\",\"quietHoursStart\":\"22:30\",\"quietHoursEnd\":\"07:00\"}";
+                    "{\"inAppEnabled\":true,\"emailEnabled\":true,\"contentNotificationsEnabled\":true,\"dailyReminderTime\":\"20:00\",\"timezone\":\"Asia/Ho_Chi_Minh\",\"quietHoursStart\":\"22:30\",\"quietHoursEnd\":\"07:00\"}";
             List<Integer> statuses =
                     ConcurrentRequests.runAtOnce(
                             2,

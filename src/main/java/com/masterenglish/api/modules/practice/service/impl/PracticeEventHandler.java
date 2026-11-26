@@ -1,0 +1,21 @@
+package com.masterenglish.api.modules.practice.service.impl;
+
+import com.masterenglish.api.common.events.PracticeEvents.OwnedAttemptRequested;
+import com.masterenglish.api.modules.practice.service.PracticeService;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
+
+@Component
+class PracticeEventHandler {
+
+    private final PracticeService practice;
+
+    PracticeEventHandler(PracticeService practice) {
+        this.practice = practice;
+    }
+
+    @EventListener
+    void on(OwnedAttemptRequested event) {
+        event.reply().complete(practice.existsOwnedAttempt(event.userId(), event.attemptId()));
+    }
+}

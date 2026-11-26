@@ -4,6 +4,7 @@ import com.masterenglish.api.config.NotificationProperties;
 import com.masterenglish.api.modules.notifications.entity.DeliveryStatus;
 import com.masterenglish.api.modules.notifications.entity.Notification;
 import com.masterenglish.api.modules.notifications.entity.NotificationDelivery;
+import com.masterenglish.api.modules.notifications.entity.NotificationType;
 import com.masterenglish.api.modules.notifications.repository.NotificationDeliveryRepository;
 import com.masterenglish.api.modules.notifications.repository.NotificationRepository;
 import java.time.Duration;
@@ -85,7 +86,8 @@ class DeliveryClaimStore {
                             delivery.getRecipientAddress(),
                             notification.getTitle(),
                             notification.getBody(),
-                            notification.getTargetUrl()));
+                            notification.getTargetUrl(),
+                            notification.getType()));
         }
         return Optional.empty();
     }
@@ -134,7 +136,19 @@ class DeliveryClaimStore {
             String recipient,
             String title,
             String body,
-            String targetUrl) {
+            String targetUrl,
+            NotificationType type) {
+
+        ClaimedDelivery(
+                UUID deliveryId,
+                UUID claimToken,
+                UUID userId,
+                String recipient,
+                String title,
+                String body,
+                String targetUrl) {
+            this(deliveryId, claimToken, userId, recipient, title, body, targetUrl, null);
+        }
 
         @Override
         public String toString() {

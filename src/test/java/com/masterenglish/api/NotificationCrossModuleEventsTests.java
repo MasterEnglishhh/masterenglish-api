@@ -3,16 +3,24 @@ package com.masterenglish.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.masterenglish.api.common.events.IdentityEvents;
+import com.masterenglish.api.common.events.IdentityEvents.DailyGoalTarget;
 import com.masterenglish.api.common.events.LearningEvents;
+import com.masterenglish.api.common.events.PracticeEvents;
+import com.masterenglish.api.modules.identity.entity.LearningGoal;
 import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
+import com.masterenglish.api.modules.identity.repository.LearningGoalRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.learning.entity.StudySession;
+import com.masterenglish.api.modules.learning.entity.StudySourceType;
 import com.masterenglish.api.modules.learning.entity.UserWordProgress;
+import com.masterenglish.api.modules.learning.repository.StudySessionRepository;
 import com.masterenglish.api.modules.learning.repository.UserWordProgressRepository;
 import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -34,8 +42,11 @@ class NotificationCrossModuleEventsTests {
 
     @Autowired private LearningEvents learning;
     @Autowired private IdentityEvents identity;
+    @Autowired private PracticeEvents practice;
     @Autowired private VocabularySeedService seedService;
     @Autowired private UserWordProgressRepository progress;
+    @Autowired private StudySessionRepository studySessions;
+    @Autowired private LearningGoalRepository learningGoals;
     @Autowired private UserRepository userRepository;
     @Autowired private EntityManager entityManager;
     @Autowired private JdbcTemplate jdbc;
@@ -73,6 +84,80 @@ class NotificationCrossModuleEventsTests {
 
         assertThat(emails).containsOnly(Map.entry(active, active + "@example.test"));
         assertThat(identity.findActiveEmails(Set.of())).isEmpty();
+    }
+
+    @Test
+    @DisplayName(
+            "findActiveLearnerEmails chỉ trả LEARNER ACTIVE đã xác minh và loại trừ CONTENT_ADMIN / SYSTEM_ADMIN")
+    void findActiveLearnerEmailsFiltersVerifiedLearnersWithoutAdminRoles() {
+        User pureLearner = account("pure-learner", (short) 1);
+        User hybridContentAdmin = account("hybrid-ca", (short) 1);
+        hybridContentAdmin.addRole(entityManager.find(Role.class, (short) 2));
+        userRepository.saveAndFlush(hybridContentAdmin);
+
+        User hybridSystemAdmin = account("hybrid-sa", (short) 1);
+        hybridSystemAdmin.addRole(entityManager.find(Role.class, (short) 3));
+        userRepository.saveAndFlush(hybridSystemAdmin);
+
+        User adminOnly = account("admin-only", (short) 2);
+        User unverifiedLearner =
+                new User(
+                        "unverified-" + UUID.randomUUID() + "@example.com",
+                        "fixture-only",
+                        "Event",
+                        "Fixture");
+        unverifiedLearner.addRole(entityManager.find(Role.class, (short) 1));
+        userRepository.saveAndFlush(unverifiedLearner);
+
+        Map<UUID, String> recipients =
+                identity.findActiveLearnerEmails(
+                        Set.of(
+                                pureLearner.getId(),
+                                hybridContentAdmin.getId(),
+                                hybridSystemAdmin.getId(),
+                                adminOnly.getId(),
+                                unverifiedLearner.getId()));
+
+        assertThat(recipients).containsOnly(Map.entry(pureLearner.getId(), pureLearner.getEmail()));
+    }
+
+    @Test
+    @DisplayName(
+            "Identity trả mục tiêu daily_minutes và Learning tổng hợp giây học theo từng local_day")
+    void returnsDailyGoalTargetsAndDailyStudySeconds() {
+        User admin = account("study-admin", (short) 2);
+        seedService.seedVocabularyData(admin.getId());
+
+        User withGoal = account("goal-user", (short) 1);
+        User withoutGoal = account("no-goal-user", (short) 1);
+        learningGoals.saveAndFlush(new LearningGoal(withGoal.getId(), (short) 700, 30, null));
+
+        LocalDate today = LocalDate.of(2026, 11, 19);
+        StudySession session =
+                StudySession.open(
+                        withGoal.getId(),
+                        StudySourceType.FLASHCARD,
+                        sense(1),
+                        null,
+                        null,
+                        "Asia/Ho_Chi_Minh",
+                        today,
+                        UUID.randomUUID(),
+                        NOW.minusSeconds(120));
+        session.recordHeartbeat(NOW.minusSeconds(90), new BigDecimal("25.500"));
+        studySessions.saveAndFlush(session);
+
+        Map<UUID, DailyGoalTarget> targets =
+                identity.findDailyGoalTargets(Set.of(withGoal.getId(), withoutGoal.getId()));
+        assertThat(targets)
+                .containsOnly(
+                        Map.entry(withGoal.getId(), new DailyGoalTarget(withGoal.getEmail(), 30)));
+
+        Map<UUID, Long> studySeconds =
+                learning.sumDailyStudySeconds(Map.of(withGoal.getId(), today));
+        assertThat(studySeconds).containsOnly(Map.entry(withGoal.getId(), 25L));
+        assertThat(learning.getDailyStudySeconds(withGoal.getId(), today)).isEqualTo(25L);
+        assertThat(practice.existsOwnedAttempt(withGoal.getId(), UUID.randomUUID())).isFalse();
     }
 
     private static UUID sense(int number) {

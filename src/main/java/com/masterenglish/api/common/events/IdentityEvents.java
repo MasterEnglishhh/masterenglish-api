@@ -128,5 +128,27 @@ public class IdentityEvents {
         return events.request(reply -> new ActiveEmailsRequested(Set.copyOf(userIds), reply));
     }
 
+    /**
+     * Verified ACTIVE learners (excluding CONTENT_ADMIN and SYSTEM_ADMIN) eligible for content
+     * announcements (ADR-01, BR-01).
+     */
+    public Map<UUID, String> findActiveLearnerEmails(Set<UUID> userIds) {
+        return events.request(
+                reply -> new ActiveLearnerEmailsRequested(Set.copyOf(userIds), reply));
+    }
+
+    /** Daily-goal targets (email + configured daily minutes) for ACTIVE users with a goal. */
+    public Map<UUID, DailyGoalTarget> findDailyGoalTargets(Set<UUID> userIds) {
+        return events.request(reply -> new DailyGoalTargetsRequested(Set.copyOf(userIds), reply));
+    }
+
     public record ActiveEmailsRequested(Set<UUID> userIds, EventReply<Map<UUID, String>> reply) {}
+
+    public record ActiveLearnerEmailsRequested(
+            Set<UUID> userIds, EventReply<Map<UUID, String>> reply) {}
+
+    public record DailyGoalTarget(String email, int dailyMinutes) {}
+
+    public record DailyGoalTargetsRequested(
+            Set<UUID> userIds, EventReply<Map<UUID, DailyGoalTarget>> reply) {}
 }

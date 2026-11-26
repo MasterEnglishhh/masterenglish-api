@@ -2,6 +2,7 @@ package com.masterenglish.api.modules.identity.service.impl;
 
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
+import com.masterenglish.api.common.events.IdentityEvents.DailyGoalTarget;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateProfileRequest;
@@ -162,6 +163,25 @@ public class UserServiceImpl implements UserService {
         if (userIds.isEmpty()) return Map.of();
         return userRepository.findAllByIdInAndStatus(userIds, UserStatus.ACTIVE).stream()
                 .collect(Collectors.toMap(User::getId, User::getEmail));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, String> findActiveLearnerEmails(Set<UUID> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        return userRepository.findEligibleLearnersExcludingAdmins(userIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, DailyGoalTarget> findDailyGoalTargets(Set<UUID> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        return goalRepository.findActiveDailyGoalTargets(userIds).stream()
+                .collect(
+                        Collectors.toMap(
+                                LearningGoalRepository.ActiveGoalRow::getUserId,
+                                row -> new DailyGoalTarget(row.getEmail(), row.getDailyMinutes())));
     }
 
     @Override

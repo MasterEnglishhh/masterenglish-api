@@ -16,8 +16,8 @@
 | M10.03 | Thiết lập kênh nhận (`inAppEnabled`, `emailEnabled`) | **IMPLEMENTED** | `NotificationController.getPreferences`, `updatePreferences` |
 | M10.04 | Thiết lập giờ nhắc, IANA timezone, quiet hours & upsert đồng thời | **IMPLEMENTED** | `UpdateNotificationPreferencesRequest`, `NotificationPreferenceRepository.upsertPreference` (`ON CONFLICT DO UPDATE`) |
 | M10.05 | Scheduler nhắc Flashcard đến hạn (`REVIEW_DUE`) | **IMPLEMENTED** | `ReminderPlannerImpl`, `ReminderWriter`, `LearningEvents.countDueCards`, `NotificationJobs` |
-| M10.06 | Nhắc mục tiêu & lịch học hằng ngày (`DAILY_GOAL`) | **BLOCKED** | Thiếu bảng `study_sessions` + `study_schedules`, thiếu seed row `DAILY_GOAL` trong `reminder_rules` và chưa truy cập được `flyway_schema_history` trên DB dùng chung để mở migration mới |
-| M10.07 | Thông báo nội dung mới (`CONTENT_NEW`) | **BLOCKED (Awaiting Owner Rules & Rule Seed)** | `ContentPublication.revisionPublished` phát `ContentEvents.RevisionPublished(itemId, revisionId, type, snapshot)` sau duyệt/publish; chưa có quyết định nghiệp vụ được phê duyệt về `content_type` kích hoạt, lần publish đầu vs sửa revision, đối tượng người học nhận, kênh gửi (`IN_APP`/`EMAIL`) và seed `reminder_rules` |
+| M10.06 | Nhắc mục tiêu & lịch học hằng ngày (`DAILY_GOAL`) | **IMPLEMENTED** | `ReminderPlannerImpl.planDailyGoalReminders`, `ReminderWriter.createDailyGoal`, `IdentityEvents.findDailyGoalTargets`, `LearningEvents.sumDailyStudySeconds`, `StudySessionServiceImpl` (`/api/v1/study-sessions/**`), seed `DAILY_GOAL` trong `V16` + bảng `study_sessions` trong `V17` (`study_schedules` chưa thuộc baseline và chưa mở phạm vi) |
+| M10.07 | Thông báo nội dung mới (`CONTENT_NEW`) | **IMPLEMENTED** | `ContentPublication` phát `ContentEvents.DeckFirstPublished` qua `event_publication` chỉ khi công bố thủ công lần đầu một `DECK` mới (loại trừ seed/import và v2+); `NotificationEventHandler` (`@ApplicationModuleListener`) + `ContentNotificationServiceImpl` gửi theo `contentNotificationsEnabled` tới `ACTIVE` verified `LEARNER` (loại trừ admin), không dùng `reminder_rules` (`targetUrl = /learn/vocabulary?deck={deckId}`) |
 | M10.08 | Gửi email reminder qua outbox | **IMPLEMENTED** | `EmailDeliveryWorkerImpl`, `DeliveryClaimStore` (`FOR UPDATE SKIP LOCKED`, lease 60s, backoff 1/5/30m), `SmtpReminderMailer` |
 | M10.09 | Theo dõi trạng thái gửi (Admin/Ops) | **IMPLEMENTED** | `AdminNotificationController.getDeliveries`, `NotificationDeliveryRepository.findAdminDeliveries` |
 | M10.10 | Quản trị `reminder_rules` + Audit log | **IMPLEMENTED** | `AdminNotificationController.listRules`, `getRule`, `updateRule`, `AdminNotificationServiceImpl` + `ContentEvents.recordAuditLog` |
@@ -44,9 +44,11 @@
   - `src/test/java/com/masterenglish/api/ArchitectureTests.java`
 
 ## 4. Database Migration & Flyway Audit
-- Giữ nguyên **100% nguyên bản** `V11__create_notifications.sql` từ `origin/feat/thong-bao-nhac-hoc-v11` (Git blob SHA-1: `2d6136fc3fb5c8c17a6f9fe1b1bd0f359f5b70bf`), khớp khe `V11` còn trống giữa `V10__create_grammar.sql` và `V12__create_lesson_progress.sql` trên `origin/main` (với `spring.flyway.out-of-order=true`).
-- **Phát hiện xung đột lịch sử với nhánh `dev`:** file `V11__create_notifications.sql` trên nhánh local `dev` (`5953194`) có Git blob SHA-1 khác (`124e9d640517754c40ff98b1e0d348b0ca6884b3`), cho thấy có hai biến thể V11 khác checksum từng tồn tại ngoài `origin/main`.
-- **Không tạo migration mới (`V14`/`V16`) và không sửa `V11`** vì không thể kết nối PostgreSQL staging/EC2 để truy vấn `SELECT version, description, checksum, success FROM flyway_schema_history`.
+- Giữ nguyên **100% nguyên bản** `V11__create_notifications.sql` từ `origin/feat/thong-bao-nhac-hoc-v11` (Git blob SHA-1: `2d6136fc3fb5c8c17a6f9fe1b1bd0f359f5b70bf`), không sửa đổi `V1`–`V13`.
+- Chừa trống `V14` (đã giữ cho `docs/practice/CONTRACT.md`) và `V15` (đang dùng trên `origin/feat/m08-content-ops`), bổ sung:
+  - `V16__add_content_notifications_and_daily_goal_rule.sql`: thêm cột `content_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE` trên `notification_preferences` và seed `DAILY_GOAL` trong `reminder_rules`.
+  - `V17__create_study_sessions.sql`: tạo bảng `study_sessions` + indexes (`uq_study_one_open`, `ix_study_day`) lấy nguyên mẫu từ `approved-baseline.sql`.
+- Đã kiểm thử upgrade từ `V9` -> `latest` và từ `V11` -> `latest` qua Testcontainers PostgreSQL 17 trong `NotificationsUpgradeTests`.
 
 ## 5. API & Event Contracts
 - **API Learner (`LEARNER`):**
@@ -55,15 +57,16 @@
   - `POST /api/v1/notifications/{id}/read`
   - `POST /api/v1/notifications/read-all`
   - `GET /api/v1/notifications/preferences`
-  - `PUT /api/v1/notifications/preferences`
+  - `PUT /api/v1/notifications/preferences` *(bao gồm `contentNotificationsEnabled` bắt buộc)*
   - `GET /api/v1/notifications/reminders/history` (`type`, `status`, `ruleCode`, `from`, `to`, `page`, `size`)
+  - `POST /api/v1/study-sessions`, `POST /api/v1/study-sessions/{sessionId}/heartbeat`, `POST /api/v1/study-sessions/{sessionId}/close`
 - **API Admin (`SYSTEM_ADMIN`):**
   - `GET /api/v1/admin/notifications/deliveries`
   - `GET /api/v1/admin/notifications/rules`
   - `GET /api/v1/admin/notifications/rules/{ruleId}`
   - `PUT /api/v1/admin/notifications/rules/{ruleId}` *(ghi `audit_logs` trong cùng transaction)*
   - `GET /api/v1/admin/notifications/history`
-- **Event Contracts:** `IdentityEvents.findActiveEmails(Set<UUID>)`, `LearningEvents.countDueCards(Set<UUID>, Instant)`, `NotificationEvents` (`countUnreadInFeed`, `findDeliveries`, `listReminderRules`, `getReminderRule`, `updateReminderRule`, `findReminderHistory`), `ContentEvents.recordAuditLog(...)`.
+- **Event Contracts:** `IdentityEvents` (`findActiveEmails`, `findActiveLearnerEmails`, `findDailyGoalTargets`), `LearningEvents` (`countDueCards`, `sumDailyStudySeconds`, `getDailyStudySeconds`), `ContentEvents` (`DeckFirstPublished`, `isItemActive`, `recordAuditLog`), `PracticeEvents.existsOwnedAttempt`, `NotificationEvents`.
 
 ## 6. Kết quả kiểm thử & Build
 - **PR #16 commit `0bb46c3173c347af088f01501f3bffe54b3e4c41` trên GitHub Actions CI (`run 45456847599`):** `verify` job (`spotlessCheck check bootJar --no-daemon` + Docker build với PostgreSQL 17 Testcontainers) **PASS** (`6m03s`).
@@ -74,7 +77,5 @@
 - `/api/v1/admin/notifications/**`: bắt buộc `SYSTEM_ADMIN` (`LEARNER` và `CONTENT_ADMIN` bị `403`).
 - Không lộ `recipientAddress`, `claimToken`, `encryptedPayload` trong API hay log. Outbox claim sử dụng `FOR UPDATE SKIP LOCKED`, lease 60s, backoff 1/5/30 phút (tối đa 4 lần).
 
-## 8. Những vấn đề cần chủ dự án xác nhận
-1. Truy vấn read-only `flyway_schema_history` trên staging/EC2 DB (đặc biệt xác nhận V11 có từng áp dụng bản `dev` hay chưa, và V12–V15).
-2. Nghiệp vụ **M10.07 (`CONTENT_NEW`)**: danh sách `content_type` kích hoạt (`DECK`, `GRAMMAR_LESSON`, `PRACTICE_SET`...), phân biệt publish lần đầu v1 vs sửa đổi v2+, tiêu chí chọn nhóm learner nhận, kênh gửi (`IN_APP` vs `EMAIL`), và xác nhận tạo row `CONTENT_NEW` trong `reminder_rules`.
-3. Nghiệp vụ **M10.06 (`DAILY_GOAL`)**: quy tắc kích hoạt đối chiếu `Study Schedule` (manual/accepted) và `Study Session` thực tế trong ngày theo timezone.
+## 8. Ghi chú vận hành còn lại (không chặn code M10)
+- Khi triển khai lên môi trường staging/EC2, chạy bộ SQL read-only [M10_07_shared_db_readonly_audit.sql](../audit/M10_07_shared_db_readonly_audit.sql) để kiểm tra `flyway_schema_history` trước khi áp dụng `V11`, `V16`, `V17`.
