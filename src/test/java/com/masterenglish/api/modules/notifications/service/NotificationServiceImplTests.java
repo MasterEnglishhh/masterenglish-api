@@ -83,6 +83,7 @@ class NotificationServiceImplTests {
 
         assertThat(result.inAppEnabled()).isTrue();
         assertThat(result.emailEnabled()).isFalse();
+        assertThat(result.contentNotificationsEnabled()).isFalse();
         assertThat(result.timezone()).isEqualTo("Asia/Bangkok");
         assertThat(result.dailyReminderTime()).isNull();
         assertThat(result.updatedAt()).isNull();
@@ -98,6 +99,7 @@ class NotificationServiceImplTests {
                         new UpdateNotificationPreferencesRequest(
                                 true,
                                 true,
+                                true,
                                 LocalTime.of(19, 30),
                                 "Asia/Tokyo",
                                 LocalTime.of(23, 0),
@@ -108,12 +110,14 @@ class NotificationServiceImplTests {
                         userId,
                         true,
                         true,
+                        true,
                         LocalTime.of(19, 30),
                         "Asia/Tokyo",
                         LocalTime.of(23, 0),
                         LocalTime.of(6, 0),
                         NOW);
         assertThat(result.emailEnabled()).isTrue();
+        assertThat(result.contentNotificationsEnabled()).isTrue();
         assertThat(result.dailyReminderTime()).isEqualTo(LocalTime.of(19, 30));
         assertThat(result.timezone()).isEqualTo("Asia/Tokyo");
         assertThat(result.updatedAt()).isEqualTo(NOW);

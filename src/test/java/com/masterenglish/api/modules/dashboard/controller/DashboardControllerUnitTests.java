@@ -96,8 +96,7 @@ class DashboardControllerUnitTests {
                                 LocalDate.of(2026, 11, 25), "Asia/Ho_Chi_Minh", 3, true, 5),
                         new VocabularyProgressSummary(12, 4, 3, 7, 25, 10),
                         new TodayReviewSummary(3, 7, List.of()),
-                        new LearningGoalSummary(
-                                false, null, null, null, null, 3, true, null, false),
+                        new LearningGoalSummary(false, null, null, null, null, 3, true, 12, true),
                         new StudyPlanSummary(
                                 new StudyGoalSummary(false, null, null),
                                 new ToeicTargetSummary(
@@ -108,14 +107,7 @@ class DashboardControllerUnitTests {
                                         List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
                                         null,
                                         0),
-                                new StudySessionSummary(
-                                        false,
-                                        "UNAVAILABLE_PENDING_MIGRATION",
-                                        null,
-                                        null,
-                                        null,
-                                        3,
-                                        true)),
+                                new StudySessionSummary(true, "READY", 12, null, null, 3, true)),
                         new PracticeStatisticsSummary(
                                 2,
                                 1,
@@ -176,11 +168,13 @@ class DashboardControllerUnitTests {
                 .andExpect(jsonPath("$.overview.streakDays").value(3))
                 .andExpect(jsonPath("$.vocabularyProgress.studiedSenses").value(12))
                 .andExpect(jsonPath("$.todayReview.dueNow").value(3))
-                .andExpect(jsonPath("$.learningGoal.studyTimeTrackingAvailable").value(false))
+                .andExpect(jsonPath("$.learningGoal.studyTimeTrackingAvailable").value(true))
+                .andExpect(jsonPath("$.learningGoal.todayActiveMinutes").value(12))
                 .andExpect(
                         jsonPath("$.studyPlan.studySchedule.status")
                                 .value("UNAVAILABLE_PENDING_MIGRATION"))
-                .andExpect(jsonPath("$.studyPlan.studySession.trackingAvailable").value(false))
+                .andExpect(jsonPath("$.studyPlan.studySession.trackingAvailable").value(true))
+                .andExpect(jsonPath("$.studyPlan.studySession.todayActualMinutes").value(12))
                 .andExpect(jsonPath("$.practiceStatistics.completedGrammarLessons").value(2))
                 .andExpect(
                         jsonPath("$.practiceStatistics.toeicListening.status")

@@ -299,11 +299,12 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                                                 "Content item not found: "
                                                         + revision.getContentItemId()));
 
-        publishRevision(item, revision, publisherId);
+        publishRevision(item, revision, publisherId, true);
         return response(revision);
     }
 
-    private void publishRevision(ContentItem item, ContentRevision revision, UUID publisherId) {
+    private void publishRevision(
+            ContentItem item, ContentRevision revision, UUID publisherId, boolean manualPublish) {
         log.debug("Publishing content revision {}", revision.getId());
         if (!item.allowsRevisionChanges()) {
             throw new BusinessException(ErrorCode.CONFLICT, "Content item cannot be edited.");
@@ -319,12 +320,16 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
             throw new BusinessException(
                     ErrorCode.CONFLICT, "Only an explicitly approved revision can be published.");
         }
+        boolean firstPublication =
+                item.getPublishedRevisionId() == null
+                        && !revisionRepository.existsByContentItemIdAndStatus(
+                                item.getId(), "PUBLISHED");
         publication.prepare(item, revision);
         // Write source snapshots and dependencies before their parent becomes immutable.
         revisionRepository.flush();
         revision.publish(publisherId);
         item.setPublishedRevisionId(revision.getId());
-        publication.revisionPublished(item, revision);
+        publication.revisionPublished(item, revision, manualPublish && firstPublication);
 
         auditLogRepository.save(
                 new AuditLog(
@@ -377,7 +382,7 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                         sourceId);
         submitRevision(draft.revision(), createdBy);
         approveRevision(draft.revision(), createdBy, "Explicit author approval");
-        publishRevision(draft.item(), draft.revision(), createdBy);
+        publishRevision(draft.item(), draft.revision(), createdBy, false);
         return draft.revision().getId();
     }
 

@@ -117,6 +117,7 @@ public class NotificationServiceImpl implements NotificationService {
                                 new NotificationPreferencesResponse(
                                         true,
                                         properties.learningEmailDefault(),
+                                        false,
                                         null,
                                         properties.defaultTimezone(),
                                         null,
@@ -144,6 +145,7 @@ public class NotificationServiceImpl implements NotificationService {
                 userId,
                 request.inAppEnabled(),
                 request.emailEnabled(),
+                request.contentNotificationsEnabled(),
                 request.dailyReminderTime(),
                 canonicalTimezone,
                 request.quietHoursStart(),
@@ -152,6 +154,7 @@ public class NotificationServiceImpl implements NotificationService {
         return new NotificationPreferencesResponse(
                 request.inAppEnabled(),
                 request.emailEnabled(),
+                request.contentNotificationsEnabled(),
                 request.dailyReminderTime(),
                 canonicalTimezone,
                 request.quietHoursStart(),
@@ -267,6 +270,7 @@ public class NotificationServiceImpl implements NotificationService {
         return new NotificationPreferencesResponse(
                 preference.isInAppEnabled(),
                 preference.isEmailEnabled(),
+                preference.isContentNotificationsEnabled(),
                 preference.getDailyReminderTime(),
                 preference.getTimezone(),
                 preference.getQuietHoursStart(),

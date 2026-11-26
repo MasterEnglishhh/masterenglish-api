@@ -11,6 +11,7 @@ import java.time.LocalTime;
 public record UpdateNotificationPreferencesRequest(
         @NotNull Boolean inAppEnabled,
         @NotNull Boolean emailEnabled,
+        @NotNull Boolean contentNotificationsEnabled,
         LocalTime dailyReminderTime,
         @NotBlank @Size(max = 60) String timezone,
         LocalTime quietHoursStart,

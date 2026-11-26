@@ -41,6 +41,7 @@ class NotificationJobsTests {
         jobs.deliverEmails();
 
         verify(planner).planReviewDueReminders(NOW);
+        verify(planner).planDailyGoalReminders(NOW);
         verify(worker).deliverDueEmails();
     }
 
@@ -48,12 +49,14 @@ class NotificationJobsTests {
     @DisplayName("Lỗi runtime trong job bị bắt an toàn để không làm chết scheduler")
     void scheduledJobsSwallowRuntimeExceptions() {
         when(planner.planReviewDueReminders(NOW)).thenThrow(new IllegalStateException("db"));
+        when(planner.planDailyGoalReminders(NOW)).thenThrow(new IllegalStateException("db"));
         when(worker.deliverDueEmails()).thenThrow(new IllegalStateException("smtp"));
 
         jobs.planReminders();
         jobs.deliverEmails();
 
         verify(planner).planReviewDueReminders(NOW);
+        verify(planner).planDailyGoalReminders(NOW);
         verify(worker).deliverDueEmails();
     }
 }

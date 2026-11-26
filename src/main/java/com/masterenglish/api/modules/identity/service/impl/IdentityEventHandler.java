@@ -1,6 +1,8 @@
 package com.masterenglish.api.modules.identity.service.impl;
 
 import com.masterenglish.api.common.events.IdentityEvents.ActiveEmailsRequested;
+import com.masterenglish.api.common.events.IdentityEvents.ActiveLearnerEmailsRequested;
+import com.masterenglish.api.common.events.IdentityEvents.DailyGoalTargetsRequested;
 import com.masterenglish.api.common.events.IdentityEvents.LearningGoalRequested;
 import com.masterenglish.api.common.events.IdentityEvents.LockUser;
 import com.masterenglish.api.common.events.IdentityEvents.ResolveContentAdmin;
@@ -29,6 +31,16 @@ class IdentityEventHandler {
     @EventListener
     void on(LearningGoalRequested event) {
         event.reply().complete(profiles.findOptionalGoalByUserId(event.userId()));
+    }
+
+    @EventListener
+    void on(ActiveLearnerEmailsRequested event) {
+        event.reply().complete(profiles.findActiveLearnerEmails(event.userIds()));
+    }
+
+    @EventListener
+    void on(DailyGoalTargetsRequested event) {
+        event.reply().complete(profiles.findDailyGoalTargets(event.userIds()));
     }
 
     @EventListener

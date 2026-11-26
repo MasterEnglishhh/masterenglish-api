@@ -28,6 +28,9 @@ public class NotificationPreference {
     @Column(name = "email_enabled", nullable = false)
     private boolean emailEnabled;
 
+    @Column(name = "content_notifications_enabled", nullable = false)
+    private boolean contentNotificationsEnabled;
+
     @Column(name = "daily_reminder_time")
     private LocalTime dailyReminderTime;
 
@@ -56,8 +59,30 @@ public class NotificationPreference {
             LocalTime quietHoursStart,
             LocalTime quietHoursEnd,
             Instant now) {
+        update(
+                inAppEnabled,
+                emailEnabled,
+                this.contentNotificationsEnabled,
+                dailyReminderTime,
+                timezone,
+                quietHoursStart,
+                quietHoursEnd,
+                now);
+    }
+
+    /** Callers validate the timezone and quiet-hour pair; the database checks them again. */
+    public void update(
+            boolean inAppEnabled,
+            boolean emailEnabled,
+            boolean contentNotificationsEnabled,
+            LocalTime dailyReminderTime,
+            String timezone,
+            LocalTime quietHoursStart,
+            LocalTime quietHoursEnd,
+            Instant now) {
         this.inAppEnabled = inAppEnabled;
         this.emailEnabled = emailEnabled;
+        this.contentNotificationsEnabled = contentNotificationsEnabled;
         this.dailyReminderTime = dailyReminderTime;
         this.timezone = Objects.requireNonNull(timezone);
         this.quietHoursStart = quietHoursStart;

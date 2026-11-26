@@ -38,8 +38,8 @@ public record DashboardResponse(
     public record TodayReviewSummary(long dueNow, long savedSenses, List<DueDeckItem> dueDecks) {}
 
     /**
-     * Backward-compatible goal & streak view (M02.06). {@code todayActiveMinutes} stays null while
-     * {@code study_sessions} migration is pending Flyway baseline verification.
+     * Backward-compatible goal & streak view (M02.06) backed by {@code study_sessions} real
+     * heartbeat accounting.
      */
     public record LearningGoalSummary(
             boolean configured,

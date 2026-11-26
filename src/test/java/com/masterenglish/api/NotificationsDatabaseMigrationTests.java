@@ -51,15 +51,19 @@ class NotificationsDatabaseMigrationTests {
                         "notification_preferences",
                         "reminder_rules",
                         "notifications",
-                        "notification_deliveries")) {
+                        "notification_deliveries",
+                        "study_sessions")) {
             assertThat(jdbc.queryForObject("SELECT to_regclass(?)::text", String.class, table))
                     .isEqualTo(table);
         }
-        var rule = rules.findByCode("REVIEW_DUE").orElseThrow();
-        assertThat(rule.isEnabled()).isTrue();
-        assertThat(rule.getMinimumGapMinutes()).isEqualTo(720);
+        var reviewRule = rules.findByCode("REVIEW_DUE").orElseThrow();
+        assertThat(reviewRule.isEnabled()).isTrue();
+        assertThat(reviewRule.getMinimumGapMinutes()).isEqualTo(720);
+        var dailyGoalRule = rules.findByCode("DAILY_GOAL").orElseThrow();
+        assertThat(dailyGoalRule.isEnabled()).isTrue();
+        assertThat(dailyGoalRule.getMinimumGapMinutes()).isEqualTo(720);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reminder_rules", Integer.class))
-                .isEqualTo(1);
+                .isEqualTo(2);
     }
 
     @Test
@@ -78,10 +82,11 @@ class NotificationsDatabaseMigrationTests {
         jdbc.update("INSERT INTO notification_preferences(user_id) VALUES (?)", user);
         var row =
                 jdbc.queryForMap(
-                        "SELECT in_app_enabled,email_enabled,daily_reminder_time,timezone FROM notification_preferences WHERE user_id=?",
+                        "SELECT in_app_enabled,email_enabled,content_notifications_enabled,daily_reminder_time,timezone FROM notification_preferences WHERE user_id=?",
                         user);
         assertThat(row.get("in_app_enabled")).isEqualTo(true);
         assertThat(row.get("email_enabled")).isEqualTo(false);
+        assertThat(row.get("content_notifications_enabled")).isEqualTo(false);
         assertThat(row.get("daily_reminder_time")).isNull();
         assertThat(row.get("timezone")).isEqualTo("Asia/Ho_Chi_Minh");
     }

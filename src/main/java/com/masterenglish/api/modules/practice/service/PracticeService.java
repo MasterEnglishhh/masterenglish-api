@@ -39,4 +39,6 @@ public interface PracticeService {
     List<TopicStatisticsResponse> topicStatistics(UUID userId);
 
     PracticeSummaryView getPracticeSummary(UUID userId, Instant weaknessSince, String timezone);
+
+    boolean existsOwnedAttempt(UUID userId, UUID attemptId);
 }

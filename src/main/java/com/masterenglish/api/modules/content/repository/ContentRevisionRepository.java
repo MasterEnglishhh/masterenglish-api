@@ -32,6 +32,8 @@ public interface ContentRevisionRepository
 
     List<ContentRevision> findByContentItemIdOrderByVersionNoDesc(UUID contentItemId);
 
+    boolean existsByContentItemIdAndStatus(UUID contentItemId, String status);
+
     boolean existsByContentItemIdAndStatusNot(UUID contentItemId, String status);
 
     long countByStatus(String status);

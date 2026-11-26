@@ -127,7 +127,9 @@ class AdminNotificationControllerIntegrationTests {
 
         mockMvc.perform(get("/api/v1/admin/notifications/rules").with(as(systemAdmin)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].code").value("REVIEW_DUE"));
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].code").value("DAILY_GOAL"))
+                .andExpect(jsonPath("$[1].code").value("REVIEW_DUE"));
 
         mockMvc.perform(
                         put("/api/v1/admin/notifications/rules/" + rule.getId())

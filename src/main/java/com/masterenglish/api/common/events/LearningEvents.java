@@ -22,6 +22,17 @@ public class LearningEvents {
                 reply -> new DueCardsCountRequested(Set.copyOf(userIds), asOf, reply));
     }
 
+    /** Active study seconds summed on each learner's given local day. */
+    public Map<UUID, Long> sumDailyStudySeconds(Map<UUID, LocalDate> userLocalDays) {
+        return events.request(
+                reply -> new DailyStudySecondsRequested(Map.copyOf(userLocalDays), reply));
+    }
+
+    /** Active study seconds on {@code localDay} for one learner. */
+    public long getDailyStudySeconds(UUID userId, LocalDate localDay) {
+        return events.request(reply -> new UserDailyStudySecondsRequested(userId, localDay, reply));
+    }
+
     public VocabularyProgressView getVocabularyProgress(UUID userId) {
         return getVocabularyProgress(userId, null);
     }
@@ -44,6 +55,12 @@ public class LearningEvents {
 
     public record DueCardsCountRequested(
             Set<UUID> userIds, Instant asOf, EventReply<Map<UUID, Long>> reply) {}
+
+    public record DailyStudySecondsRequested(
+            Map<UUID, LocalDate> userLocalDays, EventReply<Map<UUID, Long>> reply) {}
+
+    public record UserDailyStudySecondsRequested(
+            UUID userId, LocalDate localDay, EventReply<Long> reply) {}
 
     public record VocabularyProgressView(
             long studiedSenses,

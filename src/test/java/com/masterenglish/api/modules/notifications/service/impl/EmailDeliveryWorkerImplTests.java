@@ -267,6 +267,54 @@ class EmailDeliveryWorkerImplTests {
                 .contains("https://app.example.test/learn/notifications/settings");
     }
 
+    @Test
+    @DisplayName("Nội dung email dùng lời kêu gọi phù hợp theo từng loại DAILY_GOAL và CONTENT_NEW")
+    void usesTypeSpecificCtaLabelsForDailyGoalAndContentNew() {
+        ClaimedDelivery dailyGoal =
+                new ClaimedDelivery(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "goal@example.test",
+                        "Còn 10 phút",
+                        "Bạn đã học 20/30 phút.",
+                        "/learn",
+                        com.masterenglish.api.modules.notifications.entity.NotificationType
+                                .DAILY_GOAL);
+        ClaimedDelivery contentNew =
+                new ClaimedDelivery(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "content@example.test",
+                        "Bộ từ vựng mới: Core",
+                        "Bộ từ vựng vừa phát hành.",
+                        "/learn/vocabulary?deck=" + UUID.randomUUID(),
+                        com.masterenglish.api.modules.notifications.entity.NotificationType
+                                .CONTENT_NEW);
+
+        when(store.claimNext(eq(NOW), any()))
+                .thenReturn(Optional.of(dailyGoal))
+                .thenReturn(Optional.of(contentNew))
+                .thenReturn(Optional.empty());
+        when(identity.findActiveEmails(any()))
+                .thenAnswer(
+                        inv -> {
+                            java.util.Set<UUID> ids = inv.getArgument(0);
+                            return Map.of(ids.iterator().next(), "ok@example.test");
+                        });
+
+        assertThat(worker.deliverDueEmails()).isEqualTo(2);
+
+        org.mockito.ArgumentCaptor<String> bodyCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(mailer, org.mockito.Mockito.times(2)).send(any(), any(), bodyCaptor.capture());
+        assertThat(bodyCaptor.getAllValues().get(0))
+                .contains("Học ngay: https://app.example.test/learn");
+        assertThat(bodyCaptor.getAllValues().get(1))
+                .contains("Xem ngay: https://app.example.test/learn/vocabulary?deck=");
+    }
+
     private static ClaimedDelivery claimed() {
         UUID userId = UUID.randomUUID();
         return new ClaimedDelivery(

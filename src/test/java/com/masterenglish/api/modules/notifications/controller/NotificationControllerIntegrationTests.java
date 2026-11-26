@@ -220,6 +220,7 @@ class NotificationControllerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.inAppEnabled").value(true))
                 .andExpect(jsonPath("$.emailEnabled").value(false))
+                .andExpect(jsonPath("$.contentNotificationsEnabled").value(false))
                 .andExpect(jsonPath("$.dailyReminderTime").doesNotExist())
                 .andExpect(jsonPath("$.timezone").value("Asia/Ho_Chi_Minh"))
                 .andExpect(jsonPath("$.updatedAt").doesNotExist());
@@ -237,6 +238,7 @@ class NotificationControllerIntegrationTests {
                                 .content(validPreferences()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.emailEnabled").value(true))
+                .andExpect(jsonPath("$.contentNotificationsEnabled").value(true))
                 .andExpect(jsonPath("$.dailyReminderTime").value("20:00"))
                 .andExpect(jsonPath("$.timezone").value("Europe/London"))
                 .andExpect(jsonPath("$.quietHoursStart").value("22:30"))
@@ -245,10 +247,12 @@ class NotificationControllerIntegrationTests {
 
         mockMvc.perform(get("/api/v1/notifications/preferences").with(as(learner)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contentNotificationsEnabled").value(true))
                 .andExpect(jsonPath("$.dailyReminderTime").value("20:00"))
                 .andExpect(jsonPath("$.quietHoursEnd").value("07:00"));
         mockMvc.perform(get("/api/v1/notifications/preferences").with(as(otherLearner)))
-                .andExpect(jsonPath("$.emailEnabled").value(false));
+                .andExpect(jsonPath("$.emailEnabled").value(false))
+                .andExpect(jsonPath("$.contentNotificationsEnabled").value(false));
     }
 
     @Test
@@ -269,7 +273,8 @@ class NotificationControllerIntegrationTests {
             body("true", "false", "\"25:00\"", "\"Asia/Ho_Chi_Minh\"", "null", "null"),
             body("null", "false", "null", "\"Asia/Ho_Chi_Minh\"", "null", "null"),
             body("true", "false", "null", "\"\"", "null", "null"),
-            "{\"inAppEnabled\":true,\"emailEnabled\":false,\"timezone\":\"Asia/Ho_Chi_Minh\",\"extra\":1}"
+            "{\"inAppEnabled\":true,\"emailEnabled\":false,\"timezone\":\"Asia/Ho_Chi_Minh\"}",
+            "{\"inAppEnabled\":true,\"emailEnabled\":false,\"contentNotificationsEnabled\":false,\"timezone\":\"Asia/Ho_Chi_Minh\",\"extra\":1}"
         };
         for (String content : invalid) {
             mockMvc.perform(
@@ -428,13 +433,25 @@ class NotificationControllerIntegrationTests {
     }
 
     private static String validPreferences() {
-        return body("true", "true", "\"20:00\"", "\"Europe/London\"", "\"22:30\"", "\"07:00\"");
+        return body(
+                "true", "true", "true", "\"20:00\"", "\"Europe/London\"", "\"22:30\"", "\"07:00\"");
     }
 
     private static String body(
             String inApp, String email, String time, String zone, String start, String end) {
-        return "{\"inAppEnabled\":%s,\"emailEnabled\":%s,\"dailyReminderTime\":%s,\"timezone\":%s,\"quietHoursStart\":%s,\"quietHoursEnd\":%s}"
-                .formatted(inApp, email, time, zone, start, end);
+        return body(inApp, email, "false", time, zone, start, end);
+    }
+
+    private static String body(
+            String inApp,
+            String email,
+            String contentNotifications,
+            String time,
+            String zone,
+            String start,
+            String end) {
+        return "{\"inAppEnabled\":%s,\"emailEnabled\":%s,\"contentNotificationsEnabled\":%s,\"dailyReminderTime\":%s,\"timezone\":%s,\"quietHoursStart\":%s,\"quietHoursEnd\":%s}"
+                .formatted(inApp, email, contentNotifications, time, zone, start, end);
     }
 
     private UUID feedItem(User owner, String key, Instant createdAt) {

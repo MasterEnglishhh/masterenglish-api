@@ -13,6 +13,7 @@ import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -58,6 +59,7 @@ class DashboardCrossModuleEventsTests {
         assertThat(learning.getLessonProgressSummary(userId).completedCount()).isZero();
         assertThat(learning.countDueCardsByDeck(userId, Instant.now())).isEmpty();
         assertThat(learning.findActivityLocalDays(userId, "Asia/Ho_Chi_Minh")).isEmpty();
+        assertThat(learning.getDailyStudySeconds(userId, LocalDate.of(2026, 11, 25))).isZero();
         assertThat(vocabulary.findActiveDecksByIds(Set.of())).isEmpty();
         assertThat(grammar.listVisibleTopics()).isNotNull();
         assertThat(grammar.listVisibleLessons()).isNotNull();

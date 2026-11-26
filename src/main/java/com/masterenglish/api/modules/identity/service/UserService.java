@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.identity.service;
 
+import com.masterenglish.api.common.events.IdentityEvents.DailyGoalTarget;
 import com.masterenglish.api.common.events.IdentityEvents.LearningGoalView;
 import com.masterenglish.api.modules.identity.dto.request.ChangePasswordRequest;
 import com.masterenglish.api.modules.identity.dto.request.UpdateLearningGoalRequest;
@@ -27,4 +28,13 @@ public interface UserService {
 
     /** Emails of ACTIVE users among the given IDs, for reminder delivery. */
     Map<UUID, String> findActiveEmails(Set<UUID> userIds);
+
+    /**
+     * Verified ACTIVE LEARNER emails (excluding CONTENT_ADMIN and SYSTEM_ADMIN) for content
+     * announcements.
+     */
+    Map<UUID, String> findActiveLearnerEmails(Set<UUID> userIds);
+
+    /** Active users among the given IDs that have a daily learning goal configured. */
+    Map<UUID, DailyGoalTarget> findDailyGoalTargets(Set<UUID> userIds);
 }

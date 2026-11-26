@@ -75,6 +75,7 @@ class DashboardServiceImplTests {
                 .thenReturn(new LessonProgressSummaryView(0, 0, Set.of(), Set.of()));
         when(learning.countDueCardsByDeck(userId, NOW)).thenReturn(List.of());
         when(learning.findActivityLocalDays(userId, TZ)).thenReturn(Set.of());
+        when(learning.getDailyStudySeconds(eq(userId), any())).thenReturn(0L);
         when(grammar.listVisibleTopics()).thenReturn(List.of());
         when(grammar.listVisibleLessons()).thenReturn(List.of());
         when(practice.getPracticeSummary(eq(userId), any(), eq(TZ)))
@@ -91,13 +92,14 @@ class DashboardServiceImplTests {
         assertThat(result.overview().streakDays()).isZero();
         assertThat(result.overview().activeToday()).isFalse();
         assertThat(result.learningGoal().configured()).isFalse();
-        assertThat(result.learningGoal().todayActiveMinutes()).isNull();
-        assertThat(result.learningGoal().studyTimeTrackingAvailable()).isFalse();
+        assertThat(result.learningGoal().todayActiveMinutes()).isZero();
+        assertThat(result.learningGoal().studyTimeTrackingAvailable()).isTrue();
         assertThat(result.studyPlan().studyGoal().configured()).isFalse();
         assertThat(result.studyPlan().toeicTarget().status()).isEqualTo("NOT_CONFIGURED");
         assertThat(result.studyPlan().studySchedule().available()).isFalse();
-        assertThat(result.studyPlan().studySession().trackingAvailable()).isFalse();
-        assertThat(result.studyPlan().studySession().todayActualMinutes()).isNull();
+        assertThat(result.studyPlan().studySession().trackingAvailable()).isTrue();
+        assertThat(result.studyPlan().studySession().status()).isEqualTo("NO_DATA");
+        assertThat(result.studyPlan().studySession().todayActualMinutes()).isZero();
         assertThat(result.practiceStatistics().grammarLessons().status()).isEqualTo("NO_DATA");
         assertThat(result.practiceStatistics().grammarPractice().status()).isEqualTo("NO_DATA");
         assertThat(result.practiceStatistics().toeicListening().available()).isFalse();
@@ -271,20 +273,25 @@ class DashboardServiceImplTests {
                                 List.of(new TopicAccuracyView(topicId, 2, 20, 11, 55)),
                                 Set.of(LocalDate.of(2026, 11, 25))));
         when(notifications.countUnreadInFeed(userId)).thenReturn(3L);
+        when(learning.getDailyStudySeconds(userId, LocalDate.of(2026, 11, 25))).thenReturn(1_140L);
 
         var result = service.getLearnerDashboard(userId);
 
         assertThat(result.learningGoal().configured()).isTrue();
         assertThat(result.learningGoal().targetScore()).isEqualTo((short) 750);
+        assertThat(result.learningGoal().todayActiveMinutes()).isEqualTo(19);
+        assertThat(result.learningGoal().studyTimeTrackingAvailable()).isTrue();
         assertThat(result.studyPlan().studyGoal().configured()).isTrue();
         assertThat(result.studyPlan().studyGoal().plannedDailyMinutes()).isEqualTo(30);
         assertThat(result.studyPlan().toeicTarget().targetScore()).isEqualTo((short) 750);
         assertThat(result.studyPlan().toeicTarget().currentScore()).isNull();
         assertThat(result.studyPlan().toeicTarget().status())
                 .isEqualTo("TARGET_ONLY_BASELINE_UNAVAILABLE");
+        assertThat(result.studyPlan().studySession().trackingAvailable()).isTrue();
+        assertThat(result.studyPlan().studySession().status()).isEqualTo("READY");
         assertThat(result.studyPlan().studySession().plannedDailyMinutes()).isEqualTo(30);
-        assertThat(result.studyPlan().studySession().todayActualMinutes()).isNull();
-        assertThat(result.studyPlan().studySession().dailyGoalCompleted()).isNull();
+        assertThat(result.studyPlan().studySession().todayActualMinutes()).isEqualTo(19);
+        assertThat(result.studyPlan().studySession().dailyGoalCompleted()).isFalse();
         assertThat(result.todayReview().dueDecks()).hasSize(1);
         assertThat(result.notificationSummary().unreadCount()).isEqualTo(3L);
         assertThat(result.recommendations())
@@ -492,5 +499,22 @@ class DashboardServiceImplTests {
         assertThat(gatedResult.recommendations())
                 .extracting(r -> r.targetUrl())
                 .containsExactly("/learn/vocabulary?view=saved");
+    }
+
+    @Test
+    @DisplayName("Đạt đủ số phút mục tiêu hằng ngày trả dailyGoalCompleted=true")
+    void marksDailyGoalCompletedWhenActualMeetsPlannedMinutes() {
+        when(identity.findLearningGoal(userId))
+                .thenReturn(
+                        Optional.of(
+                                new LearningGoalView(
+                                        (short) 800, 20, LocalDate.of(2027, 1, 1), NOW)));
+        when(learning.getDailyStudySeconds(userId, LocalDate.of(2026, 11, 25))).thenReturn(1_259L);
+
+        var result = service.getLearnerDashboard(userId);
+
+        assertThat(result.learningGoal().todayActiveMinutes()).isEqualTo(20);
+        assertThat(result.studyPlan().studySession().todayActualMinutes()).isEqualTo(20);
+        assertThat(result.studyPlan().studySession().dailyGoalCompleted()).isTrue();
     }
 }

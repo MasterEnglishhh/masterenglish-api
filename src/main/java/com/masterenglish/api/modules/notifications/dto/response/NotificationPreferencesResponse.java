@@ -8,6 +8,7 @@ import java.time.LocalTime;
 public record NotificationPreferencesResponse(
         boolean inAppEnabled,
         boolean emailEnabled,
+        boolean contentNotificationsEnabled,
         @JsonFormat(pattern = "HH:mm") LocalTime dailyReminderTime,
         String timezone,
         @JsonFormat(pattern = "HH:mm") LocalTime quietHoursStart,

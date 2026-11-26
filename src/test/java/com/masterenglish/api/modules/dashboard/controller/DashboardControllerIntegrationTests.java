@@ -18,10 +18,13 @@ import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.LearningGoalRepository;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
+import com.masterenglish.api.modules.learning.entity.StudySession;
+import com.masterenglish.api.modules.learning.entity.StudySourceType;
 import com.masterenglish.api.modules.learning.entity.UserSavedWord;
 import com.masterenglish.api.modules.learning.entity.UserWordProgress;
 import com.masterenglish.api.modules.learning.entity.WordReview;
 import com.masterenglish.api.modules.learning.repository.LessonProgressRepository;
+import com.masterenglish.api.modules.learning.repository.StudySessionRepository;
 import com.masterenglish.api.modules.learning.repository.UserSavedWordRepository;
 import com.masterenglish.api.modules.learning.repository.UserWordProgressRepository;
 import com.masterenglish.api.modules.learning.repository.WordReviewRepository;
@@ -70,6 +73,7 @@ class DashboardControllerIntegrationTests {
     @Autowired private UserSavedWordRepository savedWordRepository;
     @Autowired private WordReviewRepository reviewRepository;
     @Autowired private LessonProgressRepository lessonProgressRepository;
+    @Autowired private StudySessionRepository studySessionRepository;
     @Autowired private NotificationRepository notificationRepository;
     @Autowired private NotificationDeliveryRepository deliveryRepository;
     @Autowired private NotificationPreferenceRepository preferenceRepository;
@@ -167,6 +171,23 @@ class DashboardControllerIntegrationTests {
         pref.update(true, false, LocalTime.of(20, 0), "Asia/Ho_Chi_Minh", null, null, now);
         preferenceRepository.saveAndFlush(pref);
 
+        // Study session: 25 active minutes today (< 30 plannedDailyMinutes)
+        LocalDate localToday = LocalDate.ofInstant(now, java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        StudySession todaySession =
+                StudySession.open(
+                        learner.getId(),
+                        StudySourceType.FLASHCARD,
+                        sense1,
+                        null,
+                        null,
+                        "Asia/Ho_Chi_Minh",
+                        localToday,
+                        UUID.randomUUID(),
+                        now.minusSeconds(1_600));
+        todaySession.recordHeartbeat(now.minusSeconds(100), new BigDecimal("1500.000"));
+        todaySession.close(now.minusSeconds(50));
+        studySessionRepository.saveAndFlush(todaySession);
+
         // Grammar topic + 2 lessons (1 completed, 1 unstarted)
         UUID topicId = publishGrammarTopic("Conditionals", "conditionals");
         UUID lessonDone = publishGrammarLesson(topicId, "Zero Conditional", 1);
@@ -254,7 +275,8 @@ class DashboardControllerIntegrationTests {
         assertThat(dashboard.at("/learningGoal/dailyMinutes").asInt())
                 .isEqualTo(goalJson.get("dailyMinutes").asInt());
         assertThat(dashboard.at("/learningGoal/streakDays").asInt()).isGreaterThanOrEqualTo(1);
-        assertThat(dashboard.at("/learningGoal/studyTimeTrackingAvailable").asBoolean()).isFalse();
+        assertThat(dashboard.at("/learningGoal/todayActiveMinutes").asInt()).isEqualTo(25);
+        assertThat(dashboard.at("/learningGoal/studyTimeTrackingAvailable").asBoolean()).isTrue();
 
         assertThat(dashboard.at("/studyPlan/studyGoal/plannedDailyMinutes").asInt())
                 .isEqualTo(goalJson.get("dailyMinutes").asInt());
@@ -262,8 +284,12 @@ class DashboardControllerIntegrationTests {
                 .isEqualTo(goalJson.get("targetScore").asInt());
         assertThat(dashboard.at("/studyPlan/toeicTarget/currentScore").isNull()).isTrue();
         assertThat(dashboard.at("/studyPlan/studySchedule/available").asBoolean()).isFalse();
-        assertThat(dashboard.at("/studyPlan/studySession/trackingAvailable").asBoolean()).isFalse();
-        assertThat(dashboard.at("/studyPlan/studySession/todayActualMinutes").isNull()).isTrue();
+        assertThat(dashboard.at("/studyPlan/studySession/trackingAvailable").asBoolean()).isTrue();
+        assertThat(dashboard.at("/studyPlan/studySession/status").asText()).isEqualTo("READY");
+        assertThat(dashboard.at("/studyPlan/studySession/todayActualMinutes").asInt())
+                .isEqualTo(25);
+        assertThat(dashboard.at("/studyPlan/studySession/dailyGoalCompleted").asBoolean())
+                .isFalse();
 
         assertThat(dashboard.at("/notificationSummary/unreadCount").asLong())
                 .isEqualTo(unreadJson.get("count").asLong())
@@ -425,7 +451,7 @@ class DashboardControllerIntegrationTests {
                                 .with(csrf())
                                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"inAppEnabled\":true,\"emailEnabled\":false,\"dailyReminderTime\":\"20:00\",\"timezone\":\"Asia/Saigon\",\"quietHoursStart\":null,\"quietHoursEnd\":null}"))
+                                        "{\"inAppEnabled\":true,\"emailEnabled\":false,\"contentNotificationsEnabled\":false,\"dailyReminderTime\":\"20:00\",\"timezone\":\"Asia/Saigon\",\"quietHoursStart\":null,\"quietHoursEnd\":null}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.timezone").value("Asia/Ho_Chi_Minh"));
 

@@ -145,8 +145,11 @@ public class DashboardServiceImpl implements DashboardService {
                         properties.recommendations().grammarDeepLinksEnabled());
 
         Integer plannedDailyMinutes = goal.map(LearningGoalView::dailyMinutes).orElse(null);
+        long todayStudySeconds = learning.getDailyStudySeconds(userId, todayLocal);
+        int todayActualMinutes = (int) Math.floorDiv(todayStudySeconds, 60L);
         StudyPlanSummary studyPlan =
-                buildStudyPlan(goal, plannedDailyMinutes, streakDays, activeToday);
+                buildStudyPlan(
+                        goal, plannedDailyMinutes, todayActualMinutes, streakDays, activeToday);
         PracticeStatisticsSummary practiceStatistics =
                 buildPracticeStatistics(lessonProgress, visibleLessons.size(), practiceSummary);
 
@@ -169,8 +172,8 @@ public class DashboardServiceImpl implements DashboardService {
                         goal.map(LearningGoalView::updatedAt).orElse(null),
                         streakDays,
                         activeToday,
-                        null,
-                        false),
+                        todayActualMinutes,
+                        true),
                 studyPlan,
                 practiceStatistics,
                 weaknessAnalysis,
@@ -216,6 +219,7 @@ public class DashboardServiceImpl implements DashboardService {
     private static StudyPlanSummary buildStudyPlan(
             Optional<LearningGoalView> goal,
             Integer plannedDailyMinutes,
+            int todayActualMinutes,
             int streakDays,
             boolean activeToday) {
         StudyGoalSummary studyGoal =
@@ -239,13 +243,15 @@ public class DashboardServiceImpl implements DashboardService {
                         List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
                         null,
                         0);
+        Boolean dailyGoalCompleted =
+                plannedDailyMinutes == null ? null : todayActualMinutes >= plannedDailyMinutes;
         StudySessionSummary studySession =
                 new StudySessionSummary(
-                        false,
-                        STATUS_UNAVAILABLE_PENDING_MIGRATION,
-                        null,
+                        true,
+                        todayActualMinutes > 0 ? "READY" : "NO_DATA",
+                        todayActualMinutes,
                         plannedDailyMinutes,
-                        null,
+                        dailyGoalCompleted,
                         streakDays,
                         activeToday);
         return new StudyPlanSummary(studyGoal, toeicTarget, studySchedule, studySession);
