@@ -1,6 +1,6 @@
 # Hợp đồng Grammar (Giai đoạn 1)
 
-Trạng thái: phần đọc, luồng publish, tiến độ bài học và tổng hợp tiến độ theo chủ điểm đã triển khai trên nhánh `feat/m04-grammar-complete` (Slice 1). Bản nháp quản trị grammar **chưa triển khai** (Slice 4). Các chỗ chưa được duyệt đánh dấu **[cần duyệt]**.
+Trạng thái: phần đọc, luồng publish, tiến độ bài học và tổng hợp tiến độ theo chủ điểm đã triển khai trên nhánh `feat/m04-grammar-complete` (Slice 1). Bản nháp quản trị grammar và bộ lọc `domain=GRAMMAR` đã triển khai ở `admin`/`content` (Slice 4, mục 7). Các chỗ chưa được duyệt đánh dấu **[cần duyệt]**.
 
 Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5, mục 7) và `docs/database/DATA_DICTIONARY.md` (`grammar_topics`, `grammar_lessons`, `lesson_progress`).
 
@@ -30,9 +30,10 @@ Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5
 | `GET /api/v1/grammar/progress/topics` | Đã triển khai (module `learning`, xem mục 8.3; **[cần FE duyệt]**) |
 | Validate snapshot khi duyệt và xuất bản | Đã triển khai |
 | Chiếu bản xuất bản vào `grammar_topics` và `grammar_lessons` | Đã triển khai |
+| Facade `GrammarEvents.lockPublishedTopics` (khóa `FOR SHARE` cho luyện tập) | Đã triển khai (xem mục 8) |
 | Bảng `lesson_progress` | Đã triển khai (migration V12) |
-| API quản trị tạo và sửa bản nháp grammar | Chưa triển khai, chờ duyệt (xem mục 7) |
-| Bộ lọc `domain=GRAMMAR` ở danh sách quản trị | Chưa triển khai, chờ duyệt |
+| API quản trị tạo và sửa bản nháp grammar (`admin`/`content`) | Đã triển khai (Slice 4, xem mục 7) |
+| Bộ lọc `domain=GRAMMAR` ở danh sách quản trị (`admin`/`content`) | Đã triển khai (Slice 4) |
 
 ## 4. API học viên (`hasRole('LEARNER')`)
 
@@ -95,7 +96,7 @@ Phản hồi `GrammarLessonResponse`:
 
 Mỗi phần tử có thêm `hasUpdate` (boolean): `true` khi bài đã `COMPLETED` và bản xuất bản hiện tại khác `lastCompletedRevisionId`. Bản ghi hoàn thành được giữ nguyên khi có bản mới. `PUT` cũng trả `hasUpdate`, luôn `false` ngay sau khi hoàn thành.
 
-Chưa triển khai: trường `hasNewerRevision` và `state` trong phản hồi `GET /lessons/{lessonId}` của `grammar`. Thêm các trường này sẽ làm `grammar` phụ thuộc `learning`, nên cần duyệt riêng. Cờ cập nhật đã có trong phản hồi tiến độ của `learning` (xem trên).
+**Quyết định kiến trúc, không thêm:** trường `hasNewerRevision` và `state` sẽ không nằm trong phản hồi `GET /lessons/{lessonId}` của `grammar`. Thêm chúng sẽ làm `grammar` phụ thuộc `learning`, trong khi `grammar` phải chỉ đọc nội dung. Client lấy `state` và `hasUpdate` qua `GET /api/v1/grammar/progress` hoặc `GET /api/v1/grammar/progress/topics` (thuộc `learning`, xem trên).
 
 **Đã chốt:** không tự tạo `IN_PROGRESS` khi học viên chỉ mở bài. Chỉ PUT mới tạo dòng.
 
@@ -157,18 +158,23 @@ Kiểm thử trong `modules/grammar` xác nhận mã lỗi `VALIDATION_ERROR` �
 3. Sau khi validate thành công, `content` phát `RevisionPublished`. `grammar` ghi bảng đọc trong cùng transaction.
 4. Nếu bước nào lỗi, cả lượt xuất bản được rollback.
 
-## 7. Bản nháp quản trị (chưa triển khai, chờ duyệt)
+## 7. Bản nháp quản trị (đã triển khai, Slice 4)
 
-Đề xuất: thêm sự kiện tạo bản nháp grammar trong `common/events`, xử lý trong `content`, và endpoint trong `admin`. Cần duyệt vì đụng tới ba module khác.
+Endpoint nằm ở `admin`, nghiệp vụ lưu bản nháp ở `content`, nối qua sự kiện `ContentEvents.saveGrammarDraft` trong `common/events`.
 
-Đường dẫn dự kiến (theo bản nháp cũ):
+- `POST /api/v1/admin/content/grammar/topics` → 201, `PUT /api/v1/admin/content/grammar/topics/{id}` → 200
+- `POST /api/v1/admin/content/grammar/lessons` → 201, `PUT /api/v1/admin/content/grammar/lessons/{id}` → 200
 
-- `POST /api/v1/admin/content/grammar/topics`, `PUT /api/v1/admin/content/grammar/topics/{id}`
-- `POST /api/v1/admin/content/grammar/lessons`, `PUT /api/v1/admin/content/grammar/lessons/{id}`
+Quy tắc đã chốt khi triển khai:
 
-Bản nháp chỉ cần đủ trường khi xuất bản. Duyệt và xuất bản dùng các endpoint revision có sẵn.
+- Mọi trường đều tùy chọn. Bản nháp chỉ cần đủ trường khi xuất bản; validator của `grammar` kiểm tra lúc đó. Trường vắng không được ghi vào snapshot.
+- `PUT` khi revision mới nhất là `DRAFT` thì sửa tại chỗ (giữ `latestRevisionId` và `versionNo`). Khi revision mới nhất đã `PUBLISHED` thì tạo phiên bản nháp mới. Khi còn revision ở `IN_REVIEW`, `APPROVED` hoặc `REJECTED` thì trả 409. Mục không tồn tại trả 404. Mục khác loại (ví dụ `GRAMMAR_TOPIC` gửi tới endpoint bài học) trả 409.
+- `sourceId` tùy chọn. Khi có, `PUT` thay thế nguồn của bản nháp đang sửa.
+- `pinned_topic_revision_id` của bài học được ghim lúc lưu, theo revision đang xuất bản của chủ điểm. Chủ điểm chưa xuất bản thì không ghim, và validator báo lỗi khi xuất bản.
+- `body_schema_version` luôn là `1`.
+- Lỗi `VALIDATION_ERROR` của snapshot trả khi xuất bản, không trả khi lưu bản nháp.
 
-**Phạm vi:** API tạo/sửa Draft và bộ lọc `domain=GRAMMAR` thuộc `admin`/`content`, ngoài phạm vi tự triển khai của `modules/grammar`.
+**Phạm vi:** `modules/grammar` không tự tạo bản nháp. Phần này nằm ở `admin`/`content`.
 
 ## 8. Quyết định đã chốt và trạng thái triển khai
 
@@ -179,18 +185,19 @@ Người dùng đã chốt sáu quyết định dưới đây. Trạng thái ghi
 3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress/topics` của module `learning`. Trạng thái: đã triển khai (Slice 1). Đường dẫn đổi khỏi `GET /api/v1/grammar/progress` vì endpoint đó đã trả danh sách bài học theo mục 4.4; đổi đường dẫn cần FE duyệt. Facade `GrammarEvents.visibleCatalog()` trong `common/events` cung cấp dữ liệu cho `learning`; facade này cần duyệt riêng.
 4. **`difficulty`** chỉ nhận `BASIC`, `INTERMEDIATE`, `ADVANCED`. Trạng thái: khớp bảng `grammar_topics` (V10) và validator.
 5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: đã triển khai. Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
-6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: chưa triển khai (Chặng B).
+6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: đã triển khai (Slice 4). Giá trị `domain` khác `GRAMMAR` trả 400.
 
 Phạm vi triển khai: tổng hợp tiến độ (quyết định 3) thuộc phạm vi module `learning`. Draft quản trị (§7) và bộ lọc `domain=GRAMMAR` (quyết định 6) thuộc phạm vi `admin`/`content`. Các phần này nằm ngoài phạm vi tự triển khai của `modules/grammar`.
 
-Thứ tự khóa khi bắt đầu luyện tập có chủ điểm (`AttemptServiceImpl.start`) giữ nguyên code: khóa user, idempotency, khóa topic `FOR SHARE` theo id tăng dần qua `GrammarEvents.lockPublishedTopics`, settle bài quá hạn và giới hạn 5 bài mở, rồi chọn câu. Facade khóa nằm trong `grammar`, caller nằm ở cụm results chưa merge.
+Thứ tự khóa khi bắt đầu luyện tập có chủ điểm (`PracticeServiceImpl.start`, module `practice`): khóa user, idempotency, khóa chủ điểm `FOR SHARE` qua `GrammarEvents.lockPublishedTopics`, settle bài quá hạn và giới hạn 5 bài mở, rồi chọn câu và chụp snapshot. Revision được ghim lấy từ kết quả khóa, không đọc lại sau đó. Facade khóa nằm trong `grammar`, được gọi trong cùng transaction với `start`. Khóa là `FOR SHARE` trên dòng `content_items` qua view `catalog_visible_items`, nên lưu trữ hoặc publish mới phải chờ transaction start kết thúc. Thứ tự khóa là `ORDER BY` của PostgreSQL, không sắp xếp trong Java, vì thứ tự UUID của Java khác PostgreSQL.
 
 Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) được ghi ở mục 2.4 của tài liệu practice. Mục 2.4 hiện nằm ở nhánh `wip/m05-results-local`, chưa có trên nhánh này.
 
 ## 9. Bàn giao
 
 - **`learning`:** đã triển khai tổng hợp theo chủ điểm tại `GET /api/v1/grammar/progress/topics`, đọc qua `GrammarEvents.visibleCatalog()` (`common/events`, đã thêm trong Slice 1, cần duyệt).
-- **`admin`/`content`:** API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`). `AdminContentController` hiện chỉ có `/words` và `/decks`. Cần sự kiện tạo bản nháp trong `common/events` và handler ở `content`.
-- **`content` (kiểm tra `revision_media_refs`):** lesson v1 phải có tập `revision_media_refs` rỗng khi xuất bản. `SnapshotValidationRequested` không mang thông tin media nên `grammar` không kiểm tra được. `content` cần kiểm tra trước khi phát sự kiện.
+- **`admin`/`content`:** đã triển khai API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` trên `GET /api/v1/admin/content/items` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`).
+- **M08.23 (gán câu hỏi nhiều chủ điểm):** chưa có endpoint admin tạo bản nháp `QUESTION` nên chưa có đường để gán từ admin. Đường dữ liệu đã có: snapshot `QUESTION` nhận `topic_ids` (1 đến 10 chủ điểm đã xuất bản, `QuestionSnapshotValidator`), và `QuestionProjectionListener` ghi vào `question_topics` khi xuất bản. **Đã chốt (đợt M04 này):** đường dữ liệu trên đủ trong phạm vi M04, không thêm endpoint. Endpoint tạo và sửa bản nháp câu hỏi đi cùng `M08.05` và sẽ là đặc tả riêng. Lưu ý: `M08.05` và `M08.23` không có trong `docs/` của repo; mã này lấy từ SRS, không nằm trong repo.
+- **`content` (kiểm tra `revision_media_refs`):** đã triển khai trong `ContentPublication.prepare`. Lesson v1 có media ref thì xuất bản bị từ chối với `VALIDATION_ERROR`, trước bước gắn nguồn. Hiện chưa có API media nên chưa có cách nào tạo media ref thật; test đơn vị bao phủ nhánh này bằng mock.
 - **Frontend:** `GET /api/v1/grammar/topics` trả `PageResponse<GrammarTopicResponse>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Phản hồi cũ là mảng, FE cần cập nhật. Trường kích thước là `size`, không phải `pageSize` như SRS v5.0.
 - **Ghi nhận checkpoint:** `GrammarPracticeControllerIntegrationTests.java` nằm trong `modules/practice/controller` theo đường dẫn. `GrammarPracticeController` đã có trên nhánh từ `9ea157d`. Commit checkpoint `6d733df` giữ nguyên, không viết lại lịch sử.

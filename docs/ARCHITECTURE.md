@@ -1,7 +1,7 @@
 # Kiến trúc modular monolith của backend
 
-Spring Modulith quản lý năm module nghiệp vụ Identity, Content, Vocabulary,
-Learning và Admin. Mỗi module sở hữu controller, DTO, nghiệp vụ và dữ liệu của mình.
+Spring Modulith quản lý bảy module nghiệp vụ Identity, Content, Vocabulary,
+Learning, Practice, Grammar và Admin. Mỗi module sở hữu controller, DTO, nghiệp vụ và dữ liệu của mình.
 
 ```text
 modules/<module>/
