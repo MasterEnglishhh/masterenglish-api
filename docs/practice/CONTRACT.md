@@ -851,7 +851,7 @@ Theo thứ tự phụ thuộc:
 
 ### Bước 5. Kiểm thử
 - [ ] Unit: chấm điểm, CAS, giới hạn, quy tắc gán, lazy cleanup theo nhánh untimed và timed.
-- [ ] Integration **không** `@Transactional` cho đồng thời: autosave cùng `expectedVersion`; autosave cũ đến sau; autosave đồng thời với submit; hai start cùng key; start đồng thời khi có 4 bài đang mở (một thành công, một `OPEN_ATTEMPT_LIMIT_REACHED`).
+- [x] Integration **không** `@Transactional` cho đồng thời: autosave cùng `expectedVersion`; autosave cũ đến sau; autosave đồng thời với submit; hai start cùng key; start đồng thời khi có 4 bài đang mở (một thành công, một `OPEN_ATTEMPT_LIMIT_REACHED`). Đã có trong `PracticeConcurrencyTests` (5 ca, mỗi ca 10 vòng hoặc 5 vòng).
 - [ ] Integration: thiếu câu (0 và 0 < n < requested) trả đúng mã và metadata.
 - [ ] Integration: bài untimed quá 7 ngày được dọn trước khi đếm; bài SUBMITTED không bao giờ bị đổi.
 - [ ] Integration: bài timed quá hạn tự nộp (TIME_LIMIT), không bị lazy 7 ngày.
