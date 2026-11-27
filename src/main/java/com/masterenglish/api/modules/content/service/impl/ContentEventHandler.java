@@ -5,6 +5,7 @@ import com.masterenglish.api.common.events.ContentEvents.ManifestValidationReque
 import com.masterenglish.api.common.events.ContentEvents.PronunciationImportRequested;
 import com.masterenglish.api.common.events.ContentEvents.PublishedRevisionRequested;
 import com.masterenglish.api.common.events.ContentEvents.SeedPublicationRequested;
+import com.masterenglish.api.common.events.ContentEvents.SenseAudioUrlRequested;
 import com.masterenglish.api.common.events.ContentEvents.SnapshotRequested;
 import com.masterenglish.api.common.events.ContentEvents.SourceCreationRequested;
 import com.masterenglish.api.common.events.ContentEvents.SourceExistsRequested;
@@ -47,6 +48,14 @@ class ContentEventHandler {
     @EventListener
     void on(AudioUrlRequested event) {
         event.reply().complete(pronunciation.audioUrl(event.wordId(), event.revisionId()));
+    }
+
+    @EventListener
+    void on(SenseAudioUrlRequested event) {
+        event.reply()
+                .complete(
+                        pronunciation.audioUrl(
+                                event.wordId(), event.revisionId(), event.senseId()));
     }
 
     @EventListener

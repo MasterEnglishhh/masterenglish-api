@@ -75,6 +75,7 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
                                 WHEN 'DECK' THEN 'title'
                                 WHEN 'GRAMMAR_TOPIC' THEN 'name'
                                 WHEN 'GRAMMAR_LESSON' THEN 'title'
+                                WHEN 'QUESTION' THEN 'prompt'
                             END),
                        i.content_type)), lower(:search)) > 0)
             """;

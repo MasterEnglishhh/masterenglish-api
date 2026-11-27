@@ -164,6 +164,68 @@ class PronunciationIntegrationTests {
     }
 
     @Test
+    void unpublishedWordStillAllowsHistoricalPlaybackWhenNotRevoked() throws Exception {
+        jdbc.update(
+                "UPDATE content_items SET is_archived = true, archived_at = NOW(), access_revoked_at = NULL WHERE id=?",
+                wordId);
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + revisionId + "/ticket")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void senseAudioWithExplanationRoleIsNotPickedForWordPronunciation() {
+        UUID testRevId = UUID.randomUUID();
+        UUID wordAudioId = UUID.randomUUID();
+        UUID senseAudioId = UUID.randomUUID();
+
+        jdbc.update(
+                """
+                INSERT INTO media_assets(id,media_type,purpose,bucket,object_key,original_filename,
+                    mime_type,file_size_bytes,duration_ms,checksum_sha256,source_id,uploaded_by,status)
+                VALUES (?,'AUDIO','CONTENT','media-fixture','pronunciation/word.mp3','word.mp3',
+                    'audio/mpeg',1024,1200,?,?,?,'READY'),
+                       (?,'AUDIO','CONTENT','media-fixture','pronunciation/sense.mp3','sense.mp3',
+                    'audio/mpeg',1024,1200,?,?,?,'READY')
+                """,
+                wordAudioId,
+                "1".repeat(64),
+                VocabularySeedServiceImpl.DEFAULT_SOURCE_ID,
+                admin.getId(),
+                senseAudioId,
+                "2".repeat(64),
+                VocabularySeedServiceImpl.DEFAULT_SOURCE_ID,
+                admin.getId());
+
+        jdbc.update(
+                """
+                INSERT INTO content_revisions(id, content_item_id, version_no, status, snapshot, created_by, created_at)
+                VALUES (?, ?, 99, 'DRAFT', '{}', ?, NOW())
+                """,
+                testRevId,
+                wordId,
+                admin.getId());
+
+        jdbc.update(
+                "INSERT INTO revision_media_refs(revision_id, media_id, usage_role) VALUES (?, ?, 'STIMULUS'), (?, ?, 'EXPLANATION')",
+                testRevId,
+                wordAudioId,
+                testRevId,
+                senseAudioId);
+
+        jdbc.update(
+                "UPDATE content_revisions SET status = 'PUBLISHED', reviewed_by = ?, reviewed_at = NOW(), published_at = NOW() WHERE id = ?",
+                admin.getId(),
+                testRevId);
+
+        var asset = reader.findPlayableAsset(testRevId).orElseThrow();
+        assertThat(asset.getKey()).isEqualTo("pronunciation/word.mp3");
+    }
+
+    @Test
     void archivedAudioIsHiddenWithoutRemovingVocabulary() {
         jdbc.update(
                 "UPDATE media_assets SET status='ARCHIVED',archived_at=NOW() WHERE id=?", assetId);
@@ -250,5 +312,182 @@ class PronunciationIntegrationTests {
         Path manifest = directory.resolve("manifest.json");
         Files.writeString(manifest, root.toString());
         return manifest;
+    }
+
+    @Test
+    void senseLevelAudio_twoSensesDifferentObjects_respectsEntitlementAndRevoke() throws Exception {
+        UUID senseWordId = UUID.randomUUID();
+        UUID senseRev1Id = UUID.randomUUID();
+        UUID sense1Id = UUID.randomUUID();
+        UUID sense2Id = UUID.randomUUID();
+        UUID asset1Id = UUID.randomUUID();
+        UUID asset2Id = UUID.randomUUID();
+        UUID unknownSenseId = UUID.randomUUID();
+
+        jdbc.update(
+                """
+                INSERT INTO media_assets(id,media_type,purpose,bucket,object_key,original_filename,
+                    mime_type,file_size_bytes,duration_ms,checksum_sha256,source_id,uploaded_by,status)
+                VALUES (?,'AUDIO','CONTENT','media-fixture','sense/one.mp3','one.mp3',
+                    'audio/mpeg',1024,1000,?,?,?,'READY'),
+                       (?,'AUDIO','CONTENT','media-fixture','sense/two.mp3','two.mp3',
+                    'audio/mpeg',1024,1000,?,?,?,'READY')
+                """,
+                asset1Id,
+                "b".repeat(64),
+                VocabularySeedServiceImpl.DEFAULT_SOURCE_ID,
+                admin.getId(),
+                asset2Id,
+                "c".repeat(64),
+                VocabularySeedServiceImpl.DEFAULT_SOURCE_ID,
+                admin.getId());
+
+        String snapshot =
+                """
+                {
+                  "schema_version": 1,
+                  "content_type": "WORD",
+                  "data": {
+                    "lemma": "record",
+                    "language_code": "en",
+                    "ipa": "/ˈrek.ɔːd/",
+                    "senses": [
+                      {
+                        "id": "%s",
+                        "sense_no": 1,
+                        "part_of_speech": "NOUN",
+                        "cefr_level": "B1",
+                        "meaning_vi": "bản ghi",
+                        "audio_media_id": "%s",
+                        "examples": []
+                      },
+                      {
+                        "id": "%s",
+                        "sense_no": 2,
+                        "part_of_speech": "VERB",
+                        "cefr_level": "B1",
+                        "meaning_vi": "ghi âm",
+                        "audio_media_id": "%s",
+                        "examples": []
+                      }
+                    ]
+                  }
+                }
+                """
+                        .formatted(sense1Id, asset1Id, sense2Id, asset2Id);
+
+        jdbc.update(
+                "INSERT INTO content_items(id, content_type, created_by, import_namespace, external_key) VALUES (?, 'WORD', ?, 'sense-test', 'record')",
+                senseWordId,
+                admin.getId());
+        jdbc.update(
+                "INSERT INTO content_revisions(id, content_item_id, version_no, schema_version, snapshot, status, created_by, reviewed_by, reviewed_at) VALUES (?, ?, 1, 1, CAST(? AS jsonb), 'APPROVED', ?, ?, NOW())",
+                senseRev1Id,
+                senseWordId,
+                snapshot,
+                admin.getId(),
+                admin.getId());
+        jdbc.update(
+                "INSERT INTO revision_media_refs(revision_id, media_id, usage_role) VALUES (?, ?, 'EXPLANATION'), (?, ?, 'EXPLANATION')",
+                senseRev1Id,
+                asset1Id,
+                senseRev1Id,
+                asset2Id);
+        jdbc.update(
+                "UPDATE content_revisions SET status = 'PUBLISHED', published_at = NOW() WHERE id = ?",
+                senseRev1Id);
+        jdbc.update(
+                "UPDATE content_items SET published_revision_id = ? WHERE id = ?",
+                senseRev1Id,
+                senseWordId);
+
+        when(storage.signGet("sense/one.mp3"))
+                .thenReturn(URI.create("https://example.com/sense/one.mp3"));
+        when(storage.signGet("sense/two.mp3"))
+                .thenReturn(URI.create("https://example.com/sense/two.mp3"));
+
+        // 1. Distinct URLs per sense; unknown sense rejected
+        assertThat(pronunciation.audioUrl(senseWordId, senseRev1Id, sense1Id))
+                .isEqualTo(
+                        "/api/v1/vocabulary/pronunciations/"
+                                + senseRev1Id
+                                + "?senseId="
+                                + sense1Id);
+        assertThat(pronunciation.audioUrl(senseWordId, senseRev1Id, sense2Id))
+                .isEqualTo(
+                        "/api/v1/vocabulary/pronunciations/"
+                                + senseRev1Id
+                                + "?senseId="
+                                + sense2Id);
+        assertThat(pronunciation.audioUrl(senseWordId, senseRev1Id, unknownSenseId)).isNull();
+
+        // 2. Ticket and playback resolve exact object for each sense; unknown sense -> 404
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id + "/ticket")
+                                .param("senseId", sense1Id.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value("https://example.com/sense/one.mp3"));
+
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id)
+                                .param("senseId", sense2Id.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://example.com/sense/two.mp3"));
+
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id + "/ticket")
+                                .param("senseId", unknownSenseId.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isNotFound());
+
+        // 3. After v2 is published, v1 still playable for history
+        UUID senseRev2Id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO content_revisions(id, content_item_id, version_no, schema_version, snapshot, status, created_by, reviewed_by, reviewed_at, published_at) VALUES (?, ?, 2, 1, CAST(? AS jsonb), 'PUBLISHED', ?, ?, NOW(), NOW())",
+                senseRev2Id,
+                senseWordId,
+                snapshot,
+                admin.getId(),
+                admin.getId());
+        jdbc.update(
+                "UPDATE content_items SET published_revision_id = ? WHERE id = ?",
+                senseRev2Id,
+                senseWordId);
+
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id + "/ticket")
+                                .param("senseId", sense1Id.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value("https://example.com/sense/one.mp3"));
+
+        // 4. Revoke blocks both ticket and playback
+        jdbc.update(
+                "UPDATE content_items SET access_revoked_at = NOW(), access_revoke_reason = 'Test revoke' WHERE id = ?",
+                senseWordId);
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id + "/ticket")
+                                .param("senseId", sense1Id.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isNotFound());
+        mvc.perform(
+                        get("/api/v1/vocabulary/pronunciations/" + senseRev1Id)
+                                .param("senseId", sense1Id.toString())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors.user(
+                                                UserPrincipal.create(learner))))
+                .andExpect(status().isNotFound());
     }
 }

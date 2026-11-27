@@ -1102,15 +1102,14 @@ class ContentEditingIntegrationTests {
         assertThat(sourceLinkRepository.findByIdRevisionId(rev.getId()).get(0).getSourceSnapshot())
                 .isNull();
 
-        // 2. Invalid Word: unsupported audio media
+        // 2. Invalid Word: empty senses
         UUID invalidWordId = UUID.randomUUID();
         String invalidWordData =
                 """
                 {
                   "lemma": "invalid_media_word",
                   "language_code": "en",
-                  "audio_media_id": "c1000000-0000-0000-0000-000000000001",
-                  "senses": [{"id":"c2000000-0000-0000-0000-000000000052","sense_no":1,"part_of_speech":"VERB","cefr_level":"B2","meaning_vi":"xác thực lỗi","examples":[]}]
+                  "senses": []
                 }
                 """;
         authoringService.createItemWithDraft(
@@ -1138,9 +1137,7 @@ class ContentEditingIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(false))
                 .andExpect(jsonPath("$.errors[0].field").value("data"))
-                .andExpect(
-                        jsonPath("$.errors[0].message")
-                                .value("Audio authoring is not enabled in this text-only slice."));
+                .andExpect(jsonPath("$.errors[0].message").value("senses must not be empty."));
 
         ContentRevision invWordRevAfter =
                 revisionRepository.findById(invalidWordRev.getId()).orElseThrow();

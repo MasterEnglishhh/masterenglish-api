@@ -70,7 +70,7 @@ public class VocabularySnapshotValidator {
             length(root, "lemma", 150);
             length(root, "language_code", 10);
             length(root, "ipa", 150);
-            noMedia(root);
+            validateAudioMedia(root);
             array(root, "senses");
             Set<UUID> ids = new HashSet<>();
             Set<Integer> positions = new HashSet<>();
@@ -93,7 +93,7 @@ public class VocabularySnapshotValidator {
                         || !LEVELS.contains(required(sense, "cefr_level")))
                     fail("Invalid sense filters.");
                 required(sense, "meaning_vi");
-                noMedia(sense);
+                validateAudioMedia(sense);
                 if (senses.findWordId(id).filter(owner -> !owner.equals(itemId)).isPresent())
                     fail("A sense cannot move to another word.");
                 Set<Integer> examplePositions = new HashSet<>();
@@ -148,9 +148,10 @@ public class VocabularySnapshotValidator {
         } else fail("Unsupported content type: " + type);
     }
 
-    private void noMedia(JsonNode node) {
-        if (node.hasNonNull("audio_media_id"))
-            fail("Audio authoring is not enabled in this text-only slice.");
+    private void validateAudioMedia(JsonNode node) {
+        if (node.hasNonNull("audio_media_id")) {
+            id(node, "audio_media_id");
+        }
     }
 
     private void array(JsonNode node, String field) {

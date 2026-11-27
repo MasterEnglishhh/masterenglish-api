@@ -3,6 +3,7 @@ package com.masterenglish.api.modules.practice.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.masterenglish.api.common.events.ContentEvents.GroupedQuestionCheckRequested;
 import com.masterenglish.api.common.events.ContentEvents.RevisionPublished;
 import com.masterenglish.api.modules.practice.entity.Question;
 import com.masterenglish.api.modules.practice.entity.QuestionOption;
@@ -28,6 +29,8 @@ public class QuestionProjectionListener {
     private final QuestionRepository questions;
     private final QuestionOptionRepository questionOptions;
     private final QuestionTopicRepository questionTopics;
+    private final com.masterenglish.api.modules.practice.repository.QuestionWordRepository
+            questionWords;
     private final ObjectMapper mapper;
     private final Clock clock;
 
@@ -35,13 +38,26 @@ public class QuestionProjectionListener {
             QuestionRepository questions,
             QuestionOptionRepository questionOptions,
             QuestionTopicRepository questionTopics,
+            com.masterenglish.api.modules.practice.repository.QuestionWordRepository questionWords,
             ObjectMapper mapper,
             Clock clock) {
         this.questions = questions;
         this.questionOptions = questionOptions;
         this.questionTopics = questionTopics;
+        this.questionWords = questionWords;
         this.mapper = mapper;
         this.clock = clock;
+    }
+
+    @EventListener
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void on(GroupedQuestionCheckRequested event) {
+        boolean grouped =
+                questions
+                        .findByIdForUpdate(event.questionId())
+                        .map(Question::isGrouped)
+                        .orElse(false);
+        event.reply().complete(grouped);
     }
 
     @EventListener
@@ -57,6 +73,9 @@ public class QuestionProjectionListener {
         UUID id = event.itemId();
         UUID revisionId = event.revisionId();
         // Required fields were checked at publication; no defaults here.
+        String category = data.hasNonNull("category") ? data.path("category").asText() : "GRAMMAR";
+        Integer partNumber =
+                data.hasNonNull("part_number") ? data.path("part_number").asInt() : null;
         String type = data.path("question_type_code").asText();
         String mode = data.path("practice_mode").asText();
         String difficulty = data.path("difficulty").asText();
@@ -72,6 +91,8 @@ public class QuestionProjectionListener {
                         q ->
                                 q.replaceWith(
                                         revisionId,
+                                        category,
+                                        partNumber,
                                         type,
                                         mode,
                                         difficulty,
@@ -83,6 +104,8 @@ public class QuestionProjectionListener {
                                         new Question(
                                                 id,
                                                 revisionId,
+                                                category,
+                                                partNumber,
                                                 type,
                                                 mode,
                                                 difficulty,
@@ -109,11 +132,28 @@ public class QuestionProjectionListener {
 
         questionTopics.deleteByIdQuestionId(id);
         questionTopics.flush();
-        List<QuestionTopic> topics = new ArrayList<>();
-        for (JsonNode topic : data.path("topic_ids")) {
-            topics.add(new QuestionTopic(id, UUID.fromString(topic.asText())));
+        if (data.hasNonNull("topic_ids") && data.path("topic_ids").isArray()) {
+            List<QuestionTopic> topics = new ArrayList<>();
+            for (JsonNode topic : data.path("topic_ids")) {
+                topics.add(new QuestionTopic(id, UUID.fromString(topic.asText())));
+            }
+            questionTopics.saveAll(topics);
+            questionTopics.flush();
         }
-        questionTopics.saveAll(topics);
+
+        questionWords.deleteByIdQuestionId(id);
+        questionWords.flush();
+        if (data.hasNonNull("word_sense_ids") && data.path("word_sense_ids").isArray()) {
+            List<com.masterenglish.api.modules.practice.entity.QuestionWord> words =
+                    new ArrayList<>();
+            for (JsonNode ws : data.path("word_sense_ids")) {
+                words.add(
+                        new com.masterenglish.api.modules.practice.entity.QuestionWord(
+                                id, UUID.fromString(ws.asText().strip())));
+            }
+            questionWords.saveAll(words);
+            questionWords.flush();
+        }
     }
 
     private JsonNode root(String snapshot) {

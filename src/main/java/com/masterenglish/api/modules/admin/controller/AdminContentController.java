@@ -8,6 +8,9 @@ import com.masterenglish.api.modules.admin.dto.request.ArchiveItemRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateGrammarDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreatePracticeSetDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionGroupDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateRevisionFromPublishedRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.ReviewDecisionRequest;
@@ -106,6 +109,30 @@ public class AdminContentController {
             @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(contentService.createGrammarLessonDraft(request, currentUser.getId()));
+    }
+
+    @PostMapping("/questions")
+    public ResponseEntity<AdminContentItemDto> createQuestion(
+            @Valid @RequestBody CreateQuestionDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(contentService.createQuestionDraft(request, currentUser.getId()));
+    }
+
+    @PostMapping("/question-groups")
+    public ResponseEntity<AdminContentItemDto> createQuestionGroup(
+            @Valid @RequestBody CreateQuestionGroupDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(contentService.createQuestionGroupDraft(request, currentUser.getId()));
+    }
+
+    @PostMapping("/practice-sets")
+    public ResponseEntity<AdminContentItemDto> createPracticeSet(
+            @Valid @RequestBody CreatePracticeSetDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(contentService.createPracticeSetDraft(request, currentUser.getId()));
     }
 
     @PutMapping("/revisions/{id}")

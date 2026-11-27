@@ -139,6 +139,20 @@ public class ContentRevision {
         this.reviewNote = null;
     }
 
+    /**
+     * Patches the snapshot to inject resolved child revision pins. Only allowed when the revision
+     * is APPROVED, immediately before publication. Does not alter the workflow status.
+     */
+    public void resolveChildPins(String snapshot) {
+        if (!"APPROVED".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "resolveChildPins is only allowed on APPROVED revisions, current status: "
+                            + status);
+        }
+        this.snapshot = snapshot != null ? snapshot : "{}";
+    }
+
     public void updateDraft(String snapshot, String changeSummary) {
         if (!"DRAFT".equals(status) && !"REJECTED".equals(status) && !"APPROVED".equals(status)) {
             throw new BusinessException(

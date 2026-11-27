@@ -2,15 +2,18 @@ package com.masterenglish.api.modules.content.service.impl;
 
 import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.modules.content.service.ContentAdminService;
+import com.masterenglish.api.modules.content.service.ImportJobService;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 @Component
 class ContentAdminEventHandler {
     private final ContentAdminService admin;
+    private final ImportJobService importJobs;
 
-    ContentAdminEventHandler(ContentAdminService admin) {
+    ContentAdminEventHandler(ContentAdminService admin, ImportJobService importJobs) {
         this.admin = admin;
+        this.importJobs = importJobs;
     }
 
     @EventListener
@@ -53,6 +56,21 @@ class ContentAdminEventHandler {
     @EventListener
     void on(ContentEvents.AdminCreateGrammarLessonDraft event) {
         event.reply().complete(admin.createGrammarLessonDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateQuestionDraft event) {
+        event.reply().complete(admin.createQuestionDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateQuestionGroupDraft event) {
+        event.reply().complete(admin.createQuestionGroupDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreatePracticeSetDraft event) {
+        event.reply().complete(admin.createPracticeSetDraft(event.request(), event.actorId()));
     }
 
     @EventListener
@@ -165,5 +183,86 @@ class ContentAdminEventHandler {
     @EventListener
     void on(ContentEvents.AdminCountPendingReviewRevisions event) {
         event.reply().complete(admin.countPendingReviewRevisions());
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminReserveMediaUpload event) {
+        event.reply().complete(admin.reserveMediaUpload(event.actorId(), event.request()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminStageMediaUpload event) {
+        event.reply()
+                .complete(
+                        admin.stageMediaUpload(
+                                event.actorId(),
+                                event.uploadRequestId(),
+                                event.inputStream(),
+                                event.contentType()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCompleteMediaUpload event) {
+        event.reply()
+                .complete(
+                        admin.completeMediaUpload(
+                                event.actorId(), event.uploadRequestId(), event.sync()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetMediaUploadStatus event) {
+        event.reply()
+                .complete(admin.getMediaUploadStatus(event.actorId(), event.uploadRequestId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetMediaAsset event) {
+        event.reply().complete(admin.getMediaAsset(event.actorId(), event.assetId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminArchiveMediaAsset event) {
+        event.reply().complete(admin.archiveMediaAsset(event.actorId(), event.assetId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminCreateImportJob event) {
+        if ("QUESTION_BANK".equalsIgnoreCase(event.module())) {
+            event.reply()
+                    .complete(
+                            importJobs.createQuestionBankJsonImportJob(
+                                    event.actorId(),
+                                    event.requestId(),
+                                    event.namespace(),
+                                    event.originalFilename(),
+                                    event.fileBytes()));
+        } else {
+            event.reply()
+                    .complete(
+                            importJobs.createWordCsvImportJob(
+                                    event.actorId(),
+                                    event.requestId(),
+                                    event.namespace(),
+                                    event.originalFilename(),
+                                    event.fileBytes()));
+        }
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetImportJob event) {
+        event.reply().complete(importJobs.getJob(event.actorId(), event.jobId()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminGetImportJobRows event) {
+        event.reply()
+                .complete(
+                        importJobs.getJobRows(
+                                event.actorId(), event.jobId(), event.status(), event.pageable()));
+    }
+
+    @EventListener
+    void on(ContentEvents.AdminConfirmImportJob event) {
+        event.reply().complete(importJobs.confirmJob(event.actorId(), event.jobId()));
     }
 }

@@ -351,7 +351,7 @@ public class VocabularyQueryServiceImpl implements VocabularyQueryService {
                                                 sense.path("meaning_vi").asText(),
                                                 text(sense, "definition_en"),
                                                 examples,
-                                                content.audioUrl(wordId, revisionId),
+                                                content.audioUrl(wordId, revisionId, senseId),
                                                 false,
                                                 null));
                             }

@@ -89,6 +89,41 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
                     "body_schema_version",
                     "estimated_minutes");
 
+    private static final Set<String> QUESTION_KNOWN_FIELDS =
+            Set.of(
+                    "category",
+                    "part_number",
+                    "question_type_code",
+                    "practice_mode",
+                    "difficulty",
+                    "prompt",
+                    "group",
+                    "options",
+                    "answer_key",
+                    "explanation",
+                    "materials",
+                    "topic_ids",
+                    "word_sense_ids");
+    private static final Set<String> QUESTION_OPTION_FIELDS = Set.of("id", "position", "body");
+    private static final Set<String> QUESTION_ANSWER_KEY_FIELDS = Set.of("correctOptionId");
+    private static final Set<String> QUESTION_PRACTICE_MODES = Set.of("STANDARD", "FILL_OPTION");
+    private static final Set<String> QUESTION_DIFFICULTIES = Set.of("EASY", "MEDIUM", "HARD");
+
+    private static final Set<String> QUESTION_GROUP_KNOWN_FIELDS =
+            Set.of("category", "part_number", "group_type", "title", "materials", "children");
+
+    private static final Set<String> PRACTICE_SET_KNOWN_FIELDS =
+            Set.of(
+                    "category",
+                    "title",
+                    "selection_mode",
+                    "selection_config",
+                    "entries",
+                    "deck_id",
+                    "topic_id",
+                    "part_number",
+                    "time_limit_seconds");
+
     private static final Set<String> LESSON_BLOCK_TYPES =
             Set.of("heading", "paragraph", "note", "example", "table");
     private static final Set<String> HEADING_FIELDS = Set.of("type", "text");
@@ -819,6 +854,346 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
         } else if ("GRAMMAR_LESSON".equals(contentType)) {
             assertOnlyKnownFields(data, GRAMMAR_LESSON_KNOWN_FIELDS);
             validateGrammarLessonDraftFields(data);
+        } else if ("QUESTION".equals(contentType)) {
+            if (jsonDepth(data) > MAX_JSON_DEPTH) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "Dữ liệu vượt quá độ sâu cho phép.");
+            }
+            assertOnlyKnownFields(data, QUESTION_KNOWN_FIELDS);
+            validateQuestionDraftFields(data);
+        } else if ("QUESTION_GROUP".equals(contentType)) {
+            if (jsonDepth(data) > MAX_JSON_DEPTH) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "Dữ liệu vượt quá độ sâu cho phép.");
+            }
+            assertOnlyKnownFields(data, QUESTION_GROUP_KNOWN_FIELDS);
+            validateQuestionGroupDraftFields(data);
+        } else if ("PRACTICE_SET".equals(contentType)) {
+            if (jsonDepth(data) > MAX_JSON_DEPTH) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "Dữ liệu vượt quá độ sâu cho phép.");
+            }
+            assertOnlyKnownFields(data, PRACTICE_SET_KNOWN_FIELDS);
+            validatePracticeSetDraftFields(data);
+        }
+    }
+
+    private void validateQuestionGroupDraftFields(JsonNode data) {
+        if (data.hasNonNull("category")) {
+            if (!data.path("category").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "category must be a string.");
+            }
+            String cat = data.path("category").asText();
+            if (!Set.of("GRAMMAR", "VOCABULARY", "TOEIC").contains(cat)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "category phải là GRAMMAR, VOCABULARY hoặc TOEIC.");
+            }
+        }
+        if (data.has("part_number") && !data.path("part_number").isNull()) {
+            String cat = data.path("category").asText(null);
+            if (!"TOEIC".equals(cat)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "part_number phải là null đối với non-TOEIC.");
+            }
+            int part = data.path("part_number").asInt();
+            if (!Set.of(3, 4, 6, 7).contains(part)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "Nhóm câu hỏi TOEIC chỉ áp dụng cho Part 3, 4, 6 hoặc 7.");
+            }
+        }
+        if (data.has("materials") && !data.path("materials").isArray()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "materials phải là mảng.");
+        }
+        if (data.has("children") && !data.path("children").isArray()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "children phải là mảng.");
+        }
+        if (data.hasNonNull("title")) {
+            if (!data.path("title").isTextual()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "title must be a string.");
+            }
+            String title = data.path("title").asText();
+            if (title.length() > 200) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "title vượt quá 200 ký tự.");
+            }
+            if (HTML_PATTERN.matcher(title).find()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "title không được chứa thẻ HTML.");
+            }
+        }
+    }
+
+    private void validatePracticeSetDraftFields(JsonNode data) {
+        if (data.hasNonNull("category")) {
+            if (!data.path("category").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "category must be a string.");
+            }
+            String cat = data.path("category").asText();
+            if (!Set.of("GRAMMAR", "VOCABULARY", "TOEIC").contains(cat)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "category phải là GRAMMAR, VOCABULARY hoặc TOEIC.");
+            }
+        }
+        if (data.hasNonNull("title")) {
+            if (!data.path("title").isTextual()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "title must be a string.");
+            }
+            String title = data.path("title").asText();
+            if (title.length() > 200) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "title vượt quá 200 ký tự.");
+            }
+            if (HTML_PATTERN.matcher(title).find()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "title không được chứa thẻ HTML.");
+            }
+        }
+        if (data.hasNonNull("selection_mode")) {
+            String mode = data.path("selection_mode").asText();
+            if (!Set.of("FIXED", "DYNAMIC").contains(mode)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "selection_mode chỉ nhận FIXED hoặc DYNAMIC.");
+            }
+        }
+        if (data.has("entries") && !data.path("entries").isArray()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "entries phải là mảng.");
+        }
+        if (data.has("selection_config") && !data.path("selection_config").isObject()) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "selection_config phải là object.");
+        }
+        if (data.hasNonNull("time_limit_seconds")
+                && (!data.path("time_limit_seconds").isInt()
+                        || data.path("time_limit_seconds").asInt() <= 0)) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "time_limit_seconds phải là số nguyên dương.");
+        }
+    }
+
+    private void validateQuestionDraftFields(JsonNode data) {
+        if (data.hasNonNull("category")) {
+            if (!data.path("category").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "category must be a string.");
+            }
+            String cat = data.path("category").asText();
+            if (!Set.of("GRAMMAR", "VOCABULARY", "TOEIC").contains(cat)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "category phải là GRAMMAR, VOCABULARY hoặc TOEIC.");
+            }
+        }
+        if (data.has("part_number") && !data.path("part_number").isNull()) {
+            String cat = data.path("category").asText(null);
+            if (!"TOEIC".equals(cat)) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "part_number phải là null đối với non-TOEIC.");
+            }
+            int part = data.path("part_number").asInt();
+            if (part < 1 || part > 7) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "part_number phải từ 1 đến 7.");
+            }
+        }
+        if (data.has("group") && !data.path("group").isNull()) {
+            // Group object validated in Chặng F
+        }
+        if (data.has("materials")) {
+            JsonNode materials = data.path("materials");
+            if (!materials.isArray()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "materials phải là mảng.");
+            }
+        }
+        if (data.has("word_sense_ids")) {
+            JsonNode wordSenseIds = data.path("word_sense_ids");
+            if (!wordSenseIds.isArray()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "word_sense_ids phải là mảng.");
+            }
+            if (wordSenseIds.size() > 10) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "word_sense_ids phải là mảng tối đa 10 phần tử.");
+            }
+        }
+        if (data.hasNonNull("question_type_code")) {
+            if (!data.path("question_type_code").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "question_type_code must be a string.");
+            }
+            if (!"SINGLE_CHOICE".equals(data.path("question_type_code").asText())) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "question_type_code chỉ nhận SINGLE_CHOICE.");
+            }
+        }
+        if (data.hasNonNull("practice_mode")) {
+            if (!data.path("practice_mode").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "practice_mode must be a string.");
+            }
+            if (!QUESTION_PRACTICE_MODES.contains(data.path("practice_mode").asText())) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "practice_mode không hợp lệ.");
+            }
+        }
+        if (data.hasNonNull("difficulty")) {
+            if (!data.path("difficulty").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "difficulty must be a string.");
+            }
+            if (!QUESTION_DIFFICULTIES.contains(data.path("difficulty").asText())) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "difficulty chỉ nhận EASY, MEDIUM hoặc HARD.");
+            }
+        }
+        if (data.hasNonNull("prompt")) {
+            if (!data.path("prompt").isTextual()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "prompt must be a string.");
+            }
+            String prompt = data.path("prompt").asText();
+            if (HTML_PATTERN.matcher(prompt).find()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "prompt không được chứa thẻ HTML.");
+            }
+            if (prompt.length() > 10_000) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "prompt vượt quá 10000 ký tự.");
+            }
+        }
+        if (data.hasNonNull("explanation")) {
+            if (!data.path("explanation").isTextual()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "explanation must be a string.");
+            }
+            String explanation = data.path("explanation").asText();
+            if (HTML_PATTERN.matcher(explanation).find()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "explanation không được chứa thẻ HTML.");
+            }
+            if (explanation.length() > 20_000) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "explanation vượt quá 20000 ký tự.");
+            }
+        }
+        if (data.hasNonNull("topic_ids")) {
+            JsonNode topics = data.path("topic_ids");
+            if (!topics.isArray()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "topic_ids phải là mảng từ 1 đến 10 phần tử.");
+            }
+            if (topics.size() > 10) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "topic_ids phải là mảng từ 1 đến 10 phần tử.");
+            }
+            Set<UUID> seenTopics = new HashSet<>();
+            for (JsonNode topic : topics) {
+                if (!topic.isTextual()) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "topic_ids chứa UUID không hợp lệ.");
+                }
+                UUID topicId;
+                try {
+                    topicId = UUID.fromString(topic.asText().strip());
+                } catch (IllegalArgumentException e) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "topic_ids chứa UUID không hợp lệ.");
+                }
+                if (!seenTopics.add(topicId)) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "topic_ids không được trùng nhau.");
+                }
+            }
+        }
+        Set<UUID> seenOptionIds = new HashSet<>();
+        if (data.hasNonNull("options")) {
+            JsonNode options = data.path("options");
+            if (!options.isArray()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "options phải là mảng từ 2 đến 6 phần tử.");
+            }
+            if (options.size() > 6) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "options phải là mảng từ 2 đến 6 phần tử.");
+            }
+            Set<Integer> seenPositions = new HashSet<>();
+            for (JsonNode option : options) {
+                if (!option.isObject()) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "Mỗi lựa chọn phải là object.");
+                }
+                assertOnlyKnownFields(option, QUESTION_OPTION_FIELDS);
+                if (option.hasNonNull("id")) {
+                    if (!option.path("id").isTextual()) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR, "options.id phải là UUID.");
+                    }
+                    UUID optId;
+                    try {
+                        optId = UUID.fromString(option.path("id").asText().strip());
+                    } catch (IllegalArgumentException e) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR, "options.id phải là UUID.");
+                    }
+                    if (!seenOptionIds.add(optId)) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR, "options.id không được trùng nhau.");
+                    }
+                }
+                if (option.hasNonNull("position")) {
+                    JsonNode posNode = option.path("position");
+                    if (!posNode.isIntegralNumber()
+                            || !posNode.canConvertToInt()
+                            || posNode.asInt() < 1
+                            || posNode.asInt() > 6
+                            || !seenPositions.add(posNode.asInt())) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR,
+                                "position phải là số nguyên duy nhất từ 1 đến 6.");
+                    }
+                }
+                if (option.hasNonNull("body")) {
+                    if (!option.path("body").isTextual()) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR, "options.body must be a string.");
+                    }
+                    String body = option.path("body").asText();
+                    if (HTML_PATTERN.matcher(body).find()) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR,
+                                "options.body không được chứa thẻ HTML.");
+                    }
+                    if (body.length() > 2_000) {
+                        throw new BusinessException(
+                                ErrorCode.VALIDATION_ERROR, "options.body vượt quá 2000 ký tự.");
+                    }
+                }
+            }
+        }
+        if (data.hasNonNull("answer_key")) {
+            JsonNode answerKey = data.path("answer_key");
+            if (!answerKey.isObject()) {
+                throw new BusinessException(
+                        ErrorCode.VALIDATION_ERROR, "answer_key phải là object.");
+            }
+            assertOnlyKnownFields(answerKey, QUESTION_ANSWER_KEY_FIELDS);
+            if (answerKey.hasNonNull("correctOptionId")) {
+                if (!answerKey.path("correctOptionId").isTextual()) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "answer_key.correctOptionId phải là UUID.");
+                }
+                UUID correctId;
+                try {
+                    correctId = UUID.fromString(answerKey.path("correctOptionId").asText().strip());
+                } catch (IllegalArgumentException e) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "answer_key.correctOptionId phải là UUID.");
+                }
+            }
         }
     }
 
@@ -1408,6 +1783,33 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
         }
     }
 
+    private void publishApprovedQuestionChild(
+            UUID groupId, ContentItem item, ContentRevision revision, UUID publisherId) {
+        if (!"QUESTION".equals(item.getContentType())) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Child question has the wrong content type: " + item.getId());
+        }
+        itemRepository.flush();
+        revisionRepository.flush();
+        ContentItem lockedItem = itemRepository.findByIdForUpdate(item.getId()).orElseThrow();
+        ContentRevision lockedRevision =
+                revisionRepository.findByIdForUpdate(revision.getId()).orElseThrow();
+        item = lockedItem;
+        revision = lockedRevision;
+        if (!revision.getContentItemId().equals(item.getId())
+                || !"APPROVED".equals(revision.getStatus())) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "Pinned child question revision is no longer approved for publication.");
+        }
+        if (!item.allowsRevisionChanges()) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Child question is archived or access-revoked.");
+        }
+        publishRevision(item, revision, publisherId);
+    }
+
     @Override
     @Transactional
     public ContentRevisionResponse publish(UUID revisionId, UUID publisherId) {
@@ -1446,7 +1848,13 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
             throw new BusinessException(
                     ErrorCode.CONFLICT, "Only an explicitly approved revision can be published.");
         }
-        publication.prepare(item, revision);
+        publication.prepare(
+                item,
+                revision,
+                publisherId,
+                (groupId, childItem, childRevision) ->
+                        publishApprovedQuestionChild(
+                                groupId, childItem, childRevision, publisherId));
         revisionRepository.flush();
         revision.publish(publisherId);
         item.setPublishedRevisionId(revision.getId());

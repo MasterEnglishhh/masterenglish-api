@@ -384,6 +384,113 @@
   - `401 Unauthorized`: Chưa đăng nhập.
   - `403 Forbidden`: Không đủ quyền hoặc thiếu token CSRF.
 
+#### `POST /api/v1/admin/content/questions`
+- **Mô tả:** Tạo bản thảo câu hỏi mới (`QUESTION`) kèm revision DRAFT (versionNo = 1). Hỗ trợ partial draft (chấp nhận lưu bản nháp chưa đủ options hoặc topic). Danh mục hỗ trợ: `GRAMMAR`, `VOCABULARY`, `TOEIC`. Đối với câu hỏi độc lập TOEIC, bắt buộc `part_number` thuộc `{1, 2, 5}`.
+- **Request Body:**
+```json
+{
+  "data": {
+    "category": "GRAMMAR",
+    "part_number": null,
+    "question_type_code": "SINGLE_CHOICE",
+    "practice_mode": "STANDARD",
+    "difficulty": "HARD",
+    "prompt": "She ___ to school every day.",
+    "group": null,
+    "options": [
+      { "id": "4fa85f64-5717-4562-b3fc-2c963f66afa1", "position": 1, "body": "goes" },
+      { "id": "4fa85f64-5717-4562-b3fc-2c963f66afa2", "position": 2, "body": "go" }
+    ],
+    "answer_key": {
+      "correctOptionId": "4fa85f64-5717-4562-b3fc-2c963f66afa1"
+    },
+    "explanation": "Third person singular takes -s.",
+    "materials": [],
+    "topic_ids": ["18000000-0000-0000-0000-000000000001"],
+    "word_sense_ids": []
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Khởi tạo câu hỏi ngữ pháp thì hiện tại đơn"
+}
+```
+- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`category`, `part_number`, `question_type_code`, `practice_mode`, `difficulty`, `prompt`, `group`, `options`, `answer_key`, `explanation`, `materials`, `topic_ids`, `word_sense_ids`), độ sâu JSON vượt quá 10, chứa HTML, `category` không hợp lệ, `position` không thuộc 1..6 hoặc bị trùng, `id` lựa chọn không phải UUID hoặc bị trùng, nguồn trích dẫn không tồn tại.
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Không đủ quyền (yêu cầu `CONTENT_ADMIN` hoặc `SYSTEM_ADMIN`) hoặc thiếu token CSRF.
+
+#### `POST /api/v1/admin/content/question-groups`
+- **Mô tả:** Tạo bản thảo nhóm câu hỏi mới (`QUESTION_GROUP`) kèm revision DRAFT (versionNo = 1). Hỗ trợ partial draft. Hỗ trợ tạo inline các câu hỏi con (`children`) hoặc liên kết câu hỏi đã có qua `question_id`.
+- **Request Body:**
+```json
+{
+  "data": {
+    "category": "TOEIC",
+    "part_number": 7,
+    "group_type": "PASSAGE",
+    "title": "Email Memo Announcement",
+    "materials": [
+      {
+        "position": 1,
+        "material_type": "TEXT",
+        "usage_role": "STIMULUS",
+        "body": "Office will be closed on Friday for building maintenance."
+      }
+    ],
+    "children": [
+      {
+        "prompt": "When will the office be closed?",
+        "category": "TOEIC",
+        "part_number": 7,
+        "options": [
+          { "id": "7fa85f64-5717-4562-b3fc-2c963f66afa1", "position": 1, "body": "On Friday" },
+          { "id": "7fa85f64-5717-4562-b3fc-2c963f66afa2", "position": 2, "body": "On Monday" }
+        ],
+        "answer_key": {
+          "correctOptionId": "7fa85f64-5717-4562-b3fc-2c963f66afa1"
+        }
+      }
+    ]
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Khởi tạo nhóm câu hỏi đọc hiểu thông báo"
+}
+```
+- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`category`, `part_number`, `group_type`, `title`, `materials`, `children`), độ sâu JSON vượt trần, chứa HTML, `materials` không hợp lệ (`material_type` phải là `TEXT`, `IMAGE`, `AUDIO`), hoặc câu hỏi con vi phạm ràng buộc.
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Không đủ quyền hoặc thiếu token CSRF.
+
+#### `POST /api/v1/admin/content/practice-sets`
+- **Mô tả:** Tạo bản thảo bộ đề luyện tập mới (`PRACTICE_SET`) kèm revision DRAFT (versionNo = 1). Hỗ trợ partial draft.
+- **Request Body:**
+```json
+{
+  "data": {
+    "category": "TOEIC",
+    "title": "TOEIC Mini Test 01",
+    "selection_mode": "FIXED",
+    "selection_config": {},
+    "entries": [
+      {
+        "item_id": "18000000-0000-0000-0000-000000000001",
+        "position": 1
+      }
+    ],
+    "part_number": 5,
+    "time_limit_seconds": 900
+  },
+  "sourceIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "changeSummary": "Khởi tạo bộ đề thi thử TOEIC Part 5"
+}
+```
+- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Lỗi:**
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist, `selection_mode` không phải `FIXED` hoặc `DYNAMIC`, độ sâu vượt quá 10, nguồn không tồn tại.
+  - `401 Unauthorized`: Chưa đăng nhập.
+  - `403 Forbidden`: Không đủ quyền hoặc thiếu token CSRF.
+
 #### `PUT /api/v1/admin/content/revisions/{id}`
 - **Mô tả:** Chỉnh sửa bản thảo revision với cơ chế CAS (`expectedVersion`).
   - Cho phép sửa khi ở trạng thái `DRAFT`.
@@ -699,6 +806,150 @@ Hoặc khi có lỗi:
   "totalItems": 1,
   "totalPages": 1,
   "hasNext": false
+}
+```
+
+---
+
+### 2.5. Phân hệ Quản trị Tệp Media & Quota (Media Ops)
+*Yêu cầu quyền:* `CONTENT_ADMIN` (không phải `SYSTEM_ADMIN`)
+
+#### `POST /api/v1/admin/media/upload-requests`
+- **Mô tả:** Khởi tạo yêu cầu tải lên tệp media (hình ảnh, âm thanh) và giữ chỗ quota (`RESERVED`) trong bảng ledger `storage_allocations`.
+- **Request Body:**
+```json
+{
+  "fileName": "stimulus-diagram.png",
+  "mimeType": "image/png",
+  "declaredSizeBytes": 204800,
+  "declaredDimensionBytes": 204800,
+  "sourceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+- **Response:** `201 Created`
+```json
+{
+  "uploadRequestId": "8fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "mediaId": "9fa85f64-5717-4562-b3fc-2c963f66afa2",
+  "uploadUrl": "https://storage.masterenglish.com/temp/8fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "expiresAt": "2026-11-24T15:30:00Z",
+  "maxSizeBytes": 5242880
+}
+```
+- **Lỗi:**
+  - `413 Payload Too Large`: Dung lượng vượt trần quota hoặc kích thước tối đa cho loại file (ảnh 5 MiB, âm thanh 20 MiB).
+  - `400 Bad Request`: Định dạng MIME không được hỗ trợ (chỉ chấp nhận `image/jpeg`, `image/png`, `image/webp`, `audio/mpeg`, `audio/mp4`).
+
+#### `PUT /api/v1/admin/media/upload-requests/{id}/bytes`
+- **Mô tả:** Tiếp nhận nội dung nhị phân tải lên vào vùng nhớ đệm staging, ghi nhận biên nhận byte và SHA-256.
+- **Request Body:** Binary stream.
+- **Headers:** `Content-Type: <mime-type>`
+- **Response:** `200 OK`
+```json
+{
+  "uploadRequestId": "8fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "mediaId": "9fa85f64-5717-4562-b3fc-2c963f66afa2",
+  "sizeBytes": 204800,
+  "sha256Checksum": "556ec8450ed7e439aa4beabee80176cbf675348a4efb8a45640bc77af943bf3c",
+  "status": "PENDING"
+}
+```
+
+#### `POST /api/v1/admin/media/upload-requests/{id}/complete`
+- **Mô tả:** Xác minh bytes thực qua `FfmpegMediaDecoder`, đọc lại bản cuối để kiểm kích thước và SHA-256, rồi commit media `READY` cùng allocation CONTENT `COMMITTED`. Complete không xóa tệp tạm và không giải phóng allocation TEMP. Token nội bộ `claimToken` không xuất hiện ở response.
+- **Query params:** `sync=true|false` (mặc định: `true`).
+- **Response:** `200 OK` (hoặc `202 Accepted` khi `sync=false` và đang ở trạng thái `VERIFYING`)
+```json
+{
+  "uploadRequestId": "8fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "mediaId": "9fa85f64-5717-4562-b3fc-2c963f66afa2",
+  "status": "COMPLETED",
+  "verificationDeadlineAt": "2026-11-24T15:35:00Z",
+  "leaseUntil": null,
+  "leaseAcquired": false,
+  "stagedSizeBytes": 204800,
+  "stagedSha256": "556ec8450ed7e439aa4beabee80176cbf675348a4efb8a45640bc77af943bf3c"
+}
+```
+- **Lỗi:**
+  - `400 Bad Request`: File rỗng, hỏng hoặc không khớp định dạng khai báo. Nếu một lần xác minh trước đã ghi nhận đích PUT final, giữ `VERIFYING` và quota để cho phép retry trong deadline thay vì giải phóng quota khi bản cuối có thể vẫn tồn tại.
+  - `404 Not Found`: Không tìm thấy yêu cầu tải lên.
+  - `409 Conflict`: Lease đang được giữ bởi worker khác, yêu cầu đã hết hạn hoặc cả hai slot xác minh vật lý đều đang bận.
+- **Cleanup staging bất định:** Grant có PUT claim nhưng chưa ghi nhận staged receipt vẫn giữ quota TEMP, kể cả đã hết hạn và qua 24 giờ. Không lấy thời gian retention hoặc object vừa absent làm bằng chứng PUT đã dừng; cần reconcile có bằng chứng dừng/cô lập writer trước thu hồi dung lượng.
+- **Giới hạn worker và crash:** Hai slot PostgreSQL dùng chung giữa các instance. Lease hết hạn hoặc mất kết nối không tự nhả slot vật lý. Worker chỉ release token của mình sau khi decode/storage kết thúc. JVM crash có thể giữ slot, làm giảm công suất hoặc chặn xác minh mới; hiện không có API hay cơ chế tự thu hồi crash-held slot. Không xóa token theo TTL. Trước can thiệp vận hành phải chứng minh worker/process con và I/O liên quan đã dừng hoặc bị cô lập, rồi đối chiếu object/ledger; restart JVM riêng lẻ không đủ bằng chứng.
+
+#### `GET /api/v1/admin/media/upload-requests/{id}`
+- **Mô tả:** Tra cứu tiến độ và trạng thái hiện tại của yêu cầu tải lên media.
+- **Response:** `200 OK` (`UploadStatusView`).
+
+#### `GET /api/v1/admin/media/assets/{id}`
+- **Mô tả:** Đọc chi tiết media asset kèm thông số kỹ thuật (chiều rộng, chiều cao, thời lượng phát, dung lượng, sha256 checksum) và trạng thái `PENDING`/`READY`/`FAILED`/`ARCHIVED`.
+- **Response:** `200 OK` (`MediaAssetView`).
+
+#### `POST /api/v1/admin/media/assets/{id}/archive`
+- **Mô tả:** Đánh dấu media asset là `ARCHIVED`. Chỉ asset `READY` không còn được tham chiếu bởi nội dung đã xuất bản mới được archive.
+- **Response:** `200 OK` (`MediaAssetView`).
+
+---
+
+### 2.6. Phân hệ Nhập Liệu Hàng Loạt (Bulk Content Import)
+*Yêu cầu quyền:* `CONTENT_ADMIN` (chỉ `CONTENT_ADMIN`; `SYSTEM_ADMIN` không có quyền)`
+
+#### `POST /api/v1/admin/import/jobs`
+- **Mô tả:** Tải lên tệp CSV từ vựng (`VOCABULARY`) hoặc JSON ngân hàng câu hỏi (`QUESTION_BANK`), tự động kiểm tra cú pháp, giới hạn kích thước (tối đa 5 MiB, 5.000 dòng), nguồn trích dẫn và chạy DryRun ghi nhận từng dòng hợp lệ (`VALID`) hay không hợp lệ (`INVALID`). Giữ chỗ quota lưu trữ `RESERVED` trong suốt vòng đời import. Hỗ trợ cơ chế idempotency qua `requestId`: gửi lại cùng file và `requestId` trả về `200 OK` kèm thông tin job sẵn có; gửi khác file trả về `409 Conflict`.
+- **Form-data params:**
+  - `file`: `MultipartFile` (CSV UTF-8 hoặc JSON `schema_version: 1`).
+  - `module`: `"VOCABULARY"` hoặc `"QUESTION_BANK"`.
+  - `requestId`: `UUID` (Idempotency key).
+  - `namespace`: `string` (Không gian định danh nguồn dữ liệu).
+- **Response:** `201 Created` (hoặc `200 OK` khi replay idempotent)
+```json
+{
+  "id": "9fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "createdBy": "1fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "requestId": "2fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "status": "READY",
+  "importType": "QUESTIONS_JSON",
+  "importNamespace": "ets-prep",
+  "originalFilename": "questions.json",
+  "totalRows": 100,
+  "successRows": 0,
+  "failedRows": 2,
+  "skippedRows": 0,
+  "createdAt": "2026-11-24T15:00:00Z"
+}
+```
+- **Lỗi:**
+  - `413 Payload Too Large`: Tệp vượt quá 5 MiB hoặc vượt quá 5.000 phần tử logic.
+  - `400 Bad Request`: Tệp không hợp lệ cú pháp, thiếu header CSV bắt buộc, sai `schema_version` hoặc độ sâu JSON vượt quá 10.
+  - `409 Conflict`: `requestId` đã được sử dụng với file có nội dung SHA-256 khác.
+  - `503 Service Unavailable`: Chưa xác minh được kích thước và SHA-256 của input đọc lại từ kho. Job vẫn `UPLOADING`, quota vẫn `RESERVED`. Có thể gửi lại cùng `requestId` và input trong hạn upload.
+
+#### `GET /api/v1/admin/import/jobs/{id}`
+- **Mô tả:** Xem trạng thái, tiến độ và bộ đếm thành công/thất bại của Import Job. Chỉ người tạo job mới có quyền truy cập (bảo mật riêng tư chéo chủ sở hữu, trả về `404 Not Found` nếu người khác truy cập).
+- **Response:** `200 OK` (`ImportJobView`).
+
+#### `GET /api/v1/admin/import/jobs/{id}/rows`
+- **Mô tả:** Tra cứu danh sách chi tiết từng dòng trong Import Job có phân trang, hỗ trợ lọc theo trạng thái dòng.
+- **Query params:**
+  - `status`: `"VALID" | "INVALID" | "SUCCESS" | "FAILED" | "SKIPPED"` (tùy chọn).
+  - `page`, `size`: `integer`.
+- **Response:** `200 OK` (`PageResponse<ImportJobRowView>`).
+
+#### `POST /api/v1/admin/import/jobs/{id}/confirm`
+- **Mô tả:** Xác nhận thực thi nhập liệu: nhận quyền xử lý độc quyền, duyệt qua từng dòng `VALID` và tạo `ContentItem` kèm revision `DRAFT` (tuyệt đối không tự động submit hay publish).
+  - Đối với `VOCABULARY`: tạo các mục từ vựng `WORD`.
+  - Đối với `QUESTION_BANK`: tạo câu hỏi độc lập `QUESTION` hoặc nhóm câu hỏi `QUESTION_GROUP` (tự động tạo atomic toàn bộ inline children và nhóm; nếu bất kỳ câu con nào lỗi thì rollback toàn bộ nhóm và các câu con, ghi nhận row `FAILED`).
+  - Confirm không xóa tệp đầu vào và không giải phóng quota tạm. Chỉ được giải phóng sau khi xác nhận tệp đã được xóa.
+- **Response:** `200 OK`
+```json
+{
+  "jobId": "9fa85f64-5717-4562-b3fc-2c963f66afa1",
+  "status": "COMPLETED",
+  "totalRows": 100,
+  "successRows": 98,
+  "failedRows": 2,
+  "skippedRows": 0
 }
 ```
 

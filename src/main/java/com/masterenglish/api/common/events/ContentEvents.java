@@ -30,6 +30,11 @@ public class ContentEvents {
         return events.request(reply -> new AudioUrlRequested(wordId, revisionId, reply));
     }
 
+    public String audioUrl(UUID wordId, UUID revisionId, UUID senseId) {
+        return events.request(
+                reply -> new SenseAudioUrlRequested(wordId, revisionId, senseId, reply));
+    }
+
     public boolean hasSource(UUID sourceId) {
         return events.request(reply -> new SourceExistsRequested(sourceId, reply));
     }
@@ -72,8 +77,78 @@ public class ContentEvents {
                 reply -> new SnapshotValidationRequested(itemId, type, data.deepCopy(), reply));
     }
 
+    public boolean isGroupedQuestion(UUID questionId) {
+        return events.request(reply -> new GroupedQuestionCheckRequested(questionId, reply));
+    }
+
     public void revisionPublished(RevisionPublished event) {
         events.publish(event);
+    }
+
+    public UploadRequestView reserveMediaUpload(UUID actorId, ReserveUploadRequest request) {
+        return events.request(reply -> new AdminReserveMediaUpload(actorId, request, reply));
+    }
+
+    public StageResult stageMediaUpload(
+            UUID actorId,
+            UUID uploadRequestId,
+            java.io.InputStream inputStream,
+            String contentType) {
+        return events.request(
+                reply ->
+                        new AdminStageMediaUpload(
+                                actorId, uploadRequestId, inputStream, contentType, reply));
+    }
+
+    public CompleteResult completeMediaUpload(UUID actorId, UUID uploadRequestId, boolean sync) {
+        return events.request(
+                reply -> new AdminCompleteMediaUpload(actorId, uploadRequestId, sync, reply));
+    }
+
+    public UploadStatusView getMediaUploadStatus(UUID actorId, UUID uploadRequestId) {
+        return events.request(
+                reply -> new AdminGetMediaUploadStatus(actorId, uploadRequestId, reply));
+    }
+
+    public MediaAssetView getMediaAsset(UUID actorId, UUID assetId) {
+        return events.request(reply -> new AdminGetMediaAsset(actorId, assetId, reply));
+    }
+
+    public MediaAssetView archiveMediaAsset(UUID actorId, UUID assetId) {
+        return events.request(reply -> new AdminArchiveMediaAsset(actorId, assetId, reply));
+    }
+
+    public CreateImportJobResult createImportJob(
+            UUID actorId,
+            UUID requestId,
+            String module,
+            String namespace,
+            String originalFilename,
+            byte[] fileBytes) {
+        return events.request(
+                reply ->
+                        new AdminCreateImportJob(
+                                actorId,
+                                requestId,
+                                module,
+                                namespace,
+                                originalFilename,
+                                fileBytes,
+                                reply));
+    }
+
+    public ImportJobView getImportJob(UUID actorId, UUID jobId) {
+        return events.request(reply -> new AdminGetImportJob(actorId, jobId, reply));
+    }
+
+    public PageResponse<ImportJobRowView> getImportJobRows(
+            UUID actorId, UUID jobId, String status, Pageable pageable) {
+        return events.request(
+                reply -> new AdminGetImportJobRows(actorId, jobId, status, pageable, reply));
+    }
+
+    public ConfirmImportJobResult confirmImportJob(UUID actorId, UUID jobId) {
+        return events.request(reply -> new AdminConfirmImportJob(actorId, jobId, reply));
     }
 
     public record SnapshotRequested(
@@ -84,6 +159,9 @@ public class ContentEvents {
             EventReply<Optional<String>> reply) {}
 
     public record AudioUrlRequested(UUID wordId, UUID revisionId, EventReply<String> reply) {}
+
+    public record SenseAudioUrlRequested(
+            UUID wordId, UUID revisionId, UUID senseId, EventReply<String> reply) {}
 
     public record SourceExistsRequested(UUID sourceId, EventReply<Boolean> reply) {}
 
@@ -154,6 +232,18 @@ public class ContentEvents {
 
     public ItemView createGrammarLessonDraft(GrammarDraft request, UUID actorId) {
         return events.request(reply -> new AdminCreateGrammarLessonDraft(request, actorId, reply));
+    }
+
+    public ItemView createQuestionDraft(QuestionDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateQuestionDraft(request, actorId, reply));
+    }
+
+    public ItemView createQuestionGroupDraft(QuestionGroupDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreateQuestionGroupDraft(request, actorId, reply));
+    }
+
+    public ItemView createPracticeSetDraft(PracticeSetDraft request, UUID actorId) {
+        return events.request(reply -> new AdminCreatePracticeSetDraft(request, actorId, reply));
     }
 
     public RevisionView submitRevision(UUID revisionId, UUID actorId) {
@@ -412,6 +502,15 @@ public class ContentEvents {
     public record GrammarDraft(
             Map<String, Object> data, List<UUID> sourceIds, String changeSummary) {}
 
+    public record QuestionDraft(
+            Map<String, Object> data, List<UUID> sourceIds, String changeSummary) {}
+
+    public record QuestionGroupDraft(
+            Map<String, Object> data, List<UUID> sourceIds, String changeSummary) {}
+
+    public record PracticeSetDraft(
+            Map<String, Object> data, List<UUID> sourceIds, String changeSummary) {}
+
     public record AdminFindContentItems(
             String domain,
             String search,
@@ -431,6 +530,15 @@ public class ContentEvents {
 
     public record AdminCreateGrammarLessonDraft(
             GrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreateQuestionDraft(
+            QuestionDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreateQuestionGroupDraft(
+            QuestionGroupDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminCreatePracticeSetDraft(
+            PracticeSetDraft request, UUID actorId, EventReply<ItemView> reply) {}
 
     public record AdminSubmitRevision(
             UUID revisionId, UUID actorId, EventReply<RevisionView> reply) {}
@@ -496,4 +604,151 @@ public class ContentEvents {
 
     public record AdminUpdateSource(
             UpdateSource request, UUID actorId, EventReply<SourceView> reply) {}
+
+    public record ReserveUploadRequest(
+            String fileName, Long declaredSizeBytes, String mimeType, UUID sourceId) {}
+
+    public record UploadRequestView(
+            UUID uploadRequestId,
+            UUID mediaId,
+            String uploadUrl,
+            Instant expiresAt,
+            String status,
+            long maxSizeBytes) {}
+
+    public record UploadStatusView(
+            UUID uploadRequestId,
+            UUID mediaId,
+            String status,
+            Instant expiresAt,
+            Long declaredSizeBytes,
+            String declaredMimeType,
+            Long stagedSizeBytes,
+            String stagedSha256,
+            Instant stagedAt,
+            Instant finishedAt,
+            String failureCode) {}
+
+    public record MediaAssetView(
+            UUID id,
+            String mediaType,
+            String purpose,
+            String originalFilename,
+            String mimeType,
+            Long fileSizeBytes,
+            Integer durationMs,
+            Integer width,
+            Integer height,
+            String checksumSha256,
+            UUID sourceId,
+            UUID uploadedBy,
+            String status,
+            String failureCode,
+            Instant archivedAt,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record StageResult(
+            UUID uploadRequestId,
+            UUID mediaId,
+            long sizeBytes,
+            String sha256Checksum,
+            String status) {}
+
+    public record CompleteResult(
+            UUID uploadRequestId,
+            UUID mediaId,
+            String status,
+            Instant verificationDeadlineAt,
+            UUID claimToken,
+            Instant leaseUntil,
+            boolean leaseAcquired,
+            Long stagedSizeBytes,
+            String stagedSha256) {}
+
+    public record AdminReserveMediaUpload(
+            UUID actorId, ReserveUploadRequest request, EventReply<UploadRequestView> reply) {}
+
+    public record AdminStageMediaUpload(
+            UUID actorId,
+            UUID uploadRequestId,
+            java.io.InputStream inputStream,
+            String contentType,
+            EventReply<StageResult> reply) {}
+
+    public record AdminCompleteMediaUpload(
+            UUID actorId, UUID uploadRequestId, boolean sync, EventReply<CompleteResult> reply) {}
+
+    public record AdminGetMediaUploadStatus(
+            UUID actorId, UUID uploadRequestId, EventReply<UploadStatusView> reply) {}
+
+    public record AdminGetMediaAsset(
+            UUID actorId, UUID assetId, EventReply<MediaAssetView> reply) {}
+
+    public record AdminArchiveMediaAsset(
+            UUID actorId, UUID assetId, EventReply<MediaAssetView> reply) {}
+
+    public record ImportJobView(
+            UUID id,
+            UUID createdBy,
+            UUID requestId,
+            String requestHash,
+            String importType,
+            String importNamespace,
+            String originalFilename,
+            long declaredSizeBytes,
+            String inputSha256,
+            Instant uploadExpiresAt,
+            String status,
+            int totalRows,
+            int successRows,
+            int failedRows,
+            int skippedRows,
+            Instant confirmedAt,
+            Instant finishedAt,
+            String failureCode,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record ImportJobRowView(
+            UUID jobId,
+            int rowNumber,
+            String externalKey,
+            String status,
+            UUID resultContentItemId,
+            String errors,
+            Instant processedAt) {}
+
+    public record CreateImportJobResult(boolean isReplay, ImportJobView job) {}
+
+    public record ConfirmImportJobResult(
+            UUID jobId,
+            String status,
+            int totalRows,
+            int successRows,
+            int failedRows,
+            int skippedRows) {}
+
+    public record AdminCreateImportJob(
+            UUID actorId,
+            UUID requestId,
+            String module,
+            String namespace,
+            String originalFilename,
+            byte[] fileBytes,
+            EventReply<CreateImportJobResult> reply) {}
+
+    public record AdminGetImportJob(UUID actorId, UUID jobId, EventReply<ImportJobView> reply) {}
+
+    public record AdminGetImportJobRows(
+            UUID actorId,
+            UUID jobId,
+            String status,
+            Pageable pageable,
+            EventReply<PageResponse<ImportJobRowView>> reply) {}
+
+    public record AdminConfirmImportJob(
+            UUID actorId, UUID jobId, EventReply<ConfirmImportJobResult> reply) {}
+
+    public record GroupedQuestionCheckRequested(UUID questionId, EventReply<Boolean> reply) {}
 }

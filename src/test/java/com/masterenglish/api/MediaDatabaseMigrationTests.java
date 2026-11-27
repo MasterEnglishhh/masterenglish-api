@@ -17,12 +17,260 @@ import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 class MediaDatabaseMigrationTests {
 
     private static final String CONTENT_POOL_ID = "20000000-0000-0000-0000-000000000001";
     private static final String TEMP_POOL_ID = "20000000-0000-0000-0000-000000000002";
+
+    @Test
+    void applicationDoesNotEnableOutOfOrderMigrationsByDefault() throws Exception {
+        var properties = new java.util.Properties();
+        try (var input = getClass().getResourceAsStream("/application.properties")) {
+            assertThat(input).isNotNull();
+            properties.load(input);
+        }
+        assertThat(
+                        Boolean.parseBoolean(
+                                properties.getProperty("spring.flyway.out-of-order", "false")))
+                .as("Late migrations need an explicit approved upgrade path")
+                .isFalse();
+    }
+
+    @Test
+    void mediaMigrationsStartAfterIntegratedVersion17() throws Exception {
+        try (var postgres = new PostgreSQLContainer("postgres:17")) {
+            postgres.start();
+            var baseline =
+                    Flyway.configure()
+                            .dataSource(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword())
+                            .locations(
+                                    "classpath:db/migration",
+                                    "classpath:db/m08-integration-baseline")
+                            .target("17")
+                            .load();
+            baseline.migrate();
+            try (var connection =
+                            DriverManager.getConnection(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword());
+                    var statement = connection.createStatement();
+                    var result =
+                            statement.executeQuery("SELECT to_regclass('public.storage_pools')")) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString(1))
+                        .as("M08 must not occupy integrated versions through V17")
+                        .isNull();
+            }
+            var upgrade =
+                    Flyway.configure()
+                            .dataSource(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword())
+                            .locations(
+                                    "classpath:db/migration",
+                                    "classpath:db/m08-integration-baseline")
+                            .load();
+            assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(7);
+            upgrade.validate();
+            assertThat(upgrade.info().current().getVersion().getVersion()).isEqualTo("24");
+        }
+    }
+
+    @Test
+    void upgradeIntegratedV17PreservesHistoryAndChecksums() throws Exception {
+        try (var postgres = new PostgreSQLContainer("postgres:17")) {
+            postgres.start();
+            var configuration =
+                    Flyway.configure()
+                            .dataSource(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword())
+                            .locations(
+                                    "classpath:db/migration",
+                                    "classpath:db/m08-integration-baseline");
+            configuration.target("17").load().migrate();
+            UUID userId = UUID.randomUUID();
+            UUID itemId = UUID.randomUUID();
+            UUID revisionId = UUID.randomUUID();
+            UUID mediaId = UUID.randomUUID();
+            UUID notificationId = UUID.randomUUID();
+            UUID senseId = UUID.randomUUID();
+            UUID reviewId = UUID.randomUUID();
+            try (var connection =
+                            DriverManager.getConnection(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword());
+                    var statement = connection.createStatement()) {
+                statement.execute(
+                        "INSERT INTO users (id,email,password_hash,first_name,last_name) VALUES ('"
+                                + userId
+                                + "','integrated@example.com','hash','Test','User')");
+                statement.execute(
+                        "INSERT INTO notification_preferences (user_id,content_notifications_enabled) VALUES ('"
+                                + userId
+                                + "',true)");
+                statement.execute(
+                        "INSERT INTO notifications (id,user_id,type,title,body,dedupe_key) VALUES ('"
+                                + notificationId
+                                + "','"
+                                + userId
+                                + "','SYSTEM','Title','Body','migration-proof')");
+                statement.execute(
+                        "INSERT INTO media_assets (id,media_type,purpose,original_filename,uploaded_by,status) VALUES ('"
+                                + mediaId
+                                + "','AUDIO','CONTENT','legacy.mp3','"
+                                + userId
+                                + "','PENDING')");
+                statement.execute(
+                        "INSERT INTO content_items (id,content_type,created_by,is_archived) VALUES ('"
+                                + itemId
+                                + "','WORD','"
+                                + userId
+                                + "',false)");
+                statement.execute(
+                        "INSERT INTO content_revisions (id,content_item_id,version_no,schema_version,snapshot,status,created_by,reviewed_by,reviewed_at) VALUES ('"
+                                + revisionId
+                                + "','"
+                                + itemId
+                                + "',1,1,'{\"text\":\"legacy\"}'::jsonb,'APPROVED','"
+                                + userId
+                                + "','"
+                                + userId
+                                + "',NOW())");
+                statement.execute(
+                        "INSERT INTO revision_media_refs (revision_id,media_id,usage_role) VALUES ('"
+                                + revisionId
+                                + "','"
+                                + mediaId
+                                + "','STIMULUS')");
+                statement.execute(
+                        "UPDATE content_revisions SET status='PUBLISHED',published_at=NOW() WHERE id='"
+                                + revisionId
+                                + "'");
+                statement.execute(
+                        "UPDATE content_items SET published_revision_id='"
+                                + revisionId
+                                + "' WHERE id='"
+                                + itemId
+                                + "'");
+                statement.execute(
+                        "INSERT INTO words (id,published_revision_id,lemma) VALUES ('"
+                                + itemId
+                                + "','"
+                                + revisionId
+                                + "','legacy')");
+                statement.execute(
+                        "INSERT INTO word_senses (id,word_id,word_revision_id,sense_no,part_of_speech,cefr_level,meaning_vi) VALUES ('"
+                                + senseId
+                                + "','"
+                                + itemId
+                                + "','"
+                                + revisionId
+                                + "',1,'NOUN','A1','nghĩa cũ')");
+                statement.execute(
+                        "INSERT INTO user_saved_words (user_id,word_sense_id) VALUES ('"
+                                + userId
+                                + "','"
+                                + senseId
+                                + "')");
+                statement.execute(
+                        "INSERT INTO user_word_progress (user_id,word_sense_id,repetitions,interval_days,due_at) VALUES ('"
+                                + userId
+                                + "','"
+                                + senseId
+                                + "',3,7,NOW())");
+                statement.execute(
+                        "INSERT INTO word_reviews (id,user_id,word_sense_id,source_word_id,source_revision_id,request_id,request_hash,rating,policy_version,before_state,after_state,next_due_at,timezone,local_day) VALUES ('"
+                                + reviewId
+                                + "','"
+                                + userId
+                                + "','"
+                                + senseId
+                                + "','"
+                                + itemId
+                                + "','"
+                                + revisionId
+                                + "','"
+                                + UUID.randomUUID()
+                                + "',repeat('a',64),'GOOD','SM2_3BTN_V1','{}','{}',NOW(),'UTC',CURRENT_DATE)");
+                statement.execute(
+                        "CREATE TEMP TABLE baseline_history AS SELECT version,checksum,script FROM flyway_schema_history WHERE success");
+                var upgrade = configuration.target("latest").load();
+                assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(7);
+                upgrade.validate();
+                assertThat(upgrade.info().current().getVersion().getVersion()).isEqualTo("24");
+                var entityManagerFactory =
+                        new org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean();
+                entityManagerFactory.setDataSource(
+                        new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                                postgres.getJdbcUrl(),
+                                postgres.getUsername(),
+                                postgres.getPassword()));
+                entityManagerFactory.setPackagesToScan("com.masterenglish.api");
+                entityManagerFactory.setJpaVendorAdapter(
+                        new org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter());
+                entityManagerFactory.setJpaPropertyMap(
+                        java.util.Map.of(
+                                "hibernate.hbm2ddl.auto",
+                                "validate",
+                                "hibernate.physical_naming_strategy",
+                                "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"));
+                try {
+                    entityManagerFactory.afterPropertiesSet();
+                    assertThat(entityManagerFactory.getObject()).isNotNull();
+                } finally {
+                    entityManagerFactory.destroy();
+                }
+                try (var result =
+                        statement.executeQuery(
+                                "SELECT count(*) FROM baseline_history b LEFT JOIN flyway_schema_history h USING(version) WHERE h.version IS NULL OR h.checksum IS DISTINCT FROM b.checksum OR h.script IS DISTINCT FROM b.script")) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getInt(1)).isZero();
+                }
+                try (var result =
+                        statement.executeQuery(
+                                "SELECT i.published_revision_id,r.snapshot->>'text',m.media_id FROM content_items i JOIN content_revisions r ON r.id=i.published_revision_id JOIN revision_media_refs m ON m.revision_id=r.id WHERE i.id='"
+                                        + itemId
+                                        + "'")) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getObject(1, UUID.class)).isEqualTo(revisionId);
+                    assertThat(result.getString(2)).isEqualTo("legacy");
+                    assertThat(result.getObject(3, UUID.class)).isEqualTo(mediaId);
+                }
+                try (var result =
+                        statement.executeQuery(
+                                "SELECT p.content_notifications_enabled,n.id FROM notification_preferences p JOIN notifications n ON n.user_id=p.user_id WHERE p.user_id='"
+                                        + userId
+                                        + "'")) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getBoolean(1)).isTrue();
+                    assertThat(result.getObject(2, UUID.class)).isEqualTo(notificationId);
+                }
+                try (var result =
+                        statement.executeQuery(
+                                "SELECT r.id,r.source_revision_id,p.repetitions,p.interval_days FROM word_reviews r JOIN user_word_progress p USING(user_id,word_sense_id) JOIN user_saved_words s USING(user_id,word_sense_id) WHERE r.id='"
+                                        + reviewId
+                                        + "'")) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getObject(1, UUID.class)).isEqualTo(reviewId);
+                    assertThat(result.getObject(2, UUID.class)).isEqualTo(revisionId);
+                    assertThat(result.getInt(3)).isEqualTo(3);
+                    assertThat(result.getInt(4)).isEqualTo(7);
+                }
+            }
+        }
+    }
 
     @Test
     @DisplayName(
@@ -95,6 +343,81 @@ class MediaDatabaseMigrationTests {
                     assertThat(rs.next()).isTrue();
                     assertThat(rs.getLong("available_bytes")).isEqualTo(10737418240L);
                 }
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("V16 migration adds staging claim and receipt columns with constraints")
+    void v16MigrationAddsStagingColumnsAndConstraints() throws Exception {
+        try (var postgres = new PostgreSQLContainer("postgres:17")) {
+            postgres.start();
+            Flyway.configure()
+                    .dataSource(
+                            postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (var conn =
+                            DriverManager.getConnection(
+                                    postgres.getJdbcUrl(),
+                                    postgres.getUsername(),
+                                    postgres.getPassword());
+                    var stmt = conn.createStatement()) {
+
+                for (String col :
+                        new String[] {
+                            "put_claim_token",
+                            "put_claimed_at",
+                            "staged_size_bytes",
+                            "staged_sha256",
+                            "staged_at"
+                        }) {
+                    try (var rs =
+                            stmt.executeQuery(
+                                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'media_upload_requests' AND column_name = '"
+                                            + col
+                                            + "'")) {
+                        assertThat(rs.next()).isTrue();
+                        assertThat(rs.getInt(1)).as("Column %s must exist", col).isEqualTo(1);
+                    }
+                }
+
+                // Verify constraints: insert dummy user and media asset
+                UUID userId = UUID.randomUUID();
+                UUID mediaId = UUID.randomUUID();
+                UUID reqId = UUID.randomUUID();
+
+                stmt.execute(
+                        "INSERT INTO users (id, email, password_hash, first_name, last_name) "
+                                + "VALUES ('"
+                                + userId
+                                + "', 'u"
+                                + userId
+                                + "@example.com', 'hash', 'Test', 'User')");
+                stmt.execute(
+                        "INSERT INTO media_assets (id, media_type, purpose, original_filename, uploaded_by, status) "
+                                + "VALUES ('"
+                                + mediaId
+                                + "', 'AUDIO', 'CONTENT', 'audio.mp3', '"
+                                + userId
+                                + "', 'PENDING')");
+
+                // Mismatched staged_size_bytes != declared_size_bytes violates c14
+                assertThatThrownBy(
+                                () ->
+                                        stmt.execute(
+                                                "INSERT INTO media_upload_requests (id, media_id, temp_bucket, temp_object_key, declared_size_bytes, declared_mime_type, max_size_bytes, expires_at, put_claim_token, put_claimed_at, staged_size_bytes, staged_sha256, staged_at) "
+                                                        + "VALUES ('"
+                                                        + reqId
+                                                        + "', '"
+                                                        + mediaId
+                                                        + "', 'b', 'k1', 100, 'audio/mpeg', 100, NOW() + INTERVAL '5 min', '"
+                                                        + UUID.randomUUID()
+                                                        + "', NOW(), 99, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', NOW())"))
+                        .isInstanceOf(SQLException.class)
+                        .hasMessageContaining("media_upload_requests_c14");
             }
         }
     }
@@ -554,10 +877,12 @@ class MediaDatabaseMigrationTests {
         }
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(strings = {"9", "13"})
     @DisplayName(
-            "Upgrading an existing V13 database with legacy media backfills ledger accurately without exceeding quota error, handles over-quota, and validates schema")
-    void upgradeFromV13BackfillsExistingContentAndHandlesOverQuotaSafely() throws Exception {
+            "Upgrading an existing V9/V13 database preserves legacy media and backfills quota safely")
+    void upgradeBackfillsExistingContentAndHandlesOverQuotaSafely(String baselineVersion)
+            throws Exception {
         try (var postgres = new PostgreSQLContainer("postgres:17")) {
             postgres.start();
 
@@ -566,7 +891,7 @@ class MediaDatabaseMigrationTests {
                     .dataSource(
                             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
-                    .target("13")
+                    .target(baselineVersion)
                     .load()
                     .migrate();
 

@@ -18,6 +18,9 @@ import com.masterenglish.api.common.events.ContentEvents.WordDraft;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateGrammarDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreatePracticeSetDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionGroupDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateRevisionFromPublishedRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateContentSourceRequest;
@@ -121,6 +124,39 @@ public class AdminContentServiceImpl implements AdminContentService {
         return toItemView(
                 content.createGrammarLessonDraft(
                         new GrammarDraft(request.data(), sourceIds, request.changeSummary()),
+                        actorId));
+    }
+
+    @Override
+    public AdminContentItemDto createQuestionDraft(
+            CreateQuestionDraftRequest request, UUID actorId) {
+        List<UUID> sourceIds = request.sourceIds() != null ? request.sourceIds() : List.of();
+        return toItemView(
+                content.createQuestionDraft(
+                        new ContentEvents.QuestionDraft(
+                                request.data(), sourceIds, request.changeSummary()),
+                        actorId));
+    }
+
+    @Override
+    public AdminContentItemDto createQuestionGroupDraft(
+            CreateQuestionGroupDraftRequest request, UUID actorId) {
+        List<UUID> sourceIds = request.sourceIds() != null ? request.sourceIds() : List.of();
+        return toItemView(
+                content.createQuestionGroupDraft(
+                        new ContentEvents.QuestionGroupDraft(
+                                request.data(), sourceIds, request.changeSummary()),
+                        actorId));
+    }
+
+    @Override
+    public AdminContentItemDto createPracticeSetDraft(
+            CreatePracticeSetDraftRequest request, UUID actorId) {
+        List<UUID> sourceIds = request.sourceIds() != null ? request.sourceIds() : List.of();
+        return toItemView(
+                content.createPracticeSetDraft(
+                        new ContentEvents.PracticeSetDraft(
+                                request.data(), sourceIds, request.changeSummary()),
                         actorId));
     }
 

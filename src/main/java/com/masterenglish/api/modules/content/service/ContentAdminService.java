@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.content.service;
 
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.common.events.ContentEvents.AdminSource;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.DeckDraft;
@@ -8,6 +9,7 @@ import com.masterenglish.api.common.events.ContentEvents.DraftEdit;
 import com.masterenglish.api.common.events.ContentEvents.GrammarDraft;
 import com.masterenglish.api.common.events.ContentEvents.ItemDetailView;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
+import com.masterenglish.api.common.events.ContentEvents.QuestionDraft;
 import com.masterenglish.api.common.events.ContentEvents.RevisionClone;
 import com.masterenglish.api.common.events.ContentEvents.RevisionHistoryView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
@@ -38,6 +40,12 @@ public interface ContentAdminService {
     ItemView createGrammarTopicDraft(GrammarDraft request, UUID actorId);
 
     ItemView createGrammarLessonDraft(GrammarDraft request, UUID actorId);
+
+    ItemView createQuestionDraft(QuestionDraft request, UUID actorId);
+
+    ItemView createQuestionGroupDraft(ContentEvents.QuestionGroupDraft request, UUID actorId);
+
+    ItemView createPracticeSetDraft(ContentEvents.PracticeSetDraft request, UUID actorId);
 
     RevisionView updateDraftRevision(DraftEdit request, UUID actorId);
 
@@ -82,4 +90,22 @@ public interface ContentAdminService {
     long countTotalContentItems();
 
     long countPendingReviewRevisions();
+
+    ContentEvents.UploadRequestView reserveMediaUpload(
+            UUID actorId, ContentEvents.ReserveUploadRequest request);
+
+    ContentEvents.StageResult stageMediaUpload(
+            UUID actorId,
+            UUID uploadRequestId,
+            java.io.InputStream inputStream,
+            String contentType);
+
+    ContentEvents.CompleteResult completeMediaUpload(
+            UUID actorId, UUID uploadRequestId, boolean sync);
+
+    ContentEvents.UploadStatusView getMediaUploadStatus(UUID actorId, UUID uploadRequestId);
+
+    ContentEvents.MediaAssetView getMediaAsset(UUID actorId, UUID assetId);
+
+    ContentEvents.MediaAssetView archiveMediaAsset(UUID actorId, UUID assetId);
 }

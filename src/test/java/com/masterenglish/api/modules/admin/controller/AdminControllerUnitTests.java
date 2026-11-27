@@ -20,6 +20,7 @@ import com.masterenglish.api.common.security.RoleCode;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateGrammarDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.LockUserRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateFeatureFlagRequest;
@@ -269,6 +270,7 @@ class AdminControllerUnitTests {
                 .thenReturn(mockItem);
         when(contentServiceMock.createGrammarLessonDraft(any(), eq(testActorId)))
                 .thenReturn(mockItem);
+        when(contentServiceMock.createQuestionDraft(any(), eq(testActorId))).thenReturn(mockItem);
         when(contentServiceMock.submitRevision(eq(revId), eq(testActorId))).thenReturn(mockRev);
         when(contentServiceMock.approveRevision(eq(revId), any(), eq(testActorId)))
                 .thenReturn(mockRev);
@@ -322,6 +324,18 @@ class AdminControllerUnitTests {
                         post("/api/v1/admin/content/grammar/lessons")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(lessonReq)))
+                .andExpect(status().isCreated());
+
+        CreateQuestionDraftRequest questionReq =
+                new CreateQuestionDraftRequest(
+                        Map.of("prompt", "Choose the correct word: She ___ to school."),
+                        List.of(),
+                        "question");
+        contentMvc
+                .perform(
+                        post("/api/v1/admin/content/questions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(questionReq)))
                 .andExpect(status().isCreated());
 
         contentMvc

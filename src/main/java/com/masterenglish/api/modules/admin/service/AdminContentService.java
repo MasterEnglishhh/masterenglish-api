@@ -4,6 +4,9 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateGrammarDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreatePracticeSetDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionGroupDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateRevisionFromPublishedRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateContentSourceRequest;
@@ -37,6 +40,13 @@ public interface AdminContentService {
     AdminContentItemDto createGrammarTopicDraft(CreateGrammarDraftRequest request, UUID actorId);
 
     AdminContentItemDto createGrammarLessonDraft(CreateGrammarDraftRequest request, UUID actorId);
+
+    AdminContentItemDto createQuestionDraft(CreateQuestionDraftRequest request, UUID actorId);
+
+    AdminContentItemDto createQuestionGroupDraft(
+            CreateQuestionGroupDraftRequest request, UUID actorId);
+
+    AdminContentItemDto createPracticeSetDraft(CreatePracticeSetDraftRequest request, UUID actorId);
 
     AdminRevisionDto updateDraftRevision(
             UUID revisionId, UpdateRevisionDraftRequest request, UUID actorId);
