@@ -72,7 +72,15 @@ public class ContentEvents {
                 reply -> new SnapshotValidationRequested(itemId, type, data.deepCopy(), reply));
     }
 
+    public boolean isItemActive(UUID itemId) {
+        return events.request(reply -> new ContentItemActiveRequested(itemId, reply));
+    }
+
     public void revisionPublished(RevisionPublished event) {
+        events.publish(event);
+    }
+
+    public void deckFirstPublished(DeckFirstPublished event) {
         events.publish(event);
     }
 
@@ -104,6 +112,14 @@ public class ContentEvents {
 
     /** Projections consume this event synchronously in the originating publication transaction. */
     public record RevisionPublished(UUID itemId, UUID revisionId, String type, String snapshot) {}
+
+    /**
+     * Persisted via Modulith outbox on the first manual publication of a visible DECK so learners
+     * opted into content updates can be notified asynchronously after commit.
+     */
+    public record DeckFirstPublished(UUID deckId, UUID revisionId, String title, String level) {}
+
+    public record ContentItemActiveRequested(UUID itemId, EventReply<Boolean> reply) {}
 
     public record SourceDefinition(
             UUID id,

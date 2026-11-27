@@ -1,6 +1,7 @@
 package com.masterenglish.api.modules.content.service.impl;
 
 import com.masterenglish.api.common.events.ContentEvents.AudioUrlRequested;
+import com.masterenglish.api.common.events.ContentEvents.ContentItemActiveRequested;
 import com.masterenglish.api.common.events.ContentEvents.ManifestValidationRequested;
 import com.masterenglish.api.common.events.ContentEvents.PronunciationImportRequested;
 import com.masterenglish.api.common.events.ContentEvents.PublishedRevisionRequested;
@@ -34,6 +35,11 @@ class ContentEventHandler {
         this.queries = queries;
         this.pronunciation = pronunciation;
         this.importer = importer;
+    }
+
+    @EventListener
+    void on(ContentItemActiveRequested event) {
+        event.reply().complete(queries.isItemActive(event.itemId()));
     }
 
     @EventListener

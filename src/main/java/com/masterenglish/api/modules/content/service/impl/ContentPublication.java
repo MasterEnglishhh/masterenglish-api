@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents;
+import com.masterenglish.api.common.events.ContentEvents.DeckFirstPublished;
 import com.masterenglish.api.common.events.ContentEvents.RevisionPublished;
 import com.masterenglish.api.modules.content.entity.ContentItem;
 import com.masterenglish.api.modules.content.entity.ContentRevision;
@@ -74,13 +75,28 @@ class ContentPublication {
         }
     }
 
-    void revisionPublished(ContentItem item, ContentRevision revision) {
+    void revisionPublished(
+            ContentItem item, ContentRevision revision, boolean firstManualPublication) {
         contentEvents.revisionPublished(
                 new RevisionPublished(
                         item.getId(),
                         revision.getId(),
                         item.getContentType(),
                         revision.getSnapshot()));
+        if (firstManualPublication
+                && "DECK".equals(item.getContentType())
+                && item.allowsRevisionChanges()
+                && isManualNamespace(item.getImportNamespace())) {
+            JsonNode data = snapshots.data(revision.getSnapshot());
+            String title = data.path("title").asText("");
+            String level = data.hasNonNull("level") ? data.path("level").asText(null) : null;
+            contentEvents.deckFirstPublished(
+                    new DeckFirstPublished(item.getId(), revision.getId(), title, level));
+        }
+    }
+
+    private static boolean isManualNamespace(String importNamespace) {
+        return importNamespace == null || "admin".equals(importNamespace);
     }
 
     private void recordDeckDependencies(UUID revisionId, JsonNode members) {

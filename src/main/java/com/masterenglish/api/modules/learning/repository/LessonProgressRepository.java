@@ -62,4 +62,19 @@ public interface LessonProgressRepository extends JpaRepository<LessonProgress, 
     Optional<LessonProgress> findByIdUserIdAndIdLessonId(UUID userId, UUID lessonId);
 
     List<LessonProgress> findByIdUserIdOrderByUpdatedAtDesc(UUID userId);
+
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT to_char((started_at AT TIME ZONE :timezone)::date, 'YYYY-MM-DD')
+                    FROM lesson_progress
+                    WHERE user_id = :userId
+                    UNION
+                    SELECT DISTINCT to_char((completed_at AT TIME ZONE :timezone)::date, 'YYYY-MM-DD')
+                    FROM lesson_progress
+                    WHERE user_id = :userId AND completed_at IS NOT NULL
+                    """,
+            nativeQuery = true)
+    List<String> findDistinctActivityLocalDays(
+            @Param("userId") UUID userId, @Param("timezone") String timezone);
 }

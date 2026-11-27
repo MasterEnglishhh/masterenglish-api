@@ -4,6 +4,8 @@ import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleLessonView;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleTopicView;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
@@ -31,4 +33,8 @@ public interface GrammarQueryService {
     Optional<GrammarEvents.PublishedTopicRef> findPublishedTopic(UUID topicId);
 
     List<GrammarEvents.PublishedTopicRef> lockPublishedTopics(Collection<UUID> topicIds);
+
+    List<VisibleTopicView> listAllVisibleTopics();
+
+    List<VisibleLessonView> listAllVisibleLessons();
 }

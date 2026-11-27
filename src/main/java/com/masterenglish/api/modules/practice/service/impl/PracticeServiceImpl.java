@@ -5,14 +5,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.IdentityEvents;
+import com.masterenglish.api.common.events.PracticeEvents.AttemptSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.PracticeSummaryView;
+import com.masterenglish.api.common.events.PracticeEvents.TopicAccuracyView;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.modules.practice.dto.response.AnswerResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.OptionView;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse.QuestionView;
+import com.masterenglish.api.modules.practice.dto.response.AttemptSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
 import com.masterenglish.api.modules.practice.dto.response.StatisticsSummaryResponse;
@@ -46,6 +52,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.Comparator;
@@ -53,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -60,6 +68,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +83,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PracticeServiceImpl implements PracticeService {
 
     static final int MAX_QUESTION_COUNT = 100;
+    static final int LEGACY_DEFAULT_COUNT = 10;
     static final int MAX_TOPICS = 10;
     static final int MIN_MIXED_TOPICS = 2;
     static final int MAX_OPEN_ATTEMPTS = 5;
@@ -334,6 +345,218 @@ public class PracticeServiceImpl implements PracticeService {
                         : percent(row.getWindowCorrectCount(), row.getWindowQuestionCount()),
                 WeakTopicPolicy.WINDOW_DAYS,
                 since);
+    }
+
+    @Override
+    @Transactional
+    public StartAttemptResult startTopicAttempt(
+            UUID userId, UUID topicId, UUID requestId, Integer questionCount) {
+        int count = legacyCount(userId, List.of(topicId), questionCount);
+        return start(userId, requestId, GRAMMAR_TOPIC, topicId, null, null, count);
+    }
+
+    @Override
+    @Transactional
+    public StartAttemptResult startMixedAttempt(
+            UUID userId, UUID requestId, List<UUID> topicIds, Integer questionCount) {
+        int count = legacyCount(userId, topicIds, questionCount);
+        return start(userId, requestId, MIXED_GRAMMAR, null, topicIds, null, count);
+    }
+
+    /**
+     * Grammar entry points keep the original contract: a missing count means {@link
+     * #LEGACY_DEFAULT_COUNT}, and a count above the eligible pool starts with what exists. An empty
+     * pool is 404. The strict rule (409) stays on {@code POST /api/v1/attempts}. Locks are taken in
+     * the same order as {@link #start}: user, then topics, then questions.
+     */
+    private int legacyCount(UUID userId, List<UUID> topics, Integer requested) {
+        identity.verifyAndLockUser(userId);
+        topics.forEach(this::requireVisibleTopic);
+        lockTopics(topics);
+        int available = questions.lockEligibleQuestionIds(topics).size();
+        if (available == 0) {
+            throw notFound("No published questions for the selected topics.");
+        }
+        return Math.min(requested == null ? LEGACY_DEFAULT_COUNT : requested, available);
+    }
+
+    /** Grammar clients address answers by position; the lock on the attempt covers the read. */
+    @Override
+    @Transactional
+    public AttemptResponse saveAnswer(UUID userId, UUID attemptId, int position, UUID optionId) {
+        lockOwned(userId, attemptId);
+        UUID snapshotId =
+                snapshots.findByAttemptIdOrderByOrdinalAsc(attemptId).stream()
+                        .filter(s -> s.getOrdinal() == position)
+                        .map(AttemptQuestionSnapshot::getId)
+                        .findFirst()
+                        .orElseThrow(() -> notFound("Question position not found."));
+        long version =
+                answers.findBySnapshotId(snapshotId)
+                        .map(AttemptAnswer::getVersion)
+                        .orElseThrow(() -> notFound("Question position not found."));
+        saveAnswer(userId, attemptId, snapshotId, optionId, version);
+        return getAttempt(userId, attemptId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AttemptSummaryResponse> listAttempts(
+            UUID userId, String status, String sourceType, Pageable pageable) {
+        String normalizedStatus = normalizeStatus(status);
+        String normalizedSourceType = normalizeSourceType(sourceType);
+        Page<Attempt> page =
+                attempts.findHistory(
+                        userId,
+                        normalizedStatus != null,
+                        normalizedStatus == null ? "" : normalizedStatus,
+                        normalizedSourceType != null,
+                        normalizedSourceType == null ? "" : normalizedSourceType,
+                        pageable);
+        List<UUID> mixedIds =
+                page.getContent().stream()
+                        .filter(a -> MIXED_GRAMMAR.equals(a.getSourceType()))
+                        .map(Attempt::getId)
+                        .toList();
+        Map<UUID, List<UUID>> mixedTopicsByAttempt =
+                mixedIds.isEmpty()
+                        ? Map.of()
+                        : sourceTopics
+                                .findByIdAttemptIdInOrderByIdAttemptIdAscIdTopicIdAsc(mixedIds)
+                                .stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                t -> t.getId().getAttemptId(),
+                                                Collectors.mapping(
+                                                        t -> t.getId().getTopicId(),
+                                                        Collectors.toList())));
+        return PageResponse.from(
+                page,
+                attempt -> {
+                    List<UUID> topicIds =
+                            MIXED_GRAMMAR.equals(attempt.getSourceType())
+                                    ? mixedTopicsByAttempt.getOrDefault(attempt.getId(), List.of())
+                                    : (attempt.getSourceTopicId() == null
+                                            ? List.of()
+                                            : List.of(attempt.getSourceTopicId()));
+                    return new AttemptSummaryResponse(
+                            attempt.getId(),
+                            attempt.getCategory(),
+                            attempt.getSourceType(),
+                            topicIds,
+                            attempt.getStatus(),
+                            attempt.getTotalCount(),
+                            toInt(attempt.getCorrectCount()),
+                            scorePercent(attempt),
+                            attempt.getStartedAt(),
+                            attempt.getSubmittedAt());
+                });
+    }
+
+    private static String normalizeStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!Attempt.IN_PROGRESS.equals(normalized) && !Attempt.SUBMITTED.equals(normalized)) {
+            throw validation("Unsupported attempt status: " + raw);
+        }
+        return normalized;
+    }
+
+    private static String normalizeSourceType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!GRAMMAR_TOPIC.equals(normalized) && !MIXED_GRAMMAR.equals(normalized)) {
+            throw validation("Unsupported attempt sourceType: " + raw);
+        }
+        return normalized;
+    }
+
+    /** Grammar allocation view, the shape of {@code GET /api/v1/grammar/statistics/topics}. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<TopicStatisticsResponse> topicStatistics(UUID userId) {
+        return topicStatistics(userId, Attempt.GRAMMAR, "allocation");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PracticeSummaryView getPracticeSummary(
+            UUID userId, Instant weaknessSince, String timezone) {
+        String validZone = validateTimezone(timezone);
+        long submittedCount = attempts.countByUserIdAndStatus(userId, Attempt.SUBMITTED);
+        long inProgressCount = attempts.countByUserIdAndStatus(userId, Attempt.IN_PROGRESS);
+        Double avgScore = attempts.averageScoreByUserId(userId);
+        Integer avgRounded = avgScore == null ? null : (int) Math.round(avgScore);
+
+        List<AttemptSummaryView> recent =
+                attempts
+                        .findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(
+                                userId, Attempt.SUBMITTED)
+                        .stream()
+                        .map(
+                                a ->
+                                        new AttemptSummaryView(
+                                                a.getId(),
+                                                a.getSourceType(),
+                                                a.getTotalCount(),
+                                                toInt(a.getCorrectCount()),
+                                                scorePercent(a),
+                                                a.getSubmittedAt()))
+                        .toList();
+
+        List<TopicAccuracyView> topicStats =
+                attempts.topicAccuracySince(userId, weaknessSince).stream()
+                        .map(
+                                s ->
+                                        new TopicAccuracyView(
+                                                s.getTopicId(),
+                                                s.getAttemptCount(),
+                                                s.getQuestionCount(),
+                                                s.getCorrectCount(),
+                                                s.getQuestionCount() == 0
+                                                        ? null
+                                                        : percent(
+                                                                s.getCorrectCount(),
+                                                                s.getQuestionCount())))
+                        .toList();
+
+        Set<LocalDate> localDays =
+                attempts.findSubmittedLocalDays(userId, validZone).stream()
+                        .map(LocalDate::parse)
+                        .collect(Collectors.toSet());
+
+        return new PracticeSummaryView(
+                submittedCount,
+                inProgressCount,
+                avgRounded,
+                recent,
+                topicStats,
+                Set.copyOf(localDays));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsOwnedAttempt(UUID userId, UUID attemptId) {
+        return attempts.findByIdAndUserId(attemptId, userId).isPresent();
+    }
+
+    /** API score is the percentage of correct answers; the column keeps the count (baseline). */
+    private static Integer scorePercent(Attempt attempt) {
+        return attempt.getScore() == null
+                ? null
+                : percent(attempt.getScore(), attempt.getTotalCount());
+    }
+
+    private static String validateTimezone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            throw validation("timezone must not be blank.");
+        }
+        return TimeZones.resolveCanonical(timezone)
+                .orElseThrow(() -> validation("Invalid timezone: " + timezone));
     }
 
     private static void requireAllocationGrammar(String category, String statisticsView) {
@@ -608,13 +831,15 @@ public class PracticeServiceImpl implements PracticeService {
                 attemptId,
                 attempt.getCategory(),
                 new AttemptResponse.Source(attempt.getSourceType(), topicIds),
+                attempt.getSourceType(),
+                topicIds,
                 attempt.getStatus(),
                 attempt.getTotalCount(),
                 attempt.getVersion(),
                 attempt.getDeadlineAt(),
                 attempt.getStartedAt(),
                 attempt.getLastActiveAt(),
-                toInt(attempt.getScore()),
+                scorePercent(attempt),
                 toInt(attempt.getCorrectCount()),
                 toInt(attempt.getAnsweredCount()),
                 revealed ? percent(attempt.getCorrectCount(), attempt.getTotalCount()) : null,
@@ -633,10 +858,13 @@ public class PracticeServiceImpl implements PracticeService {
             boolean revealed) {
         JsonNode body = readTree(snapshot.getQuestionSnapshot());
         UUID correct = revealed ? correctOptionId(snapshot) : null;
+        Boolean isCorrect = revealed ? answer.getCorrect() : null;
         return new QuestionView(
                 snapshot.getId(),
                 snapshot.getOrdinal(),
+                snapshot.getOrdinal(),
                 UUID.fromString(body.path("attributedTopicId").asText()),
+                snapshot.getQuestionTypeCode(),
                 snapshot.getQuestionTypeCode(),
                 body.path("practiceMode").asText(),
                 body.path("prompt").asText(),
@@ -645,12 +873,17 @@ public class PracticeServiceImpl implements PracticeService {
                                 o ->
                                         new OptionView(
                                                 o.getId().getOptionId(),
+                                                o.getId().getOptionId(),
                                                 o.getPosition(),
-                                                o.getPublicBody()))
+                                                o.getPublicBody(),
+                                                correct == null
+                                                        ? null
+                                                        : correct.equals(o.getId().getOptionId())))
                         .toList(),
                 answer.getSelectedOptionId(),
                 answer.getVersion(),
-                revealed ? answer.getCorrect() : null,
+                isCorrect,
+                isCorrect,
                 correct,
                 revealed
                         ? readTree(snapshot.getExplanationSnapshot()).path("explanation").asText()

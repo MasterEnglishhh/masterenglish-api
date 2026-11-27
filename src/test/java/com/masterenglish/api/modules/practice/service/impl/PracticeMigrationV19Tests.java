@@ -15,10 +15,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * V15 on a fresh database and on a database that already applied V14 with attempt data. V15 only
- * adds tables, so the V14 rows must survive it.
+ * V19 on a fresh database and on a database that already applied V18 with attempt data. V19 only
+ * adds tables, so the V18 rows must survive it.
  */
-class PracticeMigrationV15Tests {
+class PracticeMigrationV19Tests {
 
     private static PostgreSQLContainer postgres;
 
@@ -48,11 +48,11 @@ class PracticeMigrationV15Tests {
     }
 
     @Test
-    void freshDatabaseReachesV15WithTheMistakeTablesAndTheirChecks() throws Exception {
-        flyway("15").clean();
-        flyway("15").migrate();
+    void freshDatabaseReachesV19WithTheMistakeTablesAndTheirChecks() throws Exception {
+        flyway("19").clean();
+        flyway("19").migrate();
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("15");
+            assertThat(latestVersion(c)).isEqualTo("19");
             assertThat(
                             scalar(
                                     c,
@@ -73,9 +73,9 @@ class PracticeMigrationV15Tests {
     }
 
     @Test
-    void upgradeFromV14KeepsTheAttemptRowsItAlreadyHas() throws Exception {
-        flyway("14").clean();
-        flyway("14").migrate();
+    void upgradeFromV18KeepsTheAttemptRowsItAlreadyHas() throws Exception {
+        flyway("18").clean();
+        flyway("18").migrate();
         UUID user = UUID.randomUUID();
         UUID attempt = UUID.randomUUID();
         try (Connection c = connect();
@@ -102,10 +102,10 @@ class PracticeMigrationV15Tests {
                             + "', 'IN_PROGRESS', 2)");
         }
 
-        flyway("15").migrate();
+        flyway("19").migrate();
 
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("15");
+            assertThat(latestVersion(c)).isEqualTo("19");
             assertThat(scalar(c, "SELECT count(*) FROM attempts WHERE id = '" + attempt + "'"))
                     .isEqualTo("1");
             assertThat(scalar(c, "SELECT count(*) FROM mistake_records")).isEqualTo("0");

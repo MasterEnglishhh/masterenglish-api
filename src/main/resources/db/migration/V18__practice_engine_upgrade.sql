@@ -1,13 +1,29 @@
--- V14: Grammar practice engine aligned with Approved Baseline v3.0 (M04 learner scope).
+-- V18: Nâng cấp engine luyện tập M04 lên dạng Approved Baseline v3.0 (phạm vi grammar).
 --
--- V1..V13 are not edited. The attempt tables created by V13 are rebuilt here, so local attempt
--- rows from V13 are discarded (approved for the local environment). Shell tables for TOEIC /
--- practice sets (M05) are created empty so the nullable foreign-key columns exist.
+-- V1..V17 không sửa. Bảng attempt do V13 tạo có thể đã áp dụng trên môi trường dùng chung,
+-- nên dữ liệu được GIỮ: sao lưu sang legacy_v13_*, tạo bảng theo baseline, rồi chuyển dữ liệu
+-- (cuối file). legacy_v13_* được giữ để đối chiếu, bỏ ở migration riêng sau khi kiểm chứng.
+-- Shell tables for TOEIC / practice sets (M05) are created empty so the nullable foreign-key
+-- columns exist.
+--
+-- Xấp xỉ khi chuyển dữ liệu: V13 không lưu revision tại thời điểm làm bài, nên snapshot câu hỏi
+-- dùng published_revision_id hiện tại và topicIds lấy từ question_topics hiện tại.
 --
 -- Not copied from the baseline for now: its triggers (guard_*, *_complete) and the me_* JSON
 -- helpers behind ck_*_public_safe. The application enforces those rules until M05 adds them.
 
--- Rebuild attempt tables from V13 (children first)
+-- Sao lưu dữ liệu V13. CREATE TABLE AS không chép ràng buộc hay index, nên tên của chúng
+-- được giải phóng để tạo lại bảng theo baseline.
+CREATE TABLE legacy_v13_attempts AS SELECT * FROM attempts;
+CREATE TABLE legacy_v13_attempt_source_topics AS SELECT * FROM attempt_source_topics;
+CREATE TABLE legacy_v13_attempt_question_snapshots AS SELECT * FROM attempt_question_snapshots;
+CREATE TABLE legacy_v13_attempt_snapshot_options AS SELECT * FROM attempt_snapshot_options;
+CREATE TABLE legacy_v13_attempt_answers AS SELECT * FROM attempt_answers;
+
+-- study_sessions (V17) trỏ tới attempts; FK được tạo lại sau khi chuyển dữ liệu.
+ALTER TABLE study_sessions DROP CONSTRAINT fk_study_sessions_user_id_attempt_id_attempts;
+
+-- Bỏ bảng V13 (con trước).
 DROP TABLE attempt_answers;
 DROP TABLE attempt_snapshot_options;
 DROP TABLE attempt_question_snapshots;
@@ -274,3 +290,159 @@ CREATE INDEX ix_attempts_deadline ON attempts(deadline_at) WHERE status='IN_PROG
 CREATE INDEX ix_attempts_user_open ON attempts(user_id, last_active_at) WHERE status='IN_PROGRESS';
 CREATE INDEX ix_snapshot_question ON attempt_question_snapshots(question_id, attempt_id);
 CREATE INDEX ix_answers_attempt ON attempt_answers(attempt_id);
+
+-- =====================================================================================
+-- Chuyển dữ liệu V13 sang dạng baseline. Mỗi câu có đúng một dòng attempt_answers
+-- (giống lúc seal của engine); câu chưa trả lời có score 0 khi nộp bài.
+-- =====================================================================================
+
+INSERT INTO attempts (
+    id, user_id, category, source_type, source_set_id, source_deck_id, source_topic_id,
+    source_revision_id, source_config, request_id, request_hash, status, total_count,
+    correct_count, answered_count, score, snapshot_sealed_at, started_at, last_active_at,
+    deadline_at, submitted_at, effective_finished_at, submit_reason, abandoned_at,
+    duration_seconds, timezone, local_day, version, created_at, updated_at)
+SELECT a.id,
+       a.user_id,
+       'GRAMMAR',
+       a.source_type,
+       NULL,
+       NULL,
+       a.source_topic_id,
+       CASE WHEN a.source_topic_id IS NOT NULL THEN gt.published_revision_id END,
+       CASE WHEN a.source_type = 'GRAMMAR_TOPIC'
+            THEN jsonb_build_object(
+                    'sourceType', a.source_type,
+                    'topicIds', jsonb_build_array(a.source_topic_id::text),
+                    'questionCount', a.total_count)
+            ELSE jsonb_build_object(
+                    'sourceType', a.source_type,
+                    'topicIds', (SELECT COALESCE(jsonb_agg(t.topic_id::text ORDER BY t.topic_id::text),
+                                                 '[]'::jsonb)
+                                 FROM legacy_v13_attempt_source_topics t
+                                 WHERE t.attempt_id = a.id),
+                    'questionCount', a.total_count)
+       END,
+       a.request_id,
+       a.request_hash,
+       a.status,
+       a.total_count,
+       CASE WHEN a.status = 'SUBMITTED' THEN a.correct_count END,
+       CASE WHEN a.status = 'SUBMITTED'
+            THEN (SELECT count(*) FROM legacy_v13_attempt_answers ans
+                  WHERE ans.attempt_id = a.id AND ans.selected_option_id IS NOT NULL)
+       END,
+       CASE WHEN a.status = 'SUBMITTED' THEN a.correct_count END,
+       a.started_at,
+       a.started_at,
+       a.updated_at,
+       NULL,
+       CASE WHEN a.status = 'SUBMITTED' THEN a.submitted_at END,
+       CASE WHEN a.status = 'SUBMITTED' THEN a.submitted_at END,
+       CASE WHEN a.status = 'SUBMITTED' THEN 'MANUAL' END,
+       NULL,
+       CASE WHEN a.status = 'SUBMITTED'
+            THEN floor(extract(epoch FROM (a.submitted_at - a.started_at)))::int
+       END,
+       'Asia/Ho_Chi_Minh',
+       CASE WHEN a.status = 'SUBMITTED'
+            THEN (a.submitted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+       END,
+       a.version,
+       a.started_at,
+       a.updated_at
+FROM legacy_v13_attempts a
+LEFT JOIN grammar_topics gt ON gt.id = a.source_topic_id;
+
+INSERT INTO attempt_source_topics (attempt_id, topic_id, source_revision_id)
+SELECT t.attempt_id, t.topic_id, gt.published_revision_id
+FROM legacy_v13_attempt_source_topics t
+JOIN grammar_topics gt ON gt.id = t.topic_id;
+
+INSERT INTO attempt_question_snapshots (
+    id, attempt_id, question_id, source_revision_id, group_snapshot_id, category, ordinal,
+    question_type_code, schema_version, grading_policy_version,
+    question_snapshot, answer_key_snapshot, explanation_snapshot)
+SELECT gen_random_uuid(),
+       s.attempt_id,
+       s.question_id,
+       q.published_revision_id,
+       NULL,
+       'GRAMMAR',
+       s.position,
+       s.question_type_code,
+       1,
+       'SINGLE_CHOICE_V1',
+       jsonb_build_object(
+               'prompt', s.prompt,
+               'practiceMode', s.practice_mode,
+               'questionTypeCode', s.question_type_code,
+               'topicIds', (SELECT COALESCE(jsonb_agg(qt.topic_id::text ORDER BY qt.topic_id::text),
+                                            '[]'::jsonb)
+                            FROM question_topics qt
+                            WHERE qt.question_id = s.question_id),
+               'attributedTopicId', s.topic_id::text),
+       jsonb_build_object(
+               'correctOptionId', (SELECT o.id::text
+                                   FROM legacy_v13_attempt_snapshot_options o
+                                   WHERE o.attempt_id = s.attempt_id
+                                     AND o.question_position = s.position
+                                     AND o.is_correct)),
+       jsonb_build_object('explanation', s.explanation)
+FROM legacy_v13_attempt_question_snapshots s
+JOIN questions q ON q.id = s.question_id;
+
+INSERT INTO attempt_snapshot_options (snapshot_id, option_id, position, public_body)
+SELECT ns.id, o.id, o.position, o.body
+FROM legacy_v13_attempt_snapshot_options o
+JOIN attempt_question_snapshots ns
+  ON ns.attempt_id = o.attempt_id AND ns.ordinal = o.question_position;
+
+INSERT INTO attempt_answers (
+    id, attempt_id, snapshot_id, selected_option_id, response_payload, version,
+    answered_at, is_correct, score, created_at, updated_at)
+SELECT gen_random_uuid(),
+       ns.attempt_id,
+       ns.id,
+       la.selected_option_id,
+       NULL,
+       0,
+       la.answered_at,
+       CASE WHEN a.status = 'SUBMITTED' THEN COALESCE(lo.is_correct, FALSE) END,
+       CASE WHEN a.status = 'SUBMITTED'
+            THEN CASE WHEN COALESCE(lo.is_correct, FALSE) THEN 1 ELSE 0 END
+       END,
+       a.started_at,
+       a.updated_at
+FROM attempt_question_snapshots ns
+JOIN attempts a ON a.id = ns.attempt_id
+LEFT JOIN legacy_v13_attempt_answers la
+  ON la.attempt_id = ns.attempt_id AND la.question_position = ns.ordinal
+LEFT JOIN legacy_v13_attempt_snapshot_options lo
+  ON lo.attempt_id = la.attempt_id
+ AND lo.question_position = la.question_position
+ AND lo.id = la.selected_option_id;
+
+-- study_sessions: khôi phục FK; id giữ nguyên nên mọi dòng cũ vẫn hợp lệ.
+ALTER TABLE study_sessions ADD CONSTRAINT fk_study_sessions_user_id_attempt_id_attempts
+    FOREIGN KEY (user_id, attempt_id) REFERENCES attempts (user_id, id) ON DELETE RESTRICT;
+
+-- Kiểm tra số dòng: lệch thì dừng migration (rollback toàn bộ), không để mất dữ liệu lặng lẽ.
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM attempts) <> (SELECT count(*) FROM legacy_v13_attempts) THEN
+        RAISE EXCEPTION 'V18: attempts row count mismatch';
+    END IF;
+    IF (SELECT count(*) FROM attempt_source_topics) <> (SELECT count(*) FROM legacy_v13_attempt_source_topics) THEN
+        RAISE EXCEPTION 'V18: attempt_source_topics row count mismatch';
+    END IF;
+    IF (SELECT count(*) FROM attempt_question_snapshots) <> (SELECT count(*) FROM legacy_v13_attempt_question_snapshots) THEN
+        RAISE EXCEPTION 'V18: attempt_question_snapshots row count mismatch';
+    END IF;
+    IF (SELECT count(*) FROM attempt_snapshot_options) <> (SELECT count(*) FROM legacy_v13_attempt_snapshot_options) THEN
+        RAISE EXCEPTION 'V18: attempt_snapshot_options row count mismatch';
+    END IF;
+    IF (SELECT count(*) FROM attempt_answers) <> (SELECT count(*) FROM attempt_question_snapshots) THEN
+        RAISE EXCEPTION 'V18: attempt_answers must have one row per snapshot';
+    END IF;
+END $$;

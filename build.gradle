@@ -77,6 +77,8 @@ tasks.named('test') {
 	environment 'JWT_SECRET', 'test-only-jwt-signing-secret-at-least-32-bytes-long'
 	environment 'OTP_HMAC_SECRET', 'test-only-otp-hmac-secret-at-least-32-bytes-long'
 	environment 'RATE_LIMIT_SECRET', 'test-only-rate-limit-secret-at-least-32-bytes-long'
+	// Tests drive reminder jobs directly instead of waiting for the scheduler.
+	systemProperty 'notification.scheduler.enabled', 'false'
 	systemProperty 'user.timezone', 'UTC'
 }
 

@@ -26,6 +26,14 @@ public class GrammarEvents {
         return events.request(reply -> new TopicVisibilityRequested(topicId, reply));
     }
 
+    public List<VisibleTopicView> listVisibleTopics() {
+        return events.request(VisibleTopicsRequested::new);
+    }
+
+    public List<VisibleLessonView> listVisibleLessons() {
+        return events.request(VisibleLessonsRequested::new);
+    }
+
     /** Every visible topic and every visible lesson, for learner progress aggregation. */
     public VisibleCatalog visibleCatalog() {
         return events.request(reply -> new VisibleCatalogRequested(reply));
@@ -46,20 +54,30 @@ public class GrammarEvents {
                 reply -> new LockPublishedTopicsRequested(List.copyOf(topicIds), reply));
     }
 
+    public record PublishedLessonRef(UUID lessonId, UUID revisionId) {}
+
     public record PublishedTopicRef(UUID topicId, UUID revisionId) {}
 
-    public record LockPublishedTopicsRequested(
-            List<UUID> topicIds, EventReply<List<PublishedTopicRef>> reply) {}
+    public record VisibleTopicView(
+            UUID id, String slug, String name, String difficulty, int sortOrder) {}
 
-    public record PublishedTopicRequested(
-            UUID topicId, EventReply<Optional<PublishedTopicRef>> reply) {}
-
-    public record PublishedLessonRef(UUID lessonId, UUID revisionId) {}
+    public record VisibleLessonView(
+            UUID id, UUID topicId, String title, int sortOrder, Short estimatedMinutes) {}
 
     public record PublishedLessonRequested(
             UUID lessonId, EventReply<Optional<PublishedLessonRef>> reply) {}
 
+    public record PublishedTopicRequested(
+            UUID topicId, EventReply<Optional<PublishedTopicRef>> reply) {}
+
+    public record LockPublishedTopicsRequested(
+            List<UUID> topicIds, EventReply<List<PublishedTopicRef>> reply) {}
+
     public record TopicVisibilityRequested(UUID topicId, EventReply<Boolean> reply) {}
+
+    public record VisibleTopicsRequested(EventReply<List<VisibleTopicView>> reply) {}
+
+    public record VisibleLessonsRequested(EventReply<List<VisibleLessonView>> reply) {}
 
     /** Visible topics and lessons; a lesson is listed only when its topic is visible too. */
     public record VisibleCatalog(List<VisibleTopic> topics, List<VisibleLesson> lessons) {}

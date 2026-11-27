@@ -10,7 +10,9 @@ import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.GrammarEvents.PublishedLessonRef;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleCatalog;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleLesson;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleLessonView;
 import com.masterenglish.api.common.events.GrammarEvents.VisibleTopic;
+import com.masterenglish.api.common.events.GrammarEvents.VisibleTopicView;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarLessonSummaryResponse;
 import com.masterenglish.api.modules.grammar.dto.response.GrammarTopicResponse;
@@ -151,6 +153,36 @@ public class GrammarQueryServiceImpl implements GrammarQueryService {
         }
         return topics.lockVisibleTopics(topicIds).stream()
                 .map(t -> new GrammarEvents.PublishedTopicRef(t.getTopicId(), t.getRevisionId()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VisibleTopicView> listAllVisibleTopics() {
+        return topics.findVisibleTopics().stream()
+                .map(
+                        t ->
+                                new VisibleTopicView(
+                                        t.getId(),
+                                        t.getSlug(),
+                                        t.getName(),
+                                        t.getDifficulty(),
+                                        t.getSortOrder()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VisibleLessonView> listAllVisibleLessons() {
+        return lessons.findAllVisibleLessons().stream()
+                .map(
+                        l ->
+                                new VisibleLessonView(
+                                        l.getId(),
+                                        l.getTopicId(),
+                                        l.getTitle(),
+                                        l.getSortOrder(),
+                                        l.getEstimatedMinutes()))
                 .toList();
     }
 

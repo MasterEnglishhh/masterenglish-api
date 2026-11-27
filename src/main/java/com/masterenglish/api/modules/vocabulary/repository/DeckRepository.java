@@ -1,6 +1,8 @@
 package com.masterenglish.api.modules.vocabulary.repository;
 
 import com.masterenglish.api.modules.vocabulary.entity.Deck;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -41,4 +43,10 @@ public interface DeckRepository extends JpaRepository<Deck, UUID> {
                     + "JOIN CatalogVisibleItem i ON i.id = d.id "
                     + "WHERE d.id = :id")
     Optional<Deck> findActiveById(@Param("id") UUID id);
+
+    @Query(
+            "SELECT d FROM Deck d "
+                    + "JOIN CatalogVisibleItem i ON i.id = d.id "
+                    + "WHERE d.id IN :ids")
+    List<Deck> findAllActiveByIds(@Param("ids") Collection<UUID> ids);
 }

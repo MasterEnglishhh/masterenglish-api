@@ -2,7 +2,9 @@ package com.masterenglish.api.modules.learning.service.impl;
 
 import com.masterenglish.api.common.api.PageResponse;
 import com.masterenglish.api.common.api.WordSenseCardDto;
+import com.masterenglish.api.common.events.LearningEvents.DueDeckCountView;
 import com.masterenglish.api.common.events.VocabularyEvents;
+import com.masterenglish.api.common.time.TimeZones;
 import com.masterenglish.api.modules.learning.dto.response.LearningProgressResponse;
 import com.masterenglish.api.modules.learning.dto.response.ReviewHistoryItemDto;
 import com.masterenglish.api.modules.learning.entity.WordReview;
@@ -13,8 +15,12 @@ import com.masterenglish.api.modules.learning.service.LearningProgressService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,8 +66,14 @@ public class LearningProgressServiceImpl implements LearningProgressService {
     @Override
     @Transactional(readOnly = true)
     public LearningProgressResponse getProgress(UUID userId) {
+        return getProgress(userId, clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LearningProgressResponse getProgress(UUID userId, Instant asOf) {
         Objects.requireNonNull(userId, "userId must not be null");
-        Instant now = clock.instant();
+        Instant now = asOf != null ? asOf : clock.instant();
         return new LearningProgressResponse(
                 progressRepository.countByIdUserId(userId),
                 progressRepository.countByIdUserIdAndIntervalDaysGreaterThanEqual(
@@ -72,6 +84,41 @@ public class LearningProgressServiceImpl implements LearningProgressService {
                 reviewRepository.countByUserId(userId),
                 reviewRepository.countByUserIdAndReviewedAtGreaterThanEqual(
                         userId, now.minus(Duration.ofDays(7))));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DueDeckCountView> countDueCardsByDeck(UUID userId, Instant asOf) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        Objects.requireNonNull(asOf, "asOf must not be null");
+        return progressRepository.countEligibleDueByDeck(userId, asOf).stream()
+                .map(row -> new DueDeckCountView(row.getDeckId(), row.getDueCount()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<LocalDate> findReviewActivityLocalDays(UUID userId, String timezone) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        String validZone = validateTimezone(timezone);
+        return reviewRepository.findDistinctActivityLocalDays(userId, validZone).stream()
+                .map(LocalDate::parse)
+                .collect(Collectors.toSet());
+    }
+
+    static String validateTimezone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            throw new com.masterenglish.api.common.error.BusinessException(
+                    com.masterenglish.api.common.error.ErrorCode.VALIDATION_ERROR,
+                    "timezone must not be blank.");
+        }
+        return TimeZones.resolveCanonical(timezone)
+                .orElseThrow(
+                        () ->
+                                new com.masterenglish.api.common.error.BusinessException(
+                                        com.masterenglish.api.common.error.ErrorCode
+                                                .VALIDATION_ERROR,
+                                        "Invalid timezone: " + timezone));
     }
 
     private static ReviewHistoryItemDto historyItem(WordReview review, WordSenseCardDto card) {

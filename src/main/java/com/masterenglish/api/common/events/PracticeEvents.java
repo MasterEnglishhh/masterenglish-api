@@ -1,5 +1,7 @@
 package com.masterenglish.api.common.events;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +40,13 @@ public class PracticeEvents {
                 reply -> new SelectionRequested(requestId, category, topicIds, limit, reply));
     }
 
+    /** True when the practice attempt exists and belongs to the learner. */
+    public boolean existsOwnedAttempt(UUID userId, UUID attemptId) {
+        return events.request(reply -> new OwnedAttemptRequested(userId, attemptId, reply));
+    }
+
+    public record OwnedAttemptRequested(UUID userId, UUID attemptId, EventReply<Boolean> reply) {}
+
     public record AvailableCountRequested(
             String category, Set<UUID> topicIds, EventReply<Long> reply) {}
 
@@ -67,4 +76,39 @@ public class PracticeEvents {
             UUID correctOptionId) {}
 
     public record SelectedOption(UUID optionId, int position, String body) {}
+
+    public PracticeSummaryView getPracticeSummary(
+            UUID userId, Instant weaknessSince, String timezone) {
+        return events.request(
+                reply -> new PracticeSummaryRequested(userId, weaknessSince, timezone, reply));
+    }
+
+    public record AttemptSummaryView(
+            UUID id,
+            String sourceType,
+            int totalCount,
+            Integer correctCount,
+            Integer score,
+            Instant submittedAt) {}
+
+    public record TopicAccuracyView(
+            UUID topicId,
+            long attemptCount,
+            long questionCount,
+            long correctCount,
+            Integer accuracyPercent) {}
+
+    public record PracticeSummaryView(
+            long submittedAttemptCount,
+            long inProgressAttemptCount,
+            Integer averageScorePercent,
+            List<AttemptSummaryView> recentSubmittedAttempts,
+            List<TopicAccuracyView> topicStatsSince,
+            Set<LocalDate> activityLocalDays) {}
+
+    public record PracticeSummaryRequested(
+            UUID userId,
+            Instant weaknessSince,
+            String timezone,
+            EventReply<PracticeSummaryView> reply) {}
 }

@@ -200,14 +200,14 @@ class PracticeIntegrationTests {
 
         assertThat(submitted.path("status").asText()).isEqualTo("SUBMITTED");
         assertThat(submitted.path("correctCount").asInt()).isEqualTo(1);
-        assertThat(submitted.path("score").asInt()).isEqualTo(1);
+        assertThat(submitted.path("score").asInt()).isEqualTo(50);
         assertThat(submitted.path("accuracyPercent").asInt()).isEqualTo(50);
         assertThat(submitted.path("questions").get(0).path("isCorrect").asBoolean()).isTrue();
         assertThat(submitted.path("questions").get(1).path("isCorrect").asBoolean()).isFalse();
         assertThat(submitted.path("questions").get(0).path("explanation").asText()).isNotBlank();
 
         JsonNode again = submit(learner, attemptId);
-        assertThat(again.path("score").asInt()).isEqualTo(1);
+        assertThat(again.path("score").asInt()).isEqualTo(50);
         assertThat(again.path("correctCount").asInt()).isEqualTo(1);
 
         answer(learner, attemptId, 1, optionIdWithBody(attempt, 1, wrongOf(attempt, 1)), 409);

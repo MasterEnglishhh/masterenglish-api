@@ -1,0 +1,274 @@
+package com.masterenglish.api.modules.dashboard.controller;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.masterenglish.api.common.error.GlobalExceptionHandler;
+import com.masterenglish.api.common.security.AuthenticatedUser;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarLessonProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarPracticeProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.GrammarWeaknessScopeSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.LearningGoalSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.NotificationSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.OverviewSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.PracticeStatisticsSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.RecommendationItem;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyGoalSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyPlanSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudyScheduleSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.StudySessionSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.TodayReviewSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicSkillProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicTargetSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.ToeicWeaknessScopeSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.VocabularyProgressSummary;
+import com.masterenglish.api.modules.dashboard.dto.response.DashboardResponse.WeaknessAnalysisSummary;
+import com.masterenglish.api.modules.dashboard.service.DashboardService;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.support.WebDataBinderFactory;
+import org.springframework.web.context.request.NativeWebRequest;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.method.support.ModelAndViewContainer;
+
+class DashboardControllerUnitTests {
+
+    private final UUID learnerId = UUID.randomUUID();
+    private DashboardService serviceMock;
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        serviceMock = mock(DashboardService.class);
+        HandlerMethodArgumentResolver currentUserResolver =
+                new HandlerMethodArgumentResolver() {
+                    @Override
+                    public boolean supportsParameter(MethodParameter parameter) {
+                        return parameter.hasParameterAnnotation(
+                                        com.masterenglish.api.common.security.CurrentUser.class)
+                                && AuthenticatedUser.class.isAssignableFrom(
+                                        parameter.getParameterType());
+                    }
+
+                    @Override
+                    public Object resolveArgument(
+                            MethodParameter parameter,
+                            ModelAndViewContainer mavContainer,
+                            NativeWebRequest webRequest,
+                            WebDataBinderFactory binderFactory) {
+                        return new AuthenticatedUser() {
+                            @Override
+                            public UUID getId() {
+                                return learnerId;
+                            }
+
+                            @Override
+                            public String getEmail() {
+                                return "learner@example.test";
+                            }
+                        };
+                    }
+                };
+        mockMvc =
+                MockMvcBuilders.standaloneSetup(new DashboardController(serviceMock))
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .setCustomArgumentResolvers(currentUserResolver)
+                        .build();
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/dashboard trả đầy đủ các nhóm dữ liệu dashboard")
+    void getDashboardReturnsAggregatedPayload() throws Exception {
+        var response =
+                new DashboardResponse(
+                        new OverviewSummary(
+                                LocalDate.of(2026, 11, 25), "Asia/Ho_Chi_Minh", 3, true, 5),
+                        new VocabularyProgressSummary(12, 4, 3, 7, 25, 10),
+                        new TodayReviewSummary(3, 7, List.of()),
+                        new LearningGoalSummary(false, null, null, null, null, 3, true, 12, true),
+                        new StudyPlanSummary(
+                                new StudyGoalSummary(false, null, null),
+                                new ToeicTargetSummary(
+                                        false, null, null, null, null, null, "NOT_CONFIGURED"),
+                                new StudyScheduleSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
+                                        null,
+                                        0),
+                                new StudySessionSummary(true, "READY", 12, null, null, 3, true)),
+                        new PracticeStatisticsSummary(
+                                2,
+                                1,
+                                5,
+                                4,
+                                0,
+                                80,
+                                false,
+                                new GrammarLessonProgressSummary(true, "READY", 2, 1, 5),
+                                new GrammarPracticeProgressSummary(true, "READY", 4, 0, 80),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        0,
+                                        null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        0,
+                                        null),
+                                List.of()),
+                        new WeaknessAnalysisSummary(
+                                "INSUFFICIENT_DATA",
+                                30,
+                                20,
+                                70,
+                                12,
+                                false,
+                                new GrammarWeaknessScopeSummary(
+                                        true, "INSUFFICIENT_DATA", 1, 0, 12),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        List.of()),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        List.of()),
+                                List.of()),
+                        List.of(
+                                new RecommendationItem(
+                                        "FLASHCARD_REVIEW",
+                                        "VOCABULARY",
+                                        "DUE_FLASHCARDS",
+                                        "Ôn tập 3 thẻ Flashcard đến hạn",
+                                        "Hoàn thành hàng ôn SRS hôm nay.",
+                                        "/learn/review",
+                                        1)),
+                        new NotificationSummary(2));
+        when(serviceMock.getLearnerDashboard(learnerId)).thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overview.streakDays").value(3))
+                .andExpect(jsonPath("$.vocabularyProgress.studiedSenses").value(12))
+                .andExpect(jsonPath("$.todayReview.dueNow").value(3))
+                .andExpect(jsonPath("$.learningGoal.studyTimeTrackingAvailable").value(true))
+                .andExpect(jsonPath("$.learningGoal.todayActiveMinutes").value(12))
+                .andExpect(
+                        jsonPath("$.studyPlan.studySchedule.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
+                .andExpect(jsonPath("$.studyPlan.studySession.trackingAvailable").value(true))
+                .andExpect(jsonPath("$.studyPlan.studySession.todayActualMinutes").value(12))
+                .andExpect(jsonPath("$.practiceStatistics.completedGrammarLessons").value(2))
+                .andExpect(
+                        jsonPath("$.practiceStatistics.toeicListening.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
+                .andExpect(
+                        jsonPath("$.practiceStatistics.toeicReading.status")
+                                .value("UNAVAILABLE_PENDING_MIGRATION"))
+                .andExpect(jsonPath("$.weaknessAnalysis.status").value("INSUFFICIENT_DATA"))
+                .andExpect(jsonPath("$.recommendations[0].type").value("FLASHCARD_REVIEW"))
+                .andExpect(jsonPath("$.recommendations[0].skill").value("VOCABULARY"))
+                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(2))
+                .andExpect(jsonPath("$.notificationSummary.available").value(true))
+                .andExpect(jsonPath("$.notificationSummary.status").value("READY"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/dashboard giữ 200 và báo UNAVAILABLE khi thông báo bị suy giảm")
+    void getDashboardReportsUnavailableNotificationSummaryCleanly() throws Exception {
+        var degraded =
+                new DashboardResponse(
+                        new OverviewSummary(
+                                LocalDate.of(2026, 11, 25), "Asia/Ho_Chi_Minh", 0, false, 0),
+                        new VocabularyProgressSummary(0, 0, 0, 0, 0, 0),
+                        new TodayReviewSummary(0, 0, List.of()),
+                        new LearningGoalSummary(
+                                false, null, null, null, null, 0, false, null, false),
+                        new StudyPlanSummary(
+                                new StudyGoalSummary(false, null, null),
+                                new ToeicTargetSummary(
+                                        false, null, null, null, null, null, "NOT_CONFIGURED"),
+                                new StudyScheduleSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of("MANUAL", "TOEIC_GOAL_PROPOSED"),
+                                        null,
+                                        0),
+                                new StudySessionSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        null,
+                                        null,
+                                        null,
+                                        0,
+                                        false)),
+                        new PracticeStatisticsSummary(
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                null,
+                                false,
+                                new GrammarLessonProgressSummary(true, "NO_DATA", 0, 0, 0),
+                                new GrammarPracticeProgressSummary(true, "NO_DATA", 0, 0, null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        0,
+                                        null),
+                                new ToeicSkillProgressSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        0,
+                                        null),
+                                List.of()),
+                        new WeaknessAnalysisSummary(
+                                "NO_DATA",
+                                30,
+                                20,
+                                70,
+                                0,
+                                false,
+                                new GrammarWeaknessScopeSummary(true, "NO_DATA", 0, 0, 0),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(1, 2, 3, 4),
+                                        List.of()),
+                                new ToeicWeaknessScopeSummary(
+                                        false,
+                                        "UNAVAILABLE_PENDING_MIGRATION",
+                                        List.of(5, 6, 7),
+                                        List.of()),
+                                List.of()),
+                        List.of(),
+                        new NotificationSummary(0, false, "UNAVAILABLE"));
+        when(serviceMock.getLearnerDashboard(learnerId)).thenReturn(degraded);
+
+        mockMvc.perform(get("/api/v1/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.notificationSummary.unreadCount").value(0))
+                .andExpect(jsonPath("$.notificationSummary.available").value(false))
+                .andExpect(jsonPath("$.notificationSummary.status").value("UNAVAILABLE"));
+    }
+}

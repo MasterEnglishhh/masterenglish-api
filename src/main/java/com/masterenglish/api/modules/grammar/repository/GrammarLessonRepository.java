@@ -31,6 +31,9 @@ public interface GrammarLessonRepository extends JpaRepository<GrammarLesson, UU
     @Query(value = VISIBLE + "WHERE l.id = :lessonId", nativeQuery = true)
     Optional<GrammarLesson> findVisibleById(@Param("lessonId") UUID lessonId);
 
+    @Query(value = VISIBLE + "ORDER BY t.sort_order, l.sort_order, l.title", nativeQuery = true)
+    List<GrammarLesson> findAllVisibleLessons();
+
     /** Read-only projection: callers never see managed entities, so no stale revision is reused. */
     @Query(
             value =

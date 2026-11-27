@@ -59,6 +59,9 @@ public interface GrammarTopicRepository extends JpaRepository<GrammarTopic, UUID
         Integer getSortOrder();
     }
 
+    @Query(value = VISIBLE + "ORDER BY t.sort_order, t.name", nativeQuery = true)
+    List<GrammarTopic> findVisibleTopics();
+
     @Query(value = VISIBLE + "WHERE t.id = :topicId", nativeQuery = true)
     Optional<GrammarTopic> findVisibleTopicById(@Param("topicId") UUID topicId);
 

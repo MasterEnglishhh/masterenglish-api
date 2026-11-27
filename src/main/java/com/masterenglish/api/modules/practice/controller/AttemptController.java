@@ -1,11 +1,15 @@
 package com.masterenglish.api.modules.practice.controller;
 
+import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
 import com.masterenglish.api.modules.practice.dto.request.AnswerRequest;
+import com.masterenglish.api.modules.practice.dto.request.PositionAnswerRequest;
 import com.masterenglish.api.modules.practice.dto.request.StartAttemptRequest;
 import com.masterenglish.api.modules.practice.dto.response.AnswerResponse;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
+import com.masterenglish.api.modules.practice.dto.response.AttemptSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
 import com.masterenglish.api.modules.practice.dto.response.StatisticsSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.TopicStatisticsResponse;
@@ -37,6 +41,18 @@ public class AttemptController {
         this.practice = practice;
     }
 
+    /** The learner's attempt history, newest first. */
+    @GetMapping
+    public PageResponse<AttemptSummaryResponse> listAttempts(
+            @CurrentUser AuthenticatedUser currentUser,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sourceType,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return practice.listAttempts(
+                currentUser.getId(), status, sourceType, PageRequestUtils.of(page, size));
+    }
+
     /** 201 for a new attempt; 200 when the same Idempotency-Key and body were replayed. */
     @PostMapping
     public ResponseEntity<AttemptResponse> start(
@@ -64,7 +80,8 @@ public class AttemptController {
         return practice.getAttempt(currentUser.getId(), attemptId);
     }
 
-    @PutMapping("/{attemptId}/answers/{snapshotId}")
+    /** Answer by the snapshot id, with the version the client last saw (compare-and-set). */
+    @PutMapping("/{attemptId}/answers/{snapshotId:[0-9a-fA-F-]{36}}")
     public AnswerResponse saveAnswer(
             @CurrentUser AuthenticatedUser currentUser,
             @PathVariable UUID attemptId,
@@ -76,6 +93,16 @@ public class AttemptController {
                 snapshotId,
                 request.selectedOptionId(),
                 request.expectedVersion());
+    }
+
+    /** Answer by the 1-based question position, the contract grammar clients use. */
+    @PutMapping("/{attemptId}/answers/{position:\\d+}")
+    public AttemptResponse saveAnswerAtPosition(
+            @CurrentUser AuthenticatedUser currentUser,
+            @PathVariable UUID attemptId,
+            @PathVariable int position,
+            @Valid @RequestBody PositionAnswerRequest request) {
+        return practice.saveAnswer(currentUser.getId(), attemptId, position, request.optionId());
     }
 
     @PostMapping("/{attemptId}/submit")
