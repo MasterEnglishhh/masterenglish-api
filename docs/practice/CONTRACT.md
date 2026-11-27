@@ -11,6 +11,15 @@ Tham chiếu SQL (không phải migration dự án): `docs/database/proposals/ap
 
 Tài liệu này không phải nguồn chuẩn độc lập. Mọi chỗ lệch khỏi approved baseline được ghi ở mục 14.
 
+## Lịch sử thay đổi
+
+| Ngày | Phiên bản | Thay đổi | Căn cứ |
+|---|---|---|---|
+| 2026-11-21 | Giai đoạn 1 | Bản chốt ban đầu | — |
+| 2026-11-26 | T0 | Mở rộng cho TOEIC (M05). Nội dung cũ bị thay được gạch bỏ tại chỗ và ghi "(thay bởi T0)", không xóa. Tóm tắt thay đổi:<br>• D8 → D8 v2: V13 đã lên `main` (`9ea157d`, PR #15), không sửa V13, schema mới đi qua V14+ kiểu additive.<br>• D6 mở lại cho TOEIC (`practice_sets`, S9).<br>• Không có `EXPIRED` (S2).<br>• `mistake_records` thuộc `learning` (S3).<br>• `STALE_ANSWER_VERSION` → `VERSION_CONFLICT` (S8).<br>• Autosave có `Idempotency-Key`.<br>• Autosave và submit không khóa `users`.<br>• JSON snapshot theo `docs/m05/02`.<br>• Schema đích theo brief T0 §4.1. | [brief T0](../m05/tasks/T0-brief-contract-freeze.md), [ADR-07..13](../m05/01-adrs-07-to-13.md), [JSON Schema v1](../m05/02-snapshot-json-schemas-v1.md) |
+| 2026-11-26 | Rà soát chéo T0–T7 | Áp delta tài liệu của các brief đã duyệt, gạch nội dung cũ tại chỗ:<br>• §2.1: `PracticeEvents` chỉ còn `prepareSeal`; facade media của `content`; event `AttemptSubmitted` theo T4.<br>• §3.2: GET luôn trả `ActiveAttemptResponse`; submit trả `AttemptSubmitResponse`; thêm `/results` và endpoint media; 3 endpoint grammar cũ gỡ hẳn.<br>• §3.4: DTO theo 02 §8.<br>• §4.3: `activeAttemptIds`; `attemptStatus` thay `status`; thêm `ATTEMPT_NOT_SUBMITTED`; kiểu `UUID_LIST`.<br>• §5.1–5.4: `prepareSeal`, response PUT, kết quả chỉ ở `/results`.<br>• §14.4: lệch DD của T1. | Brief [T2](../m05/tasks/T2-brief-practice-module-and-selection.md) §4.9, [T3](../m05/tasks/T3-brief-results-module-and-attempt-sealing.md) §4.10, [T4](../m05/tasks/T4-brief-autosave-grading-and-events.md) §4.4, [T1](../m05/tasks/T1-brief-flyway-migration-and-seed.md) §4.8 |
+| 2026-11-26 | Duyệt toàn bộ câu hỏi mở T5–T7 và AD-1..AD-3 | • §0 D13, §1, §8.5: phần ghi `OPEN` của `learning` (T5, thiết kế, chưa triển khai).<br>• §14.4: lệch DD của `mistake_records`; bỏ cột ước tính 990 (AD-1).<br>• Brief T3: bật nén gzip cho JSON ≥ 2 KB (AD-3). AD-2 (`refs` camelCase) đã ghi ở 02 §8. | Brief [T5](../m05/tasks/T5-brief-cross-module-integration-and-listener.md), [T6](../m05/tasks/T6-brief-frontend-toeic-practice-ui.md), [T7](../m05/tasks/T7-brief-verification-security-and-benchmark.md) |
+
 ## 0. Trạng thái quyết định
 
 | Mã | Quyết định | Trạng thái | Căn cứ |
@@ -20,13 +29,15 @@ Tài liệu này không phải nguồn chuẩn độc lập. Mọi chỗ lệch 
 | D3 | Tài nguyên attempt dưới `/api/v1/attempts` | Đã chốt. Endpoint **PENDING FE REVIEW** | Mục 3 |
 | D4 | Thiếu câu: báo số hợp lệ, không tự cắt | Đã chốt | SCHEMA §5 |
 | D5 | Không để 5 bài IN_PROGRESS khóa vĩnh viễn | Đã chốt: lazy cleanup khi start | SCHEMA §6, mục 5.1 |
-| D6 | Hoãn `practice_sets` | Đã chốt | DD; Grammar dùng DYNAMIC |
+| D6 | ~~Hoãn `practice_sets`~~ (thay bởi T0). Grammar vẫn dùng DYNAMIC. TOEIC dùng `practice_sets` FIXED, cho phép `part_number IS NULL` (S9) | Đã chốt lại 2026-11-26 | DD; brief T0 §4.1.8 |
 | D7 | Thiết kế cho VOCABULARY, GRAMMAR, TOEIC. Không bật publish/chấm khi thiếu validator, renderer, grader | Đã chốt | SCHEMA §5, DD `question_types` |
-| D8 | **Không** đổi V12/V13, **không** tạo V14, **không** chạy migration. Không mặc định V13 chưa áp dụng | Đã chốt. **Chờ bằng chứng Flyway** | Mục 11 |
+| D8 | ~~**Không** đổi V12/V13, **không** tạo V14, **không** chạy migration. Không mặc định V13 chưa áp dụng~~ (thay bởi D8 v2) | Thay thế | Mục 11 |
+| D8 v2 | V13 đã merge vào `main` nên bất biến. Mọi thay đổi schema đi qua V14+ kiểu additive (ADD COLUMN, DROP NOT NULL, thay CHECK, CREATE TABLE). Không xóa cột. | Đã chốt 2026-11-26 | AGENTS.md; brief T0 R7 |
+| D16 | Trạng thái lượt làm chỉ gồm `IN_PROGRESS`, `SUBMITTED`, `ABANDONED`. Không có `EXPIRED`. | Đã chốt 2026-11-26 (S2) | ADR-10 |
 | D9 | Phân bổ topic Mixed: thuật toán xác định theo hash request, ưu tiên topic ít câu hơn, UUID phá hòa. Lưu `topicIds` và `attributedTopicId` trong snapshot. Thống kê allocation không đếm trùng. Hai loại thống kê tách bạch | Đã chốt (thay quy tắc `min(C)`) | Mục 7.2 |
 | D10 | Thiếu câu: HTTP 409 `INSUFFICIENT_QUESTIONS` kèm `requestedCount`, `availableCount`. 0 câu dùng mã riêng | Đã chấp thuận | Mục 4 |
 | D12 | Grammar hiện tại untimed, `deadline_at = NULL`. Giữ cơ chế deadline/TIME_LIMIT trong thiết kế dùng chung | Đã duyệt | Mục 5.5 |
-| D13 | Hoãn mistake lifecycle. Bảo toàn dữ liệu để làm sau | Đã chấp thuận hoãn. **Chưa hoàn thành** | Mục 8 |
+| D13 | Hoãn mistake lifecycle. Bảo toàn dữ liệu để làm sau | Đã chấp thuận hoãn. **Chưa hoàn thành.** Phần ghi `OPEN` từ event đã chốt thiết kế ở T5 (26/11/2026), chưa triển khai. | Mục 8, 8.5 |
 | D14 | Lazy cleanup cho bài untimed 7 ngày. Không áp dụng cho timed. Không đổi SUBMITTED | Đã chấp thuận | Mục 5.5 |
 | D15 | Endpoint dưới `/api/v1/attempts` | Đã chấp thuận nguyên tắc. **PENDING FE REVIEW** | Mục 3 |
 | C-ERR | Mở rộng `BusinessException`, `ErrorCode`, `GlobalExceptionHandler` khi Giai đoạn 2 | Đã duyệt. Tương thích ngược, allowlist metadata, regression test | Mục 4 |
@@ -36,7 +47,9 @@ Tài liệu này không phải nguồn chuẩn độc lập. Mọi chỗ lệch 
 | Module | Sở hữu (bảng) | Không sở hữu |
 |---|---|---|
 | `practice` | `questions`, `question_options`, `question_topics`, `question_types`, `practice_sets` (sau) | Lượt làm, đáp án, chấm điểm, thống kê |
-| `results` | `attempts`, `attempt_source_topics`, `attempt_question_snapshots`, `attempt_snapshot_options`, `attempt_answers`, `mistake_records` (sau). Start, lưu, nộp, xem, chấm, thống kê | Nội dung câu hỏi |
+| `results` | `attempts`, `attempt_source_topics`, `attempt_group_snapshots`, `attempt_question_snapshots`, `attempt_snapshot_options`, `attempt_answers`, `attempt_media_refs`, ~~`mistake_records` (sau)~~ (thay bởi T0: thuộc `learning`, S3). Start, lưu, nộp, xem, chấm, thống kê | Nội dung câu hỏi |
+| `practice` (bổ sung T0) | `question_groups`, `group_materials`, `question_materials`, `practice_sets`, `set_items`, `question_words` | — |
+| `learning` (bổ sung T0) | `mistake_records`, `mistake_processed_attempts` (T5), `attempt_source_mistakes` (D13, sau). Nhận `ResultsEvents.AttemptSubmitted` | Không đọc bảng nào của `results` |
 | `grammar` | `grammar_topics`, `grammar_lessons` | Lượt làm |
 | `learning` | `lesson_progress` (không đổi) | — |
 | `identity` | `users` (khóa qua `IdentityEvents`) | — |
@@ -57,8 +70,10 @@ Quy tắc phụ thuộc:
 
 ### 2.1. `PracticeEvents` (mới, `common/events`)
 
-- `countAvailable(category, topicIds) -> long`: số câu đủ điều kiện chọn (mục 2.2).
-- `selectQuestions(requestId, category, topicIds, limit) -> List<SelectedQuestion>`. Mỗi câu một lần. Có `requestId` (đã sửa ở A6): D9 mục 7.2 bước 2 cần nó để sắp thứ tự, thiếu thì không tái lập được kết quả. Thiếu câu thì ném `BusinessException` (NO_ELIGIBLE_QUESTIONS hoặc INSUFFICIENT_QUESTIONS). `SelectedQuestion` gồm:
+> **Bản hiện hành (T2, O4):** `PracticeEvents` chỉ có **một** method `prepareSeal(UUID requestId, SealRequest request) -> SealSource`. `SealRequest` là sealed interface (`PracticeSetSeal`, `TopicSeal`). Method chạy với `Propagation.MANDATORY` trong transaction start của `results`, khóa nguồn `FOR SHARE`. Record seal (`SealSource`, `SealGroup`, `SealMaterial`, `SealQuestion`, `SealOption`, `SealRef`, `SealSpoken`) theo brief T2 §4.3. Media do `content` cung cấp: `ContentEvents.describeMedia(Set<UUID>)` và `ContentEvents.mediaPlaybackLocation(UUID)`. Các mục gạch bên dưới chỉ giữ để truy vết.
+
+- ~~`countAvailable(category, topicIds) -> long`: số câu đủ điều kiện chọn (mục 2.2).~~ (thay bởi T2)
+- ~~`selectQuestions(requestId, category, topicIds, limit) -> List<SelectedQuestion>`.~~ (thay bởi T2) Mỗi câu một lần. Có `requestId` (đã sửa ở A6): D9 mục 7.2 bước 2 cần nó để sắp thứ tự, thiếu thì không tái lập được kết quả. Thiếu câu thì ném `BusinessException` (NO_ELIGIBLE_QUESTIONS hoặc INSUFFICIENT_QUESTIONS). `SelectedQuestion` gồm:
   - `questionId`, `sourceRevisionId`
   - `topicIds`: toàn bộ `topic_ids` của revision đã ghim
   - `attributedTopicId`: topic gán cho câu trong bài (mục 7.2)
@@ -66,6 +81,10 @@ Quy tắc phụ thuộc:
   - `prompt`, `explanation`
   - `options[{optionId, position, body}]`: `optionId` lấy từ envelope của revision (ổn định)
   - `correctOptionId`: chỉ dùng phía server để ghi `answer_key_snapshot`
+
+**Bổ sung T0 (TOEIC):** ~~`loadSetForSealing(practiceSetId) -> SealSource`~~ (thay bởi T2: `prepareSeal`) cùng các record `SealSource`, `SealGroup`, `SealMaterial`, `SealQuestion`, `SealOption`, `SealRef`, `SealSpoken`. Chữ ký đầy đủ ở brief T0 §5.3. Ánh xạ seal ở [02 §6](../m05/02-snapshot-json-schemas-v1.md).
+
+**Bổ sung T0 (event async):** ~~`common/events/ResultsEvents.AttemptSubmitted(attemptId, userId, category, sourceType, effectiveFinishedAt, outcomes[{questionId, snapshotId, partNumber, outcome}])`~~ (thay bởi T4 §3.M3) `ResultsEvents.AttemptSubmitted(eventId, attemptId, userId, category, sourceType, submitReason, submittedAt, effectiveFinishedAt, outcomes[QuestionOutcome(questionId, partNumber, correct, unanswered)])`. Event được phát khi lượt chuyển `IN_PROGRESS → SUBMITTED` và được ghi vào `event_publication` (ADR-12).
 
 ### 2.2. Điều kiện câu đủ điều kiện
 
@@ -97,11 +116,19 @@ Quy tắc phụ thuộc:
 | Method | Path | Owner | Headers / Body | Thành công | Lỗi |
 |---|---|---|---|---|---|
 | POST | `/api/v1/attempts` | results | `Idempotency-Key`; body `{source:{type:"GRAMMAR_TOPIC", topicId}, questionCount}` hoặc `{source:{type:"MIXED_GRAMMAR", topicIds[]}, questionCount}` | 201 tạo mới; 200 replay cùng nội dung | Mục 4.3 |
-| GET | `/api/v1/attempts/{attemptId}` | results | — | 200 `AttemptView` | 404 |
-| PUT | `/api/v1/attempts/{attemptId}/answers/{snapshotId}` | results | body `{selectedOptionId: UUID \| null, expectedVersion: long}` | 200 `AnswerView` | Mục 4.3 |
-| POST | `/api/v1/attempts/{attemptId}/submit` | results | — | 200 `AttemptView` (có kết quả) | 404; 409 `ATTEMPT_NOT_OPEN` nếu ABANDONED |
+| GET | `/api/v1/attempts/{attemptId}` | results | — | ~~200 `AttemptView`~~ (thay bởi T4 O2) 200 `ActiveAttemptResponse` ở **mọi** trạng thái, không bao giờ có dữ liệu sau nộp | 404 |
+| PUT | `/api/v1/attempts/{attemptId}/answers/{snapshotId}` | results | body `{selectedOptionId: UUID \| null, expectedVersion: long}` | ~~200 `AnswerView`~~ (thay bởi T4) 200 `{snapshotId, selectedOptionId, version, answeredAt}` | Mục 4.3 |
+| POST | `/api/v1/attempts/{attemptId}/submit` | results | — | ~~200 `AttemptView` (có kết quả)~~ (thay bởi T4 O3) 200 `AttemptSubmitResponse` `{attemptId, status, result, resultsUrl}`; gọi lại khi đã nộp trả kết quả đã lưu | 404; 409 `ATTEMPT_NOT_OPEN` (`attemptStatus`) nếu ABANDONED |
+| GET | `/api/v1/attempts/{attemptId}/results` (T4) | results | — | 200 `AttemptResultResponse` | 404; 409 `ATTEMPT_NOT_SUBMITTED` (`attemptStatus`) |
+| GET | `/api/v1/attempts/{attemptId}/media/{mediaAssetId}` (T2, T3) | results | — | 302 tới URL R2 ký 5 phút | 404; 503 `SERVICE_UNAVAILABLE` |
 | GET | `/api/v1/grammar/topics/{topicId}/exercises` | practice | — | 200 `{topicId, availableQuestions}` | 404 |
 | GET | `/api/v1/attempts/statistics/topics?category=GRAMMAR&view=allocation` | results | — | 200 danh sách theo chủ điểm, `view` cố định `allocation` | 400 nếu category hoặc view không hợp lệ |
+| POST | `/api/v1/attempts` (bổ sung T0) | results | Ngoài hai nguồn Grammar còn có `{source:{type:"PRACTICE_SET", practiceSetId}, mode?}`. `questionCount` bị cấm với `PRACTICE_SET`. `mode` mặc định `PRACTICE`; `EXAM` → 400 ở MVP. | 201 / 200 replay | Brief T0 §5.1 |
+| PUT | `/api/v1/attempts/{attemptId}/answers/{snapshotId}` (bổ sung T0) | results | Thêm header `Idempotency-Key` (UUID, bắt buộc) | 200 / 200 replay | Brief T0 §5.1 |
+| GET | `/api/v1/practice-sets?category=&partNumber=&page=&size=` (T0) | practice | `partNumber=0` là bộ nhiều Part. Tham số đầy đủ (`category`, `partNumber`, `difficulty`, `q`, `page`, `size`) theo brief T2 §5.1. | 200 `PageResponse<PracticeSetSummary>` | 400, 404 |
+| GET | `/api/v1/practice-sets/{practiceSetId}` (T0) | practice | — | 200 `PracticeSetSummary` + `description`, `partBreakdown` | 404 |
+
+~~Endpoint cũ trong code (`POST /api/v1/grammar/topics/{topicId}/attempts`, `POST /api/v1/grammar/attempts/mixed`, `GET /api/v1/grammar/statistics/topics`, `PUT /api/v1/attempts/{id}/answers/{position}`) bị **DEPRECATED** từ T0 và được gỡ trong task phát hành API v1.~~ (thay bởi T3 O3) Các endpoint cũ này được **gỡ hẳn** ở T3, không giữ `@Deprecated`. Frontend không gọi chúng. Thay thế: `POST /api/v1/attempts` với `GRAMMAR_TOPIC`/`MIXED_GRAMMAR`, và `GET /api/v1/attempts/statistics/topics?category=GRAMMAR&view=allocation`.
 
 Thay đổi so với bản trước:
 - `questionCount` là **bắt buộc**, không có giá trị mặc định. Lý do: hash idempotency phải phụ thuộc đúng giá trị client gửi.
@@ -117,6 +144,14 @@ Thay đổi so với bản trước:
 - **Resume** là `GET /api/v1/attempts/{id}`. Resume chỉ đọc snapshot, không bốc lại đề (SCHEMA §6). **Retry** start là `POST` với cùng `Idempotency-Key`.
 
 ### 3.4. DTO
+
+> **Bản hiện hành (T3, T4):** `ActiveAttemptResponse`, `AttemptSubmitResponse`, `AttemptResultResponse` theo [02 §8](../m05/02-snapshot-json-schemas-v1.md), brief T3 §5.1 và brief T4 §5.1. `AttemptView` một hình dạng cho mọi trạng thái đã bị thay (T4 O2): kết quả và lời giải chỉ có ở `/results`.
+>
+> ~~T0: hình dạng `AttemptView` và `AnswerView` cho mọi category được chốt ở 02 §8 và brief T0 §5.1.~~ (thay bởi T3/T4) Hai điểm thay đổi so với đoạn dưới:
+> - Không trả `score` (ADR-11).
+> - `AnswerView` bỏ `attemptVersion`.
+>
+> Đoạn dưới giữ lại để truy vết.
 
 **`AttemptView` trước nộp** (`status = IN_PROGRESS`):
 - `id`, `category`, `source {type, topicIds[]}`, `status`, `totalCount`, `version`, `deadlineAt` (null với Grammar), `startedAt`, `lastActiveAt`.
@@ -168,10 +203,18 @@ Thay đổi so với bản trước:
 | `NO_ELIGIBLE_QUESTIONS` (mới) | 409 | Chủ điểm hiển thị nhưng không có câu đủ điều kiện (`availableCount = 0`) | `requestedCount`, `availableCount` |
 | `INSUFFICIENT_QUESTIONS` (mới) | 409 | `0 < availableCount < requestedCount` | `requestedCount`, `availableCount` |
 | `IDEMPOTENCY_CONFLICT` (mới) | 409 | Cùng `Idempotency-Key` nhưng khác hash | — |
-| `OPEN_ATTEMPT_LIMIT_REACHED` (mới) | 409 | Đã có 5 bài IN_PROGRESS sau lazy cleanup | `openAttemptCount`, `maxOpenAttempts` |
-| `STALE_ANSWER_VERSION` (mới) | 409 | `expectedVersion` không khớp | `currentVersion`, `currentSelectedOptionId` |
-| `ATTEMPT_NOT_OPEN` (mới) | 409 | Lưu đáp án khi bài đã SUBMITTED hoặc ABANDONED | `status` |
+| `OPEN_ATTEMPT_LIMIT_REACHED` (mới) | 409 | Đã có 5 bài IN_PROGRESS sau lazy cleanup | `openAttemptCount` (COUNT), `maxOpenAttempts` (COUNT), `activeAttemptIds` (UUID_LIST, T3 O1) |
+| ~~`STALE_ANSWER_VERSION` (mới)~~ (thay bởi T0, S8) | 409 | `expectedVersion` không khớp | `currentVersion`, `currentSelectedOptionId` |
+| `VERSION_CONFLICT` (mới, T0) | 409 | `expectedVersion` không khớp | `currentVersion` (COUNT), `currentSelectedOptionId` (UUID_OR_NULL) |
+| `ATTEMPT_NOT_OPEN` (mới) | 409 | Lưu đáp án khi bài đã SUBMITTED hoặc ABANDONED; nộp bài đã ABANDONED | ~~`status`~~ (thay bởi T4 O1) `attemptStatus` (ENUM) |
+| `ATTEMPT_NOT_SUBMITTED` (mới, T4) | 409 | `GET /results` khi bài còn IN_PROGRESS hoặc đã ABANDONED | `attemptStatus` (ENUM) |
 | `OPTION_NOT_IN_SNAPSHOT` (mới) | 400 | `selectedOptionId` không thuộc snapshot | — |
+
+Bổ sung T0 (R8):
+- Metadata có kiểu: `COUNT` (số nguyên ≥ 0), `UUID_OR_NULL`, `ENUM` (`^[A-Z][A-Z_]{0,31}$`), `UUID_LIST` (thêm ở T3).
+- ~~`ATTEMPT_NOT_OPEN.status` có kiểu ENUM.~~ (thay bởi T4 O1) Khóa metadata là `attemptStatus`, kiểu ENUM. Tên `status` trùng với trường chuẩn `status` (số HTTP) của ProblemDetail nên không dùng.
+- `IDEMPOTENCY_CONFLICT` còn áp dụng cho `PUT /answers` khi trùng `Idempotency-Key` nhưng trạng thái không khớp lần ghi trước.
+- `CONFLICT` có sẵn vẫn dùng cho lỗi optimistic lock chung.
 
 Phân biệt rõ:
 - **Request không hợp lệ:** `VALIDATION_ERROR` (400). Lỗi do client gửi sai.
@@ -222,10 +265,10 @@ Trong một transaction, theo thứ tự:
    - Điều kiện `status = 'IN_PROGRESS'` trong mọi câu cập nhật. **Không bao giờ đổi bài SUBMITTED.**
    - Khóa các attempt ứng viên `FOR UPDATE`, theo `id` tăng dần, **sau** khi đã khóa user. Không khóa attempt trước user (SCHEMA §6).
 5. Đếm bài `IN_PROGRESS` còn lại. Nếu `>= practice.max_open` (5): `OPEN_ATTEMPT_LIMIT_REACHED`.
-6. `countAvailable`:
+6. ~~`countAvailable`:~~ (thay bởi T2: kiểm số câu nằm trong `PracticeEvents.prepareSeal`, cùng mã lỗi)
    - `availableCount = 0`: `NO_ELIGIBLE_QUESTIONS`.
    - `0 < availableCount < requestedCount`: `INSUFFICIENT_QUESTIONS`.
-7. Khóa nguồn theo thứ tự `question_id` (`FOR SHARE`), rồi chạy thuật toán phân bổ (mục 7.2): lập tập đủ điều kiện, kiểm tra thiếu câu, sắp theo hash, lấy N câu, phân bổ topic.
+7. Khóa nguồn theo thứ tự `question_id` (`FOR SHARE`), rồi chạy thuật toán phân bổ (mục 7.2): lập tập đủ điều kiện, kiểm tra thiếu câu, sắp theo hash, lấy N câu, phân bổ topic. (T2/T3: bước 6–7 là một lời gọi `prepareSeal`; thứ tự đầy đủ của transaction start ở brief T3 §3.M3.)
 8. Ghi trong cùng transaction:
    - `attempts`: `status = IN_PROGRESS`, `deadline_at = NULL` (Grammar), `last_active_at = now`, `snapshot_sealed_at = now`, `total_count` (1–100).
    - `attempt_source_topics` (chỉ MIXED): mỗi topic kèm `source_revision_id`.
@@ -237,15 +280,19 @@ Nếu thiếu câu, vượt giới hạn, hoặc lỗi giữa chừng: transacti
 
 ### 5.2. Lưu đáp án (autosave, CAS)
 
-Thứ tự khóa: user → attempt → answer slot (SCHEMA §6).
-1. `verifyAndLockUser`. Khóa attempt `FOR UPDATE`. Khóa answer slot `FOR UPDATE`.
+~~Thứ tự khóa: user → attempt → answer slot (SCHEMA §6).~~ (thay bởi T0) Thứ tự khóa: attempt → answer slot.
+- Autosave và submit không khóa `users`.
+- Không có deadlock vì không luồng nào khóa `users` sau khi đã giữ `attempts`; start khóa `users` trước (brief T0 §6.4).
+
+1. ~~`verifyAndLockUser`.~~ Khóa attempt `FOR UPDATE`. Khóa answer slot `FOR UPDATE`.
+1a. (T0) Kiểm `Idempotency-Key` so với `last_request_id` theo bảng ở brief T0 §5.1 trước bước 5.
 2. Không phải chủ bài: 404. Trạng thái không `IN_PROGRESS`: `ATTEMPT_NOT_OPEN`.
 3. `snapshotId` thuộc attempt (FK kép): 404 nếu không.
 4. `selectedOptionId` (nếu khác null) thuộc đúng snapshot (FK kép `(snapshot_id, option_id)`): `OPTION_NOT_IN_SNAPSHOT`.
 5. `UPDATE attempt_answers SET selected_option_id = ?, answered_at = ?, version = version + 1 WHERE attempt_id = ? AND snapshot_id = ? AND version = :expectedVersion`.
-   - Không có dòng nào được cập nhật: `STALE_ANSWER_VERSION` kèm `currentVersion` và `currentSelectedOptionId`. **Không ghi đè.**
+   - Không có dòng nào được cập nhật: ~~`STALE_ANSWER_VERSION`~~ `VERSION_CONFLICT` (T0, S8) kèm `currentVersion` và `currentSelectedOptionId`. **Không ghi đè.**
    - Được cập nhật: `attempts.last_active_at = now`.
-6. Trả 200 `AnswerView`.
+6. Trả 200 ~~`AnswerView`~~ (thay bởi T4) `{snapshotId, selectedOptionId, version, answeredAt}`. Giao thức đầy đủ (A1–A5, replay idempotent) ở brief T4 §3.M1.
 
 Bỏ chọn là một lần lưu hợp lệ, có tăng `version` (DD). `answered_at` về null khi bỏ chọn.
 
@@ -270,7 +317,7 @@ Cùng thứ tự khóa.
 
 - Chỉ chủ bài. Người khác nhận 404 (không để lộ sự tồn tại).
 - Resume không tạo bài mới và không bốc lại đề. Đọc từ snapshot đã seal (SCHEMA §6).
-- Trước nộp: mục 3.4. Sau nộp: thêm kết quả và lời giải, chỉ cho chủ bài.
+- Trước nộp: mục 3.4. ~~Sau nộp: thêm kết quả và lời giải, chỉ cho chủ bài.~~ (thay bởi T4 O2) `GET /attempts/{id}` không bao giờ trả kết quả hay lời giải. Sau nộp, kết quả và lời giải chỉ có ở `GET /attempts/{id}/results`, chỉ cho chủ bài.
 
 ### 5.5. Abandoned, deadline, scheduler (D12, D14)
 
@@ -329,6 +376,15 @@ Cùng thứ tự khóa.
 - `schema_version` ngoài cột và trong envelope phải khớp. `content_type` phải khớp item (SCHEMA §4).
 
 ### 6.2. Cột snapshot
+
+> T0: thay bằng [02 §2–§3](../m05/02-snapshot-json-schemas-v1.md). Các điểm thay đổi so với bảng dưới:
+> - Không có `explanation_snapshot` (S6). Lời giải nằm trong `answer_key_snapshot`.
+> - `answer_key_snapshot` dùng `correct_option_snapshot_id` và `correct_option_ordinal`.
+> - `meta` chỉ giữ `topic_ids` và `word_sense_ids`. Chủ điểm được gán nằm ở cột `topic_id`.
+> - Nhóm TOEIC có `public_snapshot` và `private_snapshot`.
+> - `attempt_snapshot_options.id` là UUID theo lượt làm (S7).
+>
+> Bảng dưới giữ lại để truy vết.
 
 | Cột | Nội dung | Hiển thị |
 |---|---|---|
@@ -468,6 +524,18 @@ Theo SCHEMA §6, lỗi được tính lại từ lịch sử đã chấm, theo `
 - Có migration thêm `mistake_records` và `attempt_source_mistakes`. Không sửa migration cũ.
 - Có chính sách với bài tự nộp muộn (`effective_finished_at`) khi bật bài timed.
 
+### 8.5. Phần ghi lỗi sai đã chốt thiết kế ở T5 (chưa triển khai)
+
+Nguồn: [brief T5](../m05/tasks/T5-brief-cross-module-integration-and-listener.md) (duyệt 26/11/2026).
+- Migration `V18__create_mistake_records.sql`:
+  - `mistake_records` có `UNIQUE (user_id, question_id)`, `status ∈ {OPEN, IMPROVING, RESOLVED}`, `wrong_count > 0`, `last_wrong_at`;
+  - `mistake_processed_attempts(attempt_id PK)` làm sổ idempotent;
+  - FK sở hữu `(user_id, source_attempt_id) → attempts(user_id, id)`.
+- Listener `learning.mistake-records` (`@ApplicationModuleListener`, `id` cố định). Mỗi event một câu SQL: guard `ON CONFLICT DO NOTHING` + bulk upsert. Giao lại không tăng `wrong_count`; kết quả không phụ thuộc thứ tự giao event.
+- Chỉ ghi `OPEN` cho câu sai hoặc bỏ trống (kể cả bỏ trống do hết giờ, T5 O2). Chưa có `IMPROVING`/`RESOLVED`, `attempt_source_mistakes`, nguồn `MISTAKES`, API `GET /mistakes`.
+- Listener chạy trên executor riêng `moduleEventExecutor` (1–2 thread). Publication `FAILED` được gửi lại mỗi 5 phút, tối đa 10 lần; `COMPLETED` bị xóa sau 7 ngày (`completion-mode=update`, T5 O3).
+- Không tạo `AttemptCreationFacade` (T5 O1, giữ T3 O2).
+
 ## 9. Idempotency và hash
 
 - Khóa: `(user_id, request_id)`. `request_id` lấy từ `Idempotency-Key` (UUID).
@@ -476,9 +544,14 @@ Theo SCHEMA §6, lỗi được tính lại từ lịch sử đã chấm, theo `
 - Cùng key, cùng hash: trả đúng bài cũ, kể cả khi nguồn đã đổi hoặc archive.
 - Cùng key, khác hash: `IDEMPOTENCY_CONFLICT`.
 - Submit không cần key vì đã idempotent theo trạng thái.
-- Autosave không dùng `Idempotency-Key`. Dùng `expectedVersion`.
+- ~~Autosave không dùng `Idempotency-Key`. Dùng `expectedVersion`.~~ (thay bởi T0, ADR-09)
+- Autosave dùng `expectedVersion` (CAS) **và** `Idempotency-Key` lưu ở `attempt_answers.last_request_id`:
+  - Trùng key, trùng lựa chọn, `version = expectedVersion + 1`: replay 200.
+  - Trùng key nhưng sai trạng thái: `IDEMPOTENCY_CONFLICT`.
 
 ## 10. Schema đích theo DD
+
+> T0: schema đích thực thi được thay bằng brief T0 §4.1 (V14+ additive, D8 v2). Các điểm lệch DD đã duyệt nằm ở mục 14.4. Bảng dưới giữ lại để truy vết.
 
 Chỉ liệt kê khác biệt so với V13 hiện tại. Bảng và cột không nêu thì khớp DD.
 
@@ -505,7 +578,8 @@ Ràng buộc theo DD (viết trong SQL ở Giai đoạn 2):
 
 ### 11.1. Trạng thái đã biết
 
-- V12 và V13 **chưa có trên `origin/main`** (đã kiểm tra bằng git). Đây là dữ kiện về **nhánh**, không phải về môi trường. Không dùng nó làm bằng chứng chưa áp dụng.
+- ~~V12 và V13 **chưa có trên `origin/main`** (đã kiểm tra bằng git). Đây là dữ kiện về **nhánh**, không phải về môi trường. Không dùng nó làm bằng chứng chưa áp dụng.~~ (thay bởi T0)
+- (T0, 2026-11-26) V12 và V13 **đã có trên `origin/main`**: `git log origin/main -- …/V13__create_practice_engine.sql` trả về `9ea157d`, được merge qua `4afb631` (PR #15). Theo AGENTS.md, migration đã merge vào `main` thì không được sửa. Cây quyết định 11.4 kết thúc ở **Nhánh B** (D8 v2). Q7 vẫn chạy trước khi deploy để ước lượng backfill (S12).
 - Trạng thái áp dụng ở **từng** môi trường: **chưa có bằng chứng.**
   - Container PostgreSQL dev trên máy này (`masterenglish-local-postgres-1`) đang dừng.
   - Không có quyền vào DB dùng chung từ phiên này.
@@ -681,6 +755,34 @@ Không có mâu thuẫn nội bộ còn lại. Các điểm chờ là phụ thu�
 - **Thống kê mixed:** dùng `meta` trong JSON, không có cột mới (mục 7). Lệch về nơi lưu, không lệch về nghĩa.
 - **Quy tắc phân bổ topic** (D9): thuật toán xác định theo hash request, ưu tiên topic ít câu hơn. Không có trong tài liệu chuẩn. Người dùng đã chấp thuận thay thế quy tắc `min(C)`.
 
+### 14.4. Lệch DD đã duyệt ở T0 (2026-11-26)
+
+- `attempt_snapshot_options` giữ `id` UUID theo lượt làm (V13) thay cho PK `(snapshot_id, option_id)`. ID gốc lưu ở `source_option_id` (S7).
+- Không có `explanation_snapshot` (S6).
+- `attempt_answers` giữ PK V13 `(attempt_id, question_position)`. Không có `score` theo câu, vì `is_correct` đã đủ.
+- `attempts`:
+  - Thêm `attempt_mode`, `time_limit_seconds`, `scoring_version`, `listening_correct`, `reading_correct`.
+  - Chưa thêm `local_day`, `timezone`; hai cột này thêm cùng D13.
+  - `total_count` 1–200.
+- `group_materials`, `question_materials`:
+  - `material_type` có 6 giá trị.
+  - `body` là JSONB.
+  - `visibility` là cột GENERATED từ `usage_role`.
+  - `document_key NOT NULL`.
+- `practice_sets`: TOEIC cho phép `part_number IS NULL` (S9).
+- `attempt_group_snapshots` chỉ cho TOEIC ở MVP.
+- Bổ sung T1 (§4.8):
+  - `attempts.request_id` là nơi lưu `Idempotency-Key` của `POST /attempts`. `attempt_answers.last_request_id` lưu key của lần `PUT` gần nhất.
+  - Cột `snapshot_id` trên `attempt_snapshot_options` và `attempt_answers`.
+  - Cột `option_order` trên snapshot câu.
+  - Cột P2 `prompt_speaker` và `prompt_transcript`; `question_options.speaker`.
+  - **Không** có cột ước tính 990 (AD-1, duyệt 26/11/2026): quy đổi 990 thuộc hàng rào YAGNI. DD có thể chừa cột, nhưng V14 không thêm.
+- Bổ sung T5 (`mistake_records`, so với DD `approved-baseline.sql:848-866`):
+  - Đổi tên cột: `state` → `status`, `consecutive_correct` → `consecutive_correct_count`.
+  - Thêm cột: `last_processed_attempt_id`, `created_at`.
+  - Chưa có (đợi phần còn lại của D13, migration additive): `source_snapshot_id`, `last_evaluated_at`, `resolved_at`, `UNIQUE (user_id, id)`, `ix_mistakes_user_state`.
+  - `DATA_DICTIONARY.md` vẫn xếp `mistake_records` vào nhóm Results. Theo S3, bảng thuộc `learning`. Không sửa `docs/database/**`.
+
 ### 14.3. Chưa đúng trong code hiện tại (không phải thiết kế)
 
 Việc của Giai đoạn 2:
@@ -779,7 +881,11 @@ Theo thứ tự phụ thuộc:
 
 ## 17. Trạng thái thiết kế
 
-**DESIGN READY WITH BLOCKERS.**
+~~**DESIGN READY WITH BLOCKERS.**~~ (thay bởi T0)
+
+**DESIGN READY** (2026-11-26).
+- Blocker Flyway đã được gỡ bằng D8 v2 (V13 đã lên `main`, nên đi theo Nhánh B).
+- Còn theo dõi: FE review (D15), quy ước idempotency với vocabulary (14.2), benchmark start Full Test (ADR-13).
 
 Đã chốt: ranh giới, ownership, sự kiện, API, lỗi, giao thức transaction, snapshot, mixed và thuật toán D9, hai loại thống kê, mistake (hoãn có điều kiện), lazy abandon và deadline, schema đích, cây quyết định migration, tái sử dụng, checklist.
 

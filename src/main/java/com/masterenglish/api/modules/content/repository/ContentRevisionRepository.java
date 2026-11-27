@@ -35,6 +35,8 @@ public interface ContentRevisionRepository
     org.springframework.data.domain.Page<ContentRevision> findByContentItemId(
             UUID contentItemId, org.springframework.data.domain.Pageable pageable);
 
+    boolean existsByContentItemIdAndStatus(UUID contentItemId, String status);
+
     boolean existsByContentItemIdAndStatusNot(UUID contentItemId, String status);
 
     @Query(

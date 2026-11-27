@@ -19,6 +19,7 @@ import com.masterenglish.api.modules.identity.entity.Role;
 import com.masterenglish.api.modules.identity.entity.User;
 import com.masterenglish.api.modules.identity.repository.UserRepository;
 import jakarta.persistence.EntityManager;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -480,6 +481,173 @@ class PracticeIntegrationTests {
                 .andExpect(jsonPath("$.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.score").value(100))
                 .andExpect(jsonPath("$.correctCount").value(2));
+    }
+
+    @Test
+    void attemptHistorySupportsFilteringPaginationAndOwnershipIsolation() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestion(topicA, "Hist A1", "right", "wrong");
+        publishQuestion(topicB, "Hist B1", "right", "wrong");
+
+        // Learner: 1 submitted GRAMMAR_TOPIC + 1 open MIXED_GRAMMAR
+        JsonNode single = startTopic(learner, UUID.randomUUID(), 1, topicA, 201);
+        UUID singleId = UUID.fromString(single.path("id").asText());
+        submit(learner, singleId);
+
+        JsonNode mixed = startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 2, 201);
+        UUID mixedId = UUID.fromString(mixed.path("id").asText());
+
+        // Other learner: 1 submitted GRAMMAR_TOPIC (must stay isolated from learner's feed)
+        JsonNode otherAttempt = startTopic(otherLearner, UUID.randomUUID(), 1, topicA, 201);
+        submit(otherLearner, UUID.fromString(otherAttempt.path("id").asText()));
+
+        mockMvc.perform(get("/api/v1/attempts")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/attempts").with(user(UserPrincipal.create(adminOnly))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(
+                        get("/api/v1/attempts?status=BAD")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest());
+
+        JsonNode page0 =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?page=0&size=1")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(page0.path("totalItems").asLong()).isEqualTo(2L);
+        assertThat(page0.path("hasNext").asBoolean()).isTrue();
+
+        JsonNode page1 =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?page=1&size=1")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(page1.path("totalItems").asLong()).isEqualTo(2L);
+        assertThat(page1.path("hasNext").asBoolean()).isFalse();
+        assertThat(
+                        List.of(
+                                page0.path("items").get(0).path("id").asText(),
+                                page1.path("items").get(0).path("id").asText()))
+                .containsExactlyInAnyOrder(singleId.toString(), mixedId.toString());
+
+        JsonNode mixedOnly =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?sourceType=MIXED_GRAMMAR")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(mixedOnly.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(mixedOnly.path("items").get(0).path("id").asText())
+                .isEqualTo(mixedId.toString());
+        assertThat(mixedOnly.path("items").get(0).path("topicIds")).hasSize(2);
+
+        JsonNode submittedOnly =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?status=SUBMITTED")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(submittedOnly.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(submittedOnly.path("items").get(0).path("id").asText())
+                .isEqualTo(singleId.toString());
+        assertThat(submittedOnly.path("items").get(0).path("status").asText())
+                .isEqualTo("SUBMITTED");
+        assertThat(submittedOnly.path("items").get(0).path("topicIds").get(0).asText())
+                .isEqualTo(topicA.toString());
+    }
+
+    @Test
+    void attemptHistorySupportsMixedChronologicalOrderingAndCombinedFilters() throws Exception {
+        UUID topicA = publishTopic();
+        UUID topicB = publishTopic();
+        publishQuestion(topicA, "Order A1", "right", "wrong");
+        publishQuestion(topicB, "Order B1", "right", "wrong");
+
+        // 1. Oldest effective timestamp: open GRAMMAR_TOPIC started at T - 300s
+        UUID oldestOpen =
+                UUID.fromString(
+                        startTopic(learner, UUID.randomUUID(), 1, topicA, 201).path("id").asText());
+        // 2. Middle effective timestamp: MIXED_GRAMMAR started EARLIEST (T - 400s) but SUBMITTED
+        // LATER (T - 200s)
+        UUID middleSubmitted =
+                UUID.fromString(
+                        startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 2, 201)
+                                .path("id")
+                                .asText());
+        submit(learner, middleSubmitted);
+        // 3. Newest effective timestamp: open MIXED_GRAMMAR started at T - 100s
+        UUID newestOpen =
+                UUID.fromString(
+                        startMixed(learner, UUID.randomUUID(), List.of(topicA, topicB), 2, 201)
+                                .path("id")
+                                .asText());
+
+        entityManager.flush();
+        Instant now = Instant.now();
+        jdbc.update(
+                "UPDATE attempts SET started_at = ?, submitted_at = NULL WHERE id = ?",
+                Timestamp.from(now.minusSeconds(300)),
+                oldestOpen);
+        jdbc.update(
+                "UPDATE attempts SET started_at = ?, submitted_at = ? WHERE id = ?",
+                Timestamp.from(now.minusSeconds(400)),
+                Timestamp.from(now.minusSeconds(200)),
+                middleSubmitted);
+        jdbc.update(
+                "UPDATE attempts SET started_at = ?, submitted_at = NULL WHERE id = ?",
+                Timestamp.from(now.minusSeconds(100)),
+                newestOpen);
+        entityManager.flush();
+        entityManager.clear();
+
+        // Ordering must use COALESCE(submitted_at, started_at) DESC across mixed open + submitted
+        JsonNode all =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(all.path("totalItems").asLong()).isEqualTo(3L);
+        assertThat(
+                        List.of(
+                                all.path("items").get(0).path("id").asText(),
+                                all.path("items").get(1).path("id").asText(),
+                                all.path("items").get(2).path("id").asText()))
+                .containsExactly(
+                        newestOpen.toString(), middleSubmitted.toString(), oldestOpen.toString());
+
+        // Combined status + sourceType filters
+        JsonNode submittedMixed =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?status=SUBMITTED&sourceType=MIXED_GRAMMAR")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(submittedMixed.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(submittedMixed.path("items").get(0).path("id").asText())
+                .isEqualTo(middleSubmitted.toString());
+
+        JsonNode openTopic =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?status=IN_PROGRESS&sourceType=GRAMMAR_TOPIC")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(openTopic.path("totalItems").asLong()).isEqualTo(1L);
+        assertThat(openTopic.path("items").get(0).path("id").asText())
+                .isEqualTo(oldestOpen.toString());
+
+        JsonNode submittedTopic =
+                read(
+                        mockMvc.perform(
+                                        get("/api/v1/attempts?status=SUBMITTED&sourceType=GRAMMAR_TOPIC")
+                                                .with(user(UserPrincipal.create(learner))))
+                                .andExpect(status().isOk()));
+        assertThat(submittedTopic.path("totalItems").asLong()).isEqualTo(0L);
+        assertThat(submittedTopic.path("items")).isEmpty();
     }
 
     // ---- request helpers ------------------------------------------------------------------
