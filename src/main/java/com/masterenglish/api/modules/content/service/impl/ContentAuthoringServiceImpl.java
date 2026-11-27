@@ -139,6 +139,24 @@ public class ContentAuthoringServiceImpl implements ContentAuthoringService {
         List<ContentRevision> revisions =
                 revisionRepository.findByContentItemIdOrderByVersionNoDesc(itemId);
         ContentRevision latest = revisions.isEmpty() ? null : revisions.get(0);
+        if (latest != null
+                && ("REJECTED".equals(latest.getStatus())
+                        || "APPROVED".equals(latest.getStatus()))) {
+            // B02: bản bị từ chối hoặc đã duyệt được mở lại thành DRAFT để sửa, rồi duyệt lại.
+            String fromStatus = latest.getStatus();
+            latest.reopenForEdit();
+            auditLogRepository.save(
+                    new AuditLog(
+                            "USER",
+                            actorId,
+                            "CONTENT_REOPENED",
+                            contentType,
+                            item.getId(),
+                            String.format(
+                                    "{\"revisionId\":\"%s\",\"versionNo\":%d,\"fromStatus\":\"%s\"}",
+                                    latest.getId(), latest.getVersionNo(), fromStatus),
+                            "Reopened for editing"));
+        }
         if (latest == null || !"DRAFT".equals(latest.getStatus())) {
             return response(
                     createDraft(

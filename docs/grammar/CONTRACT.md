@@ -149,7 +149,7 @@ Guard đã triển khai: tổng JSON `body` tối đa 100.000 ký tự và 1 MiB
 
 Mọi lỗi kiểm tra dữ liệu trả `400 VALIDATION_ERROR` theo ProblemDetail (RFC 7807), cụ thể theo trường. Thông báo lỗi hiện dùng tiếng Anh, theo quy ước code hiện có. Đổi sang tiếng Việt là quyết định chung của dự án, chưa áp dụng cho module này. Loại nội dung không có validator (ví dụ `QUESTION`) cũng trả `400`.
 
-Kiểm thử trong `modules/grammar` xác nhận mã lỗi `VALIDATION_ERROR` ở tầng validator. Chưa có ca HTTP publish trong `modules/grammar`, vì endpoint publish nằm ở `admin`/`content`.
+Kiểm thử trong `modules/grammar` xác nhận mã lỗi `VALIDATION_ERROR` ở tầng validator. Ca HTTP publish đã có trong `AdminApiIntegrationTests` (`grammarTopicPublish_rejectsDuplicateSlug`, `grammarLessonPublish_rejectsHtmlInParagraph`, `grammarLessonPublish_rejectsMediaReference`, `grammarLessonPublish_rejectsUnpublishedTopic`), vì endpoint publish nằm ở `admin`/`content`. Ca `grammarPublishedLesson_isReadableByLearner` kiểm tra đường đi từ xuất bản đến API học viên.
 
 ## 6. Luồng xuất bản
 
@@ -168,7 +168,7 @@ Endpoint nằm ở `admin`, nghiệp vụ lưu bản nháp ở `content`, nối 
 Quy tắc đã chốt khi triển khai:
 
 - Mọi trường đều tùy chọn. Bản nháp chỉ cần đủ trường khi xuất bản; validator của `grammar` kiểm tra lúc đó. Trường vắng không được ghi vào snapshot.
-- `PUT` khi revision mới nhất là `DRAFT` thì sửa tại chỗ (giữ `latestRevisionId` và `versionNo`). Khi revision mới nhất đã `PUBLISHED` thì tạo phiên bản nháp mới. Khi còn revision ở `IN_REVIEW`, `APPROVED` hoặc `REJECTED` thì trả 409. Mục không tồn tại trả 404. Mục khác loại (ví dụ `GRAMMAR_TOPIC` gửi tới endpoint bài học) trả 409.
+- `PUT` khi revision mới nhất là `DRAFT` thì sửa tại chỗ (giữ `latestRevisionId` và `versionNo`). Khi revision mới nhất đã `PUBLISHED` thì tạo phiên bản nháp mới. Khi revision mới nhất là `REJECTED` hoặc `APPROVED` thì mở lại về `DRAFT` tại chỗ rồi sửa (giữ `latestRevisionId` và `versionNo`; người duyệt cũ bị xóa; ghi audit `CONTENT_REOPENED`), theo B02 và `database/SCHEMA_CONTRACTS.md`. Khi còn revision ở `IN_REVIEW` thì trả 409, vì bản đang chờ duyệt không sửa được. Mục không tồn tại trả 404. Mục khác loại (ví dụ `GRAMMAR_TOPIC` gửi tới endpoint bài học) trả 409.
 - `sourceId` tùy chọn. Khi có, `PUT` thay thế nguồn của bản nháp đang sửa.
 - `pinned_topic_revision_id` của bài học được ghim lúc lưu, theo revision đang xuất bản của chủ điểm. Chủ điểm chưa xuất bản thì không ghim, và validator báo lỗi khi xuất bản.
 - `body_schema_version` luôn là `1`.
@@ -198,6 +198,6 @@ Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) 
 - **`learning`:** đã triển khai tổng hợp theo chủ điểm tại `GET /api/v1/grammar/progress/topics`, đọc qua `GrammarEvents.visibleCatalog()` (`common/events`, đã thêm trong Slice 1, cần duyệt).
 - **`admin`/`content`:** đã triển khai API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` trên `GET /api/v1/admin/content/items` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`).
 - **M08.23 (gán câu hỏi nhiều chủ điểm):** chưa có endpoint admin tạo bản nháp `QUESTION` nên chưa có đường để gán từ admin. Đường dữ liệu đã có: snapshot `QUESTION` nhận `topic_ids` (1 đến 10 chủ điểm đã xuất bản, `QuestionSnapshotValidator`), và `QuestionProjectionListener` ghi vào `question_topics` khi xuất bản. **Đã chốt (đợt M04 này):** đường dữ liệu trên đủ trong phạm vi M04, không thêm endpoint. Endpoint tạo và sửa bản nháp câu hỏi đi cùng `M08.05` và sẽ là đặc tả riêng. Lưu ý: `M08.05` và `M08.23` không có trong `docs/` của repo; mã này lấy từ SRS, không nằm trong repo.
-- **`content` (kiểm tra `revision_media_refs`):** đã triển khai trong `ContentPublication.prepare`. Lesson v1 có media ref thì xuất bản bị từ chối với `VALIDATION_ERROR`, trước bước gắn nguồn. Hiện chưa có API media nên chưa có cách nào tạo media ref thật; test đơn vị bao phủ nhánh này bằng mock.
+- **`content` (kiểm tra `revision_media_refs`):** đã triển khai trong `ContentPublication.prepare`. Lesson v1 có media ref thì xuất bản bị từ chối với `VALIDATION_ERROR`, trước bước gắn nguồn. Hiện chưa có API media nên chưa có cách nào tạo media ref thật; ca tích hợp `grammarLessonPublish_rejectsMediaReference` ghi media ref trực tiếp vào `revision_media_refs` và kiểm tra trên DB thật. Chưa có API tạo media thật.
 - **Frontend:** `GET /api/v1/grammar/topics` trả `PageResponse<GrammarTopicResponse>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Phản hồi cũ là mảng, FE cần cập nhật. Trường kích thước là `size`, không phải `pageSize` như SRS v5.0.
 - **Ghi nhận checkpoint:** `GrammarPracticeControllerIntegrationTests.java` nằm trong `modules/practice/controller` theo đường dẫn. `GrammarPracticeController` đã có trên nhánh từ `9ea157d`. Commit checkpoint `6d733df` giữ nguyên, không viết lại lịch sử.

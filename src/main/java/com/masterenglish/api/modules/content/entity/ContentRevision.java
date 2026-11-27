@@ -125,6 +125,24 @@ public class ContentRevision {
         this.reviewedAt = Instant.now();
     }
 
+    /**
+     * Mở lại để sửa: REJECTED hoặc APPROVED về DRAFT (B02). Người duyệt cũ không còn áp dụng, nên
+     * bị xóa; duyệt lại mới ghi người duyệt mới. Lý do từ chối được giữ làm phản hồi cho người
+     * soạn.
+     */
+    public void reopenForEdit() {
+        if (!"REJECTED".equals(status) && !"APPROVED".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Invalid content workflow transition from " + status);
+        }
+        if ("APPROVED".equals(status)) {
+            this.reviewNote = null;
+        }
+        this.status = "DRAFT";
+        this.reviewedBy = null;
+        this.reviewedAt = null;
+    }
+
     public void publish(UUID publisherId) {
         requireStatus("APPROVED");
         this.status = "PUBLISHED";
