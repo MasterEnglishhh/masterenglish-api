@@ -434,9 +434,12 @@ class PracticeIntegrationTests {
         assertThat(accessRevokedAt).isNull();
 
         // 4. Start new attempt with new requestId -> unpublished question is NOT picked
-        UUID requestId2 = UUID.randomUUID();
-        JsonNode attempt2 = startTopic(learner, requestId2, 2, topic, 201);
-        // Only 1 question is available because qUnpub is excluded
+        JsonNode shortage = startTopic(learner, UUID.randomUUID(), 2, topic, 409);
+        assertThat(shortage.path("code").asText()).isEqualTo("INSUFFICIENT_QUESTIONS");
+        assertThat(shortage.path("requestedCount").asInt()).isEqualTo(2);
+        assertThat(shortage.path("availableCount").asInt()).isEqualTo(1);
+
+        JsonNode attempt2 = startTopic(learner, UUID.randomUUID(), 1, topic, 201);
         assertThat(attempt2.path("totalCount").asInt()).isEqualTo(1);
         assertThat(attempt2.path("questions")).hasSize(1);
         String pickedPrompt = attempt2.path("questions").get(0).path("prompt").asText();
