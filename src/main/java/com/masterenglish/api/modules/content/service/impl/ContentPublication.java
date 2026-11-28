@@ -57,6 +57,7 @@ class ContentPublication {
             ContentSourceLinkRepository sourceLinks,
             ContentSourceRepository sources,
             RevisionDependencyRepository dependencies,
+            ContentRevisionRepository revisions,
             ContentEvents contentEvents,
             ObjectMapper mapper) {
         this(
@@ -64,7 +65,7 @@ class ContentPublication {
                 sourceLinks,
                 sources,
                 dependencies,
-                null,
+                revisions,
                 null,
                 null,
                 null,
@@ -124,11 +125,9 @@ class ContentPublication {
             throw new BusinessException(
                     ErrorCode.VALIDATION_ERROR, "Unsupported content type: " + type);
         }
-        if ("GRAMMAR_LESSON".equals(type)) {
-            if (hasRevisionMediaRefs(revision.getId())) {
-                throw new BusinessException(
-                        ErrorCode.VALIDATION_ERROR, "Grammar lesson v1 must not reference media.");
-            }
+        if ("GRAMMAR_LESSON".equals(type) && hasRevisionMediaRefs(revision.getId())) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "GRAMMAR_LESSON v1 must not reference media.");
         }
         JsonNode data = snapshots.data(revision.getSnapshot());
         contentEvents.validateSnapshot(item.getId(), type, data);

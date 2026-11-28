@@ -183,6 +183,52 @@ class LessonProgressControllerIntegrationTests {
                 .andExpect(jsonPath("$[0].lessonId").value(mine.toString()));
     }
 
+    @Test
+    void progressFlagsANewerRevisionAndKeepsTheCompletion() throws Exception {
+        UUID lesson = publishedLesson();
+        update(lesson, "COMPLETED", learner).andExpect(jsonPath("$.hasUpdate").value(false));
+
+        republishLesson(lesson);
+
+        mockMvc.perform(get("/api/v1/grammar/progress").with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].state").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].hasUpdate").value(true));
+    }
+
+    @Test
+    void topicProgressCountsVisibleLessonsAndFlagsNewerRevisions() throws Exception {
+        UUID topic = publishTopic();
+        UUID first = publishedLessonIn(topic);
+        UUID second = publishedLessonIn(topic);
+        update(first, "COMPLETED", learner).andExpect(status().isOk());
+
+        topicProgress()
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(topicPath(topic, "completedLessonCount")).value(1))
+                .andExpect(jsonPath(topicPath(topic, "totalLessonCount")).value(2))
+                .andExpect(jsonPath(topicPath(topic, "hasUpdate")).value(false));
+
+        republishLesson(first);
+        topicProgress()
+                .andExpect(jsonPath(topicPath(topic, "completedLessonCount")).value(1))
+                .andExpect(jsonPath(topicPath(topic, "hasUpdate")).value(true));
+
+        archive(second);
+        topicProgress()
+                .andExpect(jsonPath(topicPath(topic, "completedLessonCount")).value(1))
+                .andExpect(jsonPath(topicPath(topic, "totalLessonCount")).value(1));
+    }
+
+    private ResultActions topicProgress() throws Exception {
+        return mockMvc.perform(
+                get("/api/v1/grammar/progress/topics").with(user(UserPrincipal.create(learner))));
+    }
+
+    private static String topicPath(UUID topic, String field) {
+        return "$[?(@.topicId == '" + topic + "')]." + field;
+    }
+
     private ResultActions update(UUID lesson, String state, User account) throws Exception {
         return mockMvc.perform(
                 put(progressUrl(lesson))
@@ -224,7 +270,10 @@ class LessonProgressControllerIntegrationTests {
      * projection.
      */
     private UUID publishedLesson() {
-        UUID topic = publishTopic();
+        return publishedLessonIn(publishTopic());
+    }
+
+    private UUID publishedLessonIn(UUID topic) {
         UUID item = publishItem("GRAMMAR_LESSON");
         UUID revision = currentRevision(item);
         jdbc.update(

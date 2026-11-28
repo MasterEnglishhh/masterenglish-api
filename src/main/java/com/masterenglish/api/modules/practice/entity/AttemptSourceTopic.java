@@ -1,7 +1,6 @@
 package com.masterenglish.api.modules.practice.entity;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -13,7 +12,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** Topics a mixed attempt was started from. */
+/** A topic a mixed attempt was drawn from, pinned to the topic revision published at start. */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
@@ -22,16 +21,19 @@ public class AttemptSourceTopic {
 
     @EmbeddedId private Id id;
 
-    public AttemptSourceTopic(UUID attemptId, UUID topicId) {
+    @Column(name = "source_revision_id", nullable = false, updatable = false)
+    private UUID sourceRevisionId;
+
+    public AttemptSourceTopic(UUID attemptId, UUID topicId, UUID sourceRevisionId) {
         this.id = new Id(attemptId, topicId);
+        this.sourceRevisionId = sourceRevisionId;
     }
 
-    @Embeddable
+    @jakarta.persistence.Embeddable
     @Getter
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Id implements Serializable {
-
         @Column(name = "attempt_id", nullable = false)
         private UUID attemptId;
 

@@ -1,50 +1,61 @@
 package com.masterenglish.api.modules.practice.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.io.Serializable;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** An option as it was when the attempt started, including its correctness. */
+/** A public option of a sealed question. Correctness is never stored here (see answer keys). */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "attempt_snapshot_options")
 public class AttemptSnapshotOption {
 
-    @Id private UUID id;
+    @EmbeddedId private Id id;
 
-    @Column(name = "attempt_id", nullable = false, updatable = false)
-    private UUID attemptId;
+    @Column(nullable = false)
+    private short position;
 
-    @Column(name = "question_position", nullable = false, updatable = false)
-    private int questionPosition;
-
-    @Column(nullable = false, updatable = false)
-    private int position;
-
-    @Column(nullable = false, updatable = false)
-    private String body;
-
-    @Column(name = "is_correct", nullable = false, updatable = false)
-    private boolean correct;
+    @Column(name = "public_body")
+    private String publicBody;
 
     public AttemptSnapshotOption(
-            UUID id,
-            UUID attemptId,
-            int questionPosition,
-            int position,
-            String body,
-            boolean correct) {
-        this.id = id;
-        this.attemptId = attemptId;
-        this.questionPosition = questionPosition;
+            UUID snapshotId, UUID optionId, short position, String publicBody) {
+        this.id = new Id(snapshotId, optionId);
         this.position = position;
-        this.body = body;
-        this.correct = correct;
+        this.publicBody = publicBody;
+    }
+
+    @jakarta.persistence.Embeddable
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Id implements Serializable {
+        @Column(name = "snapshot_id", nullable = false)
+        private UUID snapshotId;
+
+        @Column(name = "option_id", nullable = false)
+        private UUID optionId;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Id that)) return false;
+            return Objects.equals(snapshotId, that.snapshotId)
+                    && Objects.equals(optionId, that.optionId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(snapshotId, optionId);
+        }
     }
 }

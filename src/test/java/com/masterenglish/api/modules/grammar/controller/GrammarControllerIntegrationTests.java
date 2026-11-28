@@ -242,17 +242,91 @@ class GrammarControllerIntegrationTests {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void topicListFiltersByDifficulty() throws Exception {
+        String tag = "dfx" + suffix();
+        publishTopic(tag + "-a", tag + " basic", 1, "BASIC");
+        UUID advanced = publishTopic(tag + "-b", tag + " advanced", 2, "ADVANCED");
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics")
+                                .param("q", tag)
+                                .param("difficulty", "ADVANCED")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(advanced.toString()));
+    }
+
+    @Test
+    void topicSearchIsCaseInsensitiveAndTreatsWildcardsAsText() throws Exception {
+        String tag = "Gerund" + suffix();
+        publishTopic("gs-" + suffix(), tag + " Basics", 1, "BASIC");
+        publishTopic("gt-" + suffix(), "Plain " + suffix(), 2, "BASIC");
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics")
+                                .param("q", tag.toLowerCase())
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1));
+
+        for (String wildcard : new String[] {"%", "_"}) {
+            mockMvc.perform(
+                            get("/api/v1/grammar/topics")
+                                    .param("q", wildcard)
+                                    .with(user(UserPrincipal.create(learner))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalItems").value(0));
+        }
+    }
+
+    @Test
+    void topicSearchExcludesArchivedTopics() throws Exception {
+        String tag = "hid" + suffix();
+        UUID hidden = publishTopic(tag, tag + " hidden", 1, "BASIC");
+        archive(hidden);
+
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics")
+                                .param("q", tag)
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(0));
+    }
+
+    @Test
+    void topicListRejectsUnknownDifficultyAndOverlongSearch() throws Exception {
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics")
+                                .param("difficulty", "EXPERT")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics")
+                                .param("q", "x".repeat(201))
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
     /** Publishes a topic the same way content publication does: item, revision, then projection. */
     private UUID publishTopic(String slug, String name, int sortOrder) {
+        return publishTopic(slug, name, sortOrder, "BASIC");
+    }
+
+    private UUID publishTopic(String slug, String name, int sortOrder, String difficulty) {
         UUID item = publishItem("GRAMMAR_TOPIC");
         UUID revision = currentRevision(item);
         jdbc.update(
                 "INSERT INTO grammar_topics (id, published_revision_id, slug, name, difficulty, sort_order)"
-                        + " VALUES (?, ?, ?, ?, 'BASIC', ?)",
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
                 item,
                 revision,
                 slug,
                 name,
+                difficulty,
                 sortOrder);
         return item;
     }

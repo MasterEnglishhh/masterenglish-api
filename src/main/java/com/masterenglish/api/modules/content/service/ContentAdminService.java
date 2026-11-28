@@ -13,6 +13,7 @@ import com.masterenglish.api.common.events.ContentEvents.QuestionDraft;
 import com.masterenglish.api.common.events.ContentEvents.RevisionClone;
 import com.masterenglish.api.common.events.ContentEvents.RevisionHistoryView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
+import com.masterenglish.api.common.events.ContentEvents.SavedGrammarDraft;
 import com.masterenglish.api.common.events.ContentEvents.SourceView;
 import com.masterenglish.api.common.events.ContentEvents.UpdateSource;
 import com.masterenglish.api.common.events.ContentEvents.ValidationView;
@@ -36,6 +37,8 @@ public interface ContentAdminService {
     ItemView createWordDraft(WordDraft request, UUID actorId);
 
     ItemView createDeckDraft(DeckDraft request, UUID actorId);
+
+    ItemView saveGrammarDraft(SavedGrammarDraft request, UUID actorId);
 
     ItemView createGrammarTopicDraft(GrammarDraft request, UUID actorId);
 

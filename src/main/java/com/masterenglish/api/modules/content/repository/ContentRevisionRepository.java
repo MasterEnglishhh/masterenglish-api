@@ -80,6 +80,11 @@ public interface ContentRevisionRepository
     long countByStatus(String status);
 
     @Query(
+            value = "SELECT count(*) FROM revision_media_refs WHERE revision_id = :revisionId",
+            nativeQuery = true)
+    long countMediaRefsByRevisionId(@Param("revisionId") UUID revisionId);
+
+    @Query(
             value = "SELECT count(*) > 0 FROM revision_media_refs WHERE revision_id = :revisionId",
             nativeQuery = true)
     boolean hasRevisionMediaRefs(@Param("revisionId") UUID revisionId);

@@ -1174,15 +1174,15 @@ class QuestionAuthoringIntegrationTests {
                 selectedOptionId = UUID.fromString(opt.path("id").asText());
             }
         }
-        assertThat(selectedOptionId).isNotNull();
+        assertThat(selectedOptionId).isEqualTo(opt1);
 
-        // Kiểm chứng gửi ID gốc từ authoring bị từ chối 400 (do attempt snapshot sinh ID riêng)
+        // M04 giữ optionId ổn định từ authoring; ID không thuộc snapshot vẫn bị từ chối.
         mockMvc.perform(
                         put("/api/v1/attempts/" + attemptId + "/answers/1")
                                 .with(user(learnerPrincipal()))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"optionId\":\"" + opt1 + "\"}"))
+                                .content("{\"optionId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isBadRequest());
 
         // Learner answers với optionId từ attempt DTO

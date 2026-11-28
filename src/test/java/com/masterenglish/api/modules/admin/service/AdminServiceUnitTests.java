@@ -9,12 +9,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.ContentEvents;
 import com.masterenglish.api.common.events.ContentEvents.AuditEntry;
 import com.masterenglish.api.common.events.ContentEvents.ItemView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
+import com.masterenglish.api.common.events.GrammarEvents;
 import com.masterenglish.api.common.events.IdentityEvents;
 import com.masterenglish.api.common.events.IdentityEvents.UserView;
 import com.masterenglish.api.common.security.RoleCode;
@@ -117,7 +119,9 @@ class AdminServiceUnitTests {
     @DisplayName("AdminContentService - Chuyển giao các tác vụ nội dung sang ContentEvents")
     void adminContentService_delegates() {
         ContentEvents contentAdminMock = mock(ContentEvents.class);
-        AdminContentService adminContentService = new AdminContentServiceImpl(contentAdminMock);
+        AdminContentService adminContentService =
+                new AdminContentServiceImpl(
+                        contentAdminMock, mock(GrammarEvents.class), new ObjectMapper());
 
         UUID itemId = UUID.randomUUID();
         UUID revisionId = UUID.randomUUID();

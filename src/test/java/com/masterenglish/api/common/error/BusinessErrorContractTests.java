@@ -77,7 +77,52 @@ class BusinessErrorContractTests {
                         "SERVICE_UNAVAILABLE:503",
                         "INTERNAL_ERROR:500",
                         "NO_ELIGIBLE_QUESTIONS:409",
-                        "INSUFFICIENT_QUESTIONS:409");
+                        "INSUFFICIENT_QUESTIONS:409",
+                        "IDEMPOTENCY_CONFLICT:409",
+                        "OPEN_ATTEMPT_LIMIT_REACHED:409",
+                        "STALE_ANSWER_VERSION:409",
+                        "ATTEMPT_NOT_OPEN:409",
+                        "OPTION_NOT_IN_SNAPSHOT:400");
+    }
+
+    @Test
+    void practiceDetailsAcceptOnlyTheShapeOfTheirKey() {
+        java.util.UUID option = java.util.UUID.randomUUID();
+        var details = new java.util.HashMap<String, Object>();
+        details.put("currentVersion", 3L);
+        details.put("currentSelectedOptionId", option);
+        assertThat(
+                        new BusinessException(ErrorCode.STALE_ANSWER_VERSION, "Stale.", details)
+                                .getDetails())
+                .containsEntry("currentSelectedOptionId", option);
+
+        details.put("currentSelectedOptionId", null);
+        assertThat(
+                        new BusinessException(ErrorCode.STALE_ANSWER_VERSION, "Stale.", details)
+                                .getDetails())
+                .containsEntry("currentSelectedOptionId", null);
+
+        assertThatThrownBy(
+                        () ->
+                                new BusinessException(
+                                        ErrorCode.ATTEMPT_NOT_OPEN,
+                                        "Closed.",
+                                        java.util.Map.of("attemptStatus", "submitted")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(
+                        new BusinessException(
+                                        ErrorCode.ATTEMPT_NOT_OPEN,
+                                        "Closed.",
+                                        java.util.Map.of("attemptStatus", "SUBMITTED"))
+                                .getDetails())
+                .containsEntry("attemptStatus", "SUBMITTED");
+        assertThatThrownBy(
+                        () ->
+                                new BusinessException(
+                                        ErrorCode.STALE_ANSWER_VERSION,
+                                        "Stale.",
+                                        java.util.Map.of("currentSelectedOptionId", "not-a-uuid")))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

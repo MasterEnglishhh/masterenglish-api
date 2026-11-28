@@ -39,7 +39,6 @@ import com.masterenglish.api.modules.notifications.repository.NotificationReposi
 import com.masterenglish.api.modules.vocabulary.service.VocabularySeedService;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -509,53 +508,101 @@ class DashboardControllerIntegrationTests {
         return item;
     }
 
+    /**
+     * Seeds a submitted grammar attempt in the baseline shape (V14+). Score is the correct count;
+     * the dashboard reads the percentage from correct and total.
+     */
     private void seedSubmittedAttempt(
             UUID userId, UUID topicId, int totalCount, int correctCount, Instant submittedAt) {
         UUID attemptId = UUID.randomUUID();
-        int score = (int) Math.round((correctCount * 100.0) / totalCount);
+        Instant startedAt = submittedAt.minusSeconds(120);
+        java.time.ZoneOffset utc = java.time.ZoneOffset.UTC;
+        java.time.LocalDate localDay =
+                submittedAt.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDate();
+        String sourceConfig =
+                "{\"sourceType\":\"GRAMMAR_TOPIC\",\"topicIds\":[\""
+                        + topicId
+                        + "\"],\"questionCount\":"
+                        + totalCount
+                        + "}";
         jdbc.update(
-                "INSERT INTO attempts (id, user_id, category, source_type, source_topic_id, request_id, request_hash, status, total_count, correct_count, score, started_at, submitted_at, updated_at) "
-                        + "VALUES (?, ?, 'GRAMMAR', 'GRAMMAR_TOPIC', ?, ?, ?, 'SUBMITTED', ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO attempts (id, user_id, category, source_type, source_topic_id,"
+                        + " source_config, request_id, request_hash, status, total_count,"
+                        + " correct_count, answered_count, score, snapshot_sealed_at, started_at,"
+                        + " last_active_at, submitted_at, effective_finished_at, submit_reason,"
+                        + " duration_seconds, local_day, version, created_at, updated_at)"
+                        + " VALUES (?, ?, 'GRAMMAR', 'GRAMMAR_TOPIC', ?, CAST(? AS jsonb), ?, ?,"
+                        + " 'SUBMITTED', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', 120, ?, 0, ?, ?)",
                 attemptId,
                 userId,
                 topicId,
+                sourceConfig,
                 UUID.randomUUID(),
                 "0".repeat(64),
                 totalCount,
                 correctCount,
-                score,
-                submittedAt.minusSeconds(120).atOffset(java.time.ZoneOffset.UTC),
-                submittedAt.atOffset(java.time.ZoneOffset.UTC),
-                submittedAt.atOffset(java.time.ZoneOffset.UTC));
+                totalCount,
+                correctCount,
+                startedAt.atOffset(utc),
+                startedAt.atOffset(utc),
+                startedAt.atOffset(utc),
+                submittedAt.atOffset(utc),
+                submittedAt.atOffset(utc),
+                localDay,
+                startedAt.atOffset(utc),
+                submittedAt.atOffset(utc));
 
+        String topicIds = "[\"" + topicId + "\"]";
         for (int pos = 1; pos <= totalCount; pos++) {
             UUID qId = publishQuestion(topicId, "Q" + pos);
+            UUID snapshotId = UUID.randomUUID();
             UUID rightOpt = UUID.randomUUID();
             UUID wrongOpt = UUID.randomUUID();
             jdbc.update(
-                    "INSERT INTO attempt_question_snapshots (attempt_id, position, question_id, topic_id, question_type_code, practice_mode, prompt, explanation) "
-                            + "VALUES (?, ?, ?, ?, 'SINGLE_CHOICE', 'STANDARD', 'Prompt', 'Expl')",
+                    "INSERT INTO attempt_question_snapshots (id, attempt_id, question_id,"
+                            + " source_revision_id, category, ordinal, question_type_code,"
+                            + " grading_policy_version, question_snapshot, answer_key_snapshot,"
+                            + " explanation_snapshot) VALUES (?, ?, ?, ?, 'GRAMMAR', ?,"
+                            + " 'SINGLE_CHOICE', 'SINGLE_CHOICE_V1', CAST(? AS jsonb),"
+                            + " CAST(? AS jsonb), CAST(? AS jsonb))",
+                    snapshotId,
                     attemptId,
-                    pos,
                     qId,
-                    topicId);
-            jdbc.update(
-                    "INSERT INTO attempt_snapshot_options (id, attempt_id, question_position, position, body, is_correct) VALUES (?, ?, ?, 1, 'Right', true)",
-                    rightOpt,
-                    attemptId,
-                    pos);
-            jdbc.update(
-                    "INSERT INTO attempt_snapshot_options (id, attempt_id, question_position, position, body, is_correct) VALUES (?, ?, ?, 2, 'Wrong', false)",
-                    wrongOpt,
-                    attemptId,
-                    pos);
-            UUID chosen = pos <= correctCount ? rightOpt : wrongOpt;
-            jdbc.update(
-                    "INSERT INTO attempt_answers (attempt_id, question_position, selected_option_id, answered_at) VALUES (?, ?, ?, ?)",
-                    attemptId,
+                    currentRevision(qId),
                     pos,
+                    "{\"prompt\":\"Prompt\",\"practiceMode\":\"STANDARD\","
+                            + "\"questionTypeCode\":\"SINGLE_CHOICE\",\"topicIds\":"
+                            + topicIds
+                            + ",\"attributedTopicId\":\""
+                            + topicId
+                            + "\"}",
+                    "{\"correctOptionId\":\"" + rightOpt + "\"}",
+                    "{\"explanation\":\"Expl\"}");
+            jdbc.update(
+                    "INSERT INTO attempt_snapshot_options (snapshot_id, option_id, position,"
+                            + " public_body) VALUES (?, ?, 1, 'Right')",
+                    snapshotId,
+                    rightOpt);
+            jdbc.update(
+                    "INSERT INTO attempt_snapshot_options (snapshot_id, option_id, position,"
+                            + " public_body) VALUES (?, ?, 2, 'Wrong')",
+                    snapshotId,
+                    wrongOpt);
+            boolean correct = pos <= correctCount;
+            UUID chosen = correct ? rightOpt : wrongOpt;
+            jdbc.update(
+                    "INSERT INTO attempt_answers (id, attempt_id, snapshot_id, selected_option_id,"
+                            + " answered_at, version, is_correct, score, created_at, updated_at)"
+                            + " VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+                    UUID.randomUUID(),
+                    attemptId,
+                    snapshotId,
                     chosen,
-                    Timestamp.from(submittedAt));
+                    submittedAt.atOffset(utc),
+                    correct,
+                    correct ? 1 : 0,
+                    startedAt.atOffset(utc),
+                    submittedAt.atOffset(utc));
         }
     }
 

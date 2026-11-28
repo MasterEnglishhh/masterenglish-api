@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.error.BusinessException;
 import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.events.GrammarEvents;
@@ -16,11 +17,15 @@ import com.masterenglish.api.modules.practice.repository.AttemptAnswerRepository
 import com.masterenglish.api.modules.practice.repository.AttemptQuestionSnapshotRepository;
 import com.masterenglish.api.modules.practice.repository.AttemptRepository;
 import com.masterenglish.api.modules.practice.repository.AttemptSnapshotOptionRepository;
+import com.masterenglish.api.modules.practice.repository.AttemptSourceMistakeRepository;
 import com.masterenglish.api.modules.practice.repository.AttemptSourceTopicRepository;
+import com.masterenglish.api.modules.practice.repository.MistakeRecordRepository;
 import com.masterenglish.api.modules.practice.repository.QuestionOptionRepository;
 import com.masterenglish.api.modules.practice.repository.QuestionRepository;
+import com.masterenglish.api.modules.practice.repository.QuestionTopicRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
@@ -34,6 +39,7 @@ import org.springframework.data.domain.Pageable;
 class PracticeServiceHistoryUnitTests {
 
     private static final Instant NOW = Instant.parse("2026-11-25T03:00:00Z");
+    private static final String TZ = "Asia/Ho_Chi_Minh";
 
     private final AttemptRepository attempts = mock(AttemptRepository.class);
     private final AttemptSourceTopicRepository sourceTopics =
@@ -50,11 +56,16 @@ class PracticeServiceHistoryUnitTests {
                         mock(GrammarEvents.class),
                         attempts,
                         sourceTopics,
+                        mock(AttemptSourceMistakeRepository.class),
                         mock(AttemptQuestionSnapshotRepository.class),
                         mock(AttemptSnapshotOptionRepository.class),
                         mock(AttemptAnswerRepository.class),
                         mock(QuestionRepository.class),
                         mock(QuestionOptionRepository.class),
+                        mock(QuestionTopicRepository.class),
+                        mock(MistakeRecordRepository.class),
+                        mock(MistakeRecorder.class),
+                        mock(ObjectMapper.class),
                         Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -87,10 +98,13 @@ class PracticeServiceHistoryUnitTests {
                         PracticeServiceImpl.GRAMMAR_TOPIC,
                         topicA,
                         UUID.randomUUID(),
+                        "{}",
+                        UUID.randomUUID(),
                         "a".repeat(64),
-                        5,
+                        (short) 5,
+                        TZ,
                         NOW.minusSeconds(120));
-        single.submit(4, 80, NOW);
+        single.submit("MANUAL", NOW, NOW, 4, 5, ZoneId.of(TZ));
 
         Attempt mixed =
                 new Attempt(
@@ -98,9 +112,12 @@ class PracticeServiceHistoryUnitTests {
                         userId,
                         PracticeServiceImpl.MIXED_GRAMMAR,
                         null,
+                        null,
+                        "{}",
                         UUID.randomUUID(),
                         "b".repeat(64),
-                        10,
+                        (short) 10,
+                        TZ,
                         NOW.minusSeconds(60));
 
         Pageable pageable = PageRequest.of(0, 10);
@@ -109,8 +126,8 @@ class PracticeServiceHistoryUnitTests {
         when(sourceTopics.findByIdAttemptIdInOrderByIdAttemptIdAscIdTopicIdAsc(List.of(mixedId)))
                 .thenReturn(
                         List.of(
-                                new AttemptSourceTopic(mixedId, topicA),
-                                new AttemptSourceTopic(mixedId, topicB)));
+                                new AttemptSourceTopic(mixedId, topicA, UUID.randomUUID()),
+                                new AttemptSourceTopic(mixedId, topicB, UUID.randomUUID())));
 
         var page = service.listAttempts(userId, " submitted ", "mixed_grammar", pageable);
 
@@ -142,14 +159,14 @@ class PracticeServiceHistoryUnitTests {
     @Test
     @DisplayName("getPracticeSummary chuẩn hóa legacy IANA alias trước khi gọi SQL")
     void getPracticeSummaryCanonicalizesLegacyAlias() {
-        when(attempts.findSubmittedLocalDays(userId, "Asia/Ho_Chi_Minh")).thenReturn(List.of());
-        when(attempts.topicStatisticsSince(userId, NOW.minusSeconds(86400))).thenReturn(List.of());
+        when(attempts.findSubmittedLocalDays(userId, TZ)).thenReturn(List.of());
+        when(attempts.topicAccuracySince(userId, NOW.minusSeconds(86400))).thenReturn(List.of());
         when(attempts.findTop5ByUserIdAndStatusOrderBySubmittedAtDescIdDesc(
                         userId, Attempt.SUBMITTED))
                 .thenReturn(List.of());
 
         service.getPracticeSummary(userId, NOW.minusSeconds(86400), "Asia/Saigon");
 
-        verify(attempts).findSubmittedLocalDays(userId, "Asia/Ho_Chi_Minh");
+        verify(attempts).findSubmittedLocalDays(userId, TZ);
     }
 }

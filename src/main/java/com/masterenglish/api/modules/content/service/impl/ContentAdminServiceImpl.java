@@ -1,5 +1,6 @@
 package com.masterenglish.api.modules.content.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
@@ -17,6 +18,7 @@ import com.masterenglish.api.common.events.ContentEvents.QuestionDraft;
 import com.masterenglish.api.common.events.ContentEvents.RevisionClone;
 import com.masterenglish.api.common.events.ContentEvents.RevisionHistoryView;
 import com.masterenglish.api.common.events.ContentEvents.RevisionView;
+import com.masterenglish.api.common.events.ContentEvents.SavedGrammarDraft;
 import com.masterenglish.api.common.events.ContentEvents.SourceView;
 import com.masterenglish.api.common.events.ContentEvents.UpdateSource;
 import com.masterenglish.api.common.events.ContentEvents.ValidationView;
@@ -186,7 +188,8 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                     latest != null && latest.getChangeSummary() != null
                             ? latest.getChangeSummary()
                             : "";
-            String level = "B1";
+            boolean grammar = item.getContentType().startsWith("GRAMMAR_");
+            String level = grammar ? "" : "B1";
 
             if (latest != null) {
                 try {
@@ -556,6 +559,57 @@ public class ContentAdminServiceImpl implements ContentAdminService {
                 item.getCreatedAt(),
                 request.level() != null ? request.level().trim().toUpperCase() : "B1",
                 revId);
+    }
+
+    /** Snapshot đã được bên gọi dựng sẵn; ở đây chỉ lưu bản nháp và trả về dòng danh sách. */
+    @Override
+    @Transactional
+    public ItemView saveGrammarDraft(SavedGrammarDraft request, UUID actorId) {
+        String contentType = request.contentType();
+        var item =
+                request.itemId() == null
+                        ? authoringService.createItemWithDraft(
+                                UUID.randomUUID(),
+                                contentType,
+                                actorId,
+                                null,
+                                null,
+                                request.snapshotJson(),
+                                request.changeSummary(),
+                                request.sourceId())
+                        : authoringService.updateDraft(
+                                request.itemId(),
+                                contentType,
+                                actorId,
+                                request.snapshotJson(),
+                                request.changeSummary(),
+                                request.sourceId());
+        ContentRevision latest =
+                revisionRepository.findByContentItemIdOrderByVersionNoDesc(item.getId()).get(0);
+        JsonNode data = snapshotData(latest.getSnapshot());
+        boolean topic = "GRAMMAR_TOPIC".equals(contentType);
+        return new ItemView(
+                item.getId(),
+                data.path(topic ? "name" : "title").asText(contentType),
+                contentType + "-" + item.getId().toString().substring(0, 8),
+                "GRAMMAR",
+                contentType,
+                "DRAFT",
+                latest.getVersionNo(),
+                data.path("description").asText(""),
+                "Admin",
+                null,
+                latest.getUpdatedAt(),
+                topic ? data.path("difficulty").asText("") : "",
+                latest.getId());
+    }
+
+    private JsonNode snapshotData(String snapshot) {
+        try {
+            return objectMapper.readTree(snapshot).path("data");
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored snapshot is not valid JSON", e);
+        }
     }
 
     @Override

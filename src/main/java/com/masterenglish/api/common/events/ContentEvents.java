@@ -234,6 +234,11 @@ public class ContentEvents {
                                 domain, search, contentType, status, pageable, reply));
     }
 
+    /** Creates a draft when {@code request.itemId()} is null, otherwise edits that item's draft. */
+    public ItemView saveGrammarDraft(SavedGrammarDraft request, UUID actorId) {
+        return events.request(reply -> new AdminSaveGrammarDraft(request, actorId, reply));
+    }
+
     public ItemView createWordDraft(WordDraft request, UUID actorId) {
         return events.request(reply -> new AdminCreateWordDraft(request, actorId, reply));
     }
@@ -505,6 +510,14 @@ public class ContentEvents {
             UUID sourceId,
             String changeSummary) {}
 
+    /** Snapshot JSON is built by the caller; content only stores it. */
+    public record SavedGrammarDraft(
+            UUID itemId,
+            String contentType,
+            String snapshotJson,
+            String changeSummary,
+            UUID sourceId) {}
+
     public record AdminSource(
             String title,
             String sourceType,
@@ -540,6 +553,9 @@ public class ContentEvents {
 
     public record AdminCreateDeckDraft(
             DeckDraft request, UUID actorId, EventReply<ItemView> reply) {}
+
+    public record AdminSaveGrammarDraft(
+            SavedGrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}
 
     public record AdminCreateGrammarTopicDraft(
             GrammarDraft request, UUID actorId, EventReply<ItemView> reply) {}

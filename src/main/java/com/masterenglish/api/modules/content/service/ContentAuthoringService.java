@@ -46,6 +46,14 @@ public interface ContentAuthoringService {
             String changeSummary,
             UUID sourceId);
 
+    ContentItemResponse updateDraft(
+            UUID itemId,
+            String contentType,
+            UUID actorId,
+            String snapshotJson,
+            String changeSummary,
+            UUID sourceId);
+
     ContentItemResponse createItemWithDraft(
             UUID itemId,
             String contentType,

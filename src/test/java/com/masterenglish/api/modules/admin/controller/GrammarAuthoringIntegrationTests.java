@@ -1052,7 +1052,6 @@ class GrammarAuthoringIntegrationTests {
         lessonData.put("topic_id", topicId.toString());
         lessonData.put("pinned_topic_revision_id", topicRevId.toString());
         lessonData.put("title", "First Conditional");
-        lessonData.put("slug", "first-conditional");
         lessonData.put("position", 1);
         lessonData.put("body_schema_version", 1);
         lessonData.put("estimated_minutes", 10);
@@ -1283,7 +1282,6 @@ class GrammarAuthoringIntegrationTests {
                                 validLessonData.put(
                                         "pinned_topic_revision_id", topRevId.toString());
                                 validLessonData.put("title", "Adverbs of Frequency");
-                                validLessonData.put("slug", "adverbs-of-frequency");
                                 validLessonData.put("position", 1);
                                 validLessonData.put("body_schema_version", 1);
                                 validLessonData.put("estimated_minutes", 10);
@@ -1547,7 +1545,6 @@ class GrammarAuthoringIntegrationTests {
         lessonData.put("topic_id", topicItemId.toString());
         lessonData.put("pinned_topic_revision_id", topicRevId.toString());
         lessonData.put("title", "A and An");
-        lessonData.put("slug", "a-and-an");
         lessonData.put("position", 1);
         lessonData.put("body_schema_version", 1);
         lessonData.put("estimated_minutes", 10);
@@ -1637,7 +1634,6 @@ class GrammarAuthoringIntegrationTests {
         UUID fakeMediaId = UUID.randomUUID();
         Map<String, Object> badLessonData = new HashMap<>(lessonData);
         badLessonData.put("title", "Lesson with Media");
-        badLessonData.put("slug", "lesson-with-media");
 
         CreateGrammarDraftRequest badLessonReq =
                 new CreateGrammarDraftRequest(
@@ -1756,7 +1752,6 @@ class GrammarAuthoringIntegrationTests {
         lessonData.put("topic_id", topicId.toString());
         lessonData.put("pinned_topic_revision_id", topicRev1.toString());
         lessonData.put("title", "Personal Pronouns");
-        lessonData.put("slug", "personal-pronouns");
         lessonData.put("position", 1);
         lessonData.put("body", lessonBody);
 
@@ -1857,7 +1852,6 @@ class GrammarAuthoringIntegrationTests {
         // 2 publish
         Map<String, Object> lesson2Data = new HashMap<>(lessonData);
         lesson2Data.put("title", "Possessive Pronouns");
-        lesson2Data.put("slug", "possessive-pronouns");
         lesson2Data.put("pinned_topic_revision_id", topicRev2.toString());
 
         String l2Res =
@@ -2008,7 +2002,6 @@ class GrammarAuthoringIntegrationTests {
                                 lessonData.put("topic_id", topId.toString());
                                 lessonData.put("pinned_topic_revision_id", topRev.toString());
                                 lessonData.put("title", "Prepositions of Place");
-                                lessonData.put("slug", "prepositions-of-place");
                                 lessonData.put("position", 1);
                                 lessonData.put("body_schema_version", 1);
                                 lessonData.put("estimated_minutes", 10);
@@ -2326,7 +2319,6 @@ class GrammarAuthoringIntegrationTests {
                                 lessonData.put("topic_id", topId.toString());
                                 lessonData.put("pinned_topic_revision_id", topRev.toString());
                                 lessonData.put("title", "Coordinating Conjunctions");
-                                lessonData.put("slug", "coordinating-conjunctions");
                                 lessonData.put("position", 1);
                                 lessonData.put("body_schema_version", 1);
                                 lessonData.put("estimated_minutes", 10);

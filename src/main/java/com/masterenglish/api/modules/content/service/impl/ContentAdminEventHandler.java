@@ -49,6 +49,11 @@ class ContentAdminEventHandler {
     }
 
     @EventListener
+    void on(ContentEvents.AdminSaveGrammarDraft event) {
+        event.reply().complete(admin.saveGrammarDraft(event.request(), event.actorId()));
+    }
+
+    @EventListener
     void on(ContentEvents.AdminCreateGrammarTopicDraft event) {
         event.reply().complete(admin.createGrammarTopicDraft(event.request(), event.actorId()));
     }

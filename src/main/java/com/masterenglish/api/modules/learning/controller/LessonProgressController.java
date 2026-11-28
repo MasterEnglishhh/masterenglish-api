@@ -4,6 +4,7 @@ import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
 import com.masterenglish.api.modules.learning.dto.request.LessonProgressRequest;
 import com.masterenglish.api.modules.learning.dto.response.LessonProgressResponse;
+import com.masterenglish.api.modules.learning.dto.response.TopicProgressResponse;
 import com.masterenglish.api.modules.learning.service.LessonProgressService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -41,5 +42,11 @@ public class LessonProgressController {
     @GetMapping("/progress")
     public List<LessonProgressResponse> getProgress(@CurrentUser AuthenticatedUser currentUser) {
         return progress.getProgress(currentUser.getId());
+    }
+
+    @GetMapping("/progress/topics")
+    public List<TopicProgressResponse> getTopicProgress(
+            @CurrentUser AuthenticatedUser currentUser) {
+        return progress.getTopicProgress(currentUser.getId());
     }
 }

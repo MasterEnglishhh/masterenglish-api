@@ -9,6 +9,8 @@ import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftReques
 import com.masterenglish.api.modules.admin.dto.request.CreateQuestionGroupDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateRevisionFromPublishedRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarLessonDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarTopicDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateRevisionDraftRequest;
 import com.masterenglish.api.modules.admin.dto.response.AdminContentDetailDto;
@@ -36,6 +38,13 @@ public interface AdminContentService {
     AdminContentItemDto createWordDraft(CreateWordDraftRequest request, UUID actorId);
 
     AdminContentItemDto createDeckDraft(CreateDeckDraftRequest request, UUID actorId);
+
+    /** {@code itemId} null tạo bản nháp mới; có giá trị thì sửa bản nháp của mục đó. */
+    AdminContentItemDto saveGrammarTopicDraft(
+            UUID itemId, SaveGrammarTopicDraftRequest request, UUID actorId);
+
+    AdminContentItemDto saveGrammarLessonDraft(
+            UUID itemId, SaveGrammarLessonDraftRequest request, UUID actorId);
 
     AdminContentItemDto createGrammarTopicDraft(CreateGrammarDraftRequest request, UUID actorId);
 

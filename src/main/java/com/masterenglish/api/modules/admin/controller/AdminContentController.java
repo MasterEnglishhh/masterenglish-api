@@ -1,6 +1,9 @@
 package com.masterenglish.api.modules.admin.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.masterenglish.api.common.api.PageResponse;
+import com.masterenglish.api.common.error.BusinessException;
+import com.masterenglish.api.common.error.ErrorCode;
 import com.masterenglish.api.common.pagination.PageRequestUtils;
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
@@ -14,6 +17,8 @@ import com.masterenglish.api.modules.admin.dto.request.CreateQuestionGroupDraftR
 import com.masterenglish.api.modules.admin.dto.request.CreateRevisionFromPublishedRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.ReviewDecisionRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarLessonDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.SaveGrammarTopicDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateRevisionDraftRequest;
 import com.masterenglish.api.modules.admin.dto.response.AdminContentDetailDto;
@@ -25,6 +30,7 @@ import com.masterenglish.api.modules.admin.dto.response.AdminValidationResponse;
 import com.masterenglish.api.modules.admin.dto.response.ContentSourceDto;
 import com.masterenglish.api.modules.admin.service.AdminContentService;
 import jakarta.validation.Valid;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
@@ -97,18 +103,66 @@ public class AdminContentController {
 
     @PostMapping("/grammar/topics")
     public ResponseEntity<AdminContentItemDto> createGrammarTopic(
-            @Valid @RequestBody CreateGrammarDraftRequest request,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @RequestBody Map<String, Object> request, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(contentService.createGrammarTopicDraft(request, currentUser.getId()));
+                .body(
+                        request.containsKey("data")
+                                ? contentService.createGrammarTopicDraft(
+                                        grammarDraftRequest(request), currentUser.getId())
+                                : contentService.saveGrammarTopicDraft(
+                                        null,
+                                        convertRequest(request, SaveGrammarTopicDraftRequest.class),
+                                        currentUser.getId()));
+    }
+
+    @PutMapping("/grammar/topics/{id}")
+    public ResponseEntity<AdminContentItemDto> updateGrammarTopic(
+            @PathVariable UUID id,
+            @RequestBody SaveGrammarTopicDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.ok(
+                contentService.saveGrammarTopicDraft(id, request, currentUser.getId()));
     }
 
     @PostMapping("/grammar/lessons")
     public ResponseEntity<AdminContentItemDto> createGrammarLesson(
-            @Valid @RequestBody CreateGrammarDraftRequest request,
-            @CurrentUser AuthenticatedUser currentUser) {
+            @RequestBody Map<String, Object> request, @CurrentUser AuthenticatedUser currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(contentService.createGrammarLessonDraft(request, currentUser.getId()));
+                .body(
+                        request.containsKey("data")
+                                ? contentService.createGrammarLessonDraft(
+                                        grammarDraftRequest(request), currentUser.getId())
+                                : contentService.saveGrammarLessonDraft(
+                                        null,
+                                        convertRequest(
+                                                request, SaveGrammarLessonDraftRequest.class),
+                                        currentUser.getId()));
+    }
+
+    private static CreateGrammarDraftRequest grammarDraftRequest(Map<String, Object> request) {
+        CreateGrammarDraftRequest draft = convertRequest(request, CreateGrammarDraftRequest.class);
+        if (draft.data() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "data is required");
+        }
+        return draft;
+    }
+
+    private static <T> T convertRequest(Map<String, Object> request, Class<T> type) {
+        try {
+            return new ObjectMapper().convertValue(request, type);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Invalid grammar draft request");
+        }
+    }
+
+    @PutMapping("/grammar/lessons/{id}")
+    public ResponseEntity<AdminContentItemDto> updateGrammarLesson(
+            @PathVariable UUID id,
+            @RequestBody SaveGrammarLessonDraftRequest request,
+            @CurrentUser AuthenticatedUser currentUser) {
+        return ResponseEntity.ok(
+                contentService.saveGrammarLessonDraft(id, request, currentUser.getId()));
     }
 
     @PostMapping("/questions")

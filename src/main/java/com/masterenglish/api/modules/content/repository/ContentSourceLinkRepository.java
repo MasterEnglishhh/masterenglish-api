@@ -10,4 +10,6 @@ import org.springframework.stereotype.Repository;
 public interface ContentSourceLinkRepository
         extends JpaRepository<ContentSourceLink, ContentSourceLink.ContentSourceLinkId> {
     List<ContentSourceLink> findByIdRevisionId(UUID revisionId);
+
+    void deleteByIdRevisionId(UUID revisionId);
 }

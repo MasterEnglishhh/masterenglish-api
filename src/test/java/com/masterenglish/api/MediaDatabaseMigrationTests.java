@@ -78,6 +78,7 @@ class MediaDatabaseMigrationTests {
                             .locations(
                                     "classpath:db/migration",
                                     "classpath:db/m08-integration-baseline")
+                            .target("24")
                             .load();
             assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(7);
             upgrade.validate();
@@ -207,9 +208,9 @@ class MediaDatabaseMigrationTests {
                 statement.execute(
                         "CREATE TEMP TABLE baseline_history AS SELECT version,checksum,script FROM flyway_schema_history WHERE success");
                 var upgrade = configuration.target("latest").load();
-                assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(7);
+                assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(9);
                 upgrade.validate();
-                assertThat(upgrade.info().current().getVersion().getVersion()).isEqualTo("24");
+                assertThat(upgrade.info().current().getVersion().getVersion()).isEqualTo("26");
                 var entityManagerFactory =
                         new org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean();
                 entityManagerFactory.setDataSource(

@@ -51,7 +51,13 @@ public class QuestionSnapshotValidator {
                     "document_key");
     private static final Set<String> MATERIAL_TYPES = Set.of("TEXT", "IMAGE", "AUDIO");
     private static final Set<String> USAGE_ROLES = Set.of("STIMULUS", "TRANSCRIPT", "EXPLANATION");
-    private static final Set<String> PRACTICE_MODES = Set.of("STANDARD", "FILL_OPTION");
+    private static final Set<String> PRACTICE_MODES =
+            Set.of(
+                    "STANDARD",
+                    "TRANSLATE_EN_VI",
+                    "TRANSLATE_VI_EN",
+                    "LISTEN_AND_CHOOSE",
+                    "FILL_OPTION");
     private static final Set<String> DIFFICULTIES = Set.of("EASY", "MEDIUM", "HARD");
     private static final Pattern HTML = Pattern.compile("<\\s*/?\\s*[a-zA-Z!]");
     private static final int MAX_PROMPT = 10_000;

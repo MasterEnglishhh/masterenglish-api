@@ -2,8 +2,8 @@ package com.masterenglish.api.modules.practice.controller;
 
 import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.CurrentUser;
+import com.masterenglish.api.modules.practice.dto.request.GrammarTopicAttemptRequest;
 import com.masterenglish.api.modules.practice.dto.request.MixedAttemptRequest;
-import com.masterenglish.api.modules.practice.dto.request.StartAttemptRequest;
 import com.masterenglish.api.modules.practice.dto.response.AttemptResponse;
 import com.masterenglish.api.modules.practice.dto.response.ExerciseSummaryResponse;
 import com.masterenglish.api.modules.practice.dto.response.StartAttemptResult;
@@ -22,7 +22,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Grammar entry points into the shared practice engine. */
+/**
+ * Grammar entry points into the shared practice engine. Attempts also live under /attempts; these
+ * paths keep the contract of the grammar catalogue clients.
+ */
 @RestController
 @RequestMapping("/api/v1/grammar")
 @PreAuthorize("hasRole('LEARNER')")
@@ -43,7 +46,7 @@ public class GrammarPracticeController {
     public ResponseEntity<AttemptResponse> startTopic(
             @CurrentUser AuthenticatedUser currentUser,
             @PathVariable UUID topicId,
-            @Valid @RequestBody StartAttemptRequest request) {
+            @Valid @RequestBody GrammarTopicAttemptRequest request) {
         StartAttemptResult result =
                 practice.startTopicAttempt(
                         currentUser.getId(), topicId, request.requestId(), request.questionCount());

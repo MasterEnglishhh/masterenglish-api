@@ -191,6 +191,7 @@
   - `search`: `string` (tùy chọn).
   - `contentType`: `"WORD" | "DECK" | "GRAMMAR_TOPIC" | "GRAMMAR_LESSON" | "ALL"` (tùy chọn).
   - `status`: `"DRAFT" | "IN_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED" | "ALL"` (tùy chọn).
+  - `domain`: `"GRAMMAR"` (tùy chọn). Chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Giá trị khác trả `400`. Mục grammar có `module: "GRAMMAR"`.
   - `page`, `size`: `integer`.
 - **Response:** `200 OK`
 ```json
@@ -332,9 +333,9 @@
 ```
 - **Response:** `201 Created` (`AdminContentItemDto`).
 
-#### `POST /api/v1/admin/content/grammar/topics`
-- **Mô tả:** Tạo bản thảo chủ điểm ngữ pháp mới (`GRAMMAR_TOPIC`) kèm revision DRAFT (versionNo = 1). Hỗ trợ lưu partial draft (không bắt buộc đủ toàn bộ các trường publish khi tạo draft).
-- **Request Body:**
+#### `POST /api/v1/admin/content/grammar/topics`, `PUT /api/v1/admin/content/grammar/topics/{id}`
+- **Mô tả:** Tạo bản nháp chủ điểm `GRAMMAR_TOPIC` (`POST`), hoặc sửa bản nháp của mục `{id}` (`PUT`). `POST` nhận `CreateGrammarDraftRequest` (`data`, `sourceIds`, `changeSummary`). `PUT` nhận `SaveGrammarTopicDraftRequest` (flat fields). Mọi trường tùy chọn; validator của `grammar` kiểm tra khi xuất bản. Quy tắc sửa tại chỗ, 404, 409 xem [grammar/CONTRACT.md](../grammar/CONTRACT.md) mục 7.
+- **Request Body (POST):**
 ```json
 {
   "data": {
@@ -348,15 +349,27 @@
   "changeSummary": "Khởi tạo chủ điểm mạo từ"
 }
 ```
-- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Request Body (PUT):**
+```json
+{
+  "slug": "present-simple",
+  "name": "Thì hiện tại đơn",
+  "description": "Diễn tả thói quen và sự thật hiển nhiên",
+  "difficulty": "BASIC",
+  "sortOrder": 1,
+  "sourceId": null,
+  "changeSummary": "Khởi tạo chủ điểm"
+}
+```
+- **Response:** `201 Created` khi tạo, `200 OK` khi sửa (`AdminContentItemDto`, `module: "GRAMMAR"`).
 - **Lỗi:**
-  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`slug`, `name`, `description`, `difficulty`, `sort_order`), nguồn trích dẫn không tồn tại, hoặc dữ liệu lồng nhau sai quy chuẩn.
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist, nguồn trích dẫn không tồn tại, hoặc dữ liệu lồng nhau sai quy chuẩn.
   - `401 Unauthorized`: Chưa đăng nhập.
   - `403 Forbidden`: Người dùng vai trò `LEARNER` hoặc thiếu token CSRF.
 
-#### `POST /api/v1/admin/content/grammar/lessons`
-- **Mô tả:** Tạo bản thảo bài học ngữ pháp mới (`GRAMMAR_LESSON`) kèm revision DRAFT (versionNo = 1). Hỗ trợ partial draft.
-- **Request Body:**
+#### `POST /api/v1/admin/content/grammar/lessons`, `PUT /api/v1/admin/content/grammar/lessons/{id}`
+- **Mô tả:** Tạo bản nháp bài học `GRAMMAR_LESSON` (`POST`), hoặc sửa bản nháp của mục `{id}` (`PUT`). `POST` nhận `CreateGrammarDraftRequest`. `PUT` nhận `SaveGrammarLessonDraftRequest`. `pinned_topic_revision_id` được ghim theo revision đang xuất bản của chủ điểm lúc lưu.
+- **Request Body (POST):**
 ```json
 {
   "data": {
@@ -378,9 +391,26 @@
   "changeSummary": "Khởi tạo bài học mạo từ xác định"
 }
 ```
-- **Response:** `201 Created` (`AdminContentItemDto`).
+- **Request Body (PUT):**
+```json
+{
+  "topicId": "41000000-0000-0000-0000-000000000001",
+  "title": "Bài 1: Khẳng định",
+  "position": 1,
+  "estimatedMinutes": 10,
+  "body": {
+    "blocks": [
+      { "type": "heading", "text": "Cấu trúc" },
+      { "type": "paragraph", "text": "Chủ ngữ + động từ nguyên mẫu (s/es)." }
+    ]
+  },
+  "sourceId": null,
+  "changeSummary": "Khởi tạo bài học"
+}
+```
+- **Response:** `201 Created` khi tạo, `200 OK` khi sửa (`AdminContentItemDto`, `module: "GRAMMAR"`).
 - **Lỗi:**
-  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist (`topic_id`, `pinned_topic_revision_id`, `title`, `slug`, `position`, `body_schema_version`, `estimated_minutes`, `body`), body vượt trần 100.000 ký tự / 1 MiB UTF-8 / độ sâu 16 mức, chứa HTML, nguồn không tồn tại.
+  - `400 Bad Request`: Trường dữ liệu không thuộc allowlist, body vượt trần 100.000 ký tự / 1 MiB UTF-8 / độ sâu 16 mức, chứa HTML, nguồn không tồn tại.
   - `401 Unauthorized`: Chưa đăng nhập.
   - `403 Forbidden`: Không đủ quyền hoặc thiếu token CSRF.
 
