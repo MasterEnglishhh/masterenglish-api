@@ -27,6 +27,9 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Check Docker for integration tests
         run: docker info --format '{{.ServerVersion}}'
 

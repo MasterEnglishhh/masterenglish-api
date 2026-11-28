@@ -31,8 +31,9 @@ class ContentPublicationTests {
                         events,
                         new ObjectMapper());
 
-        // QUESTION is validated now (practice module); these types still have no validator.
-        for (String type : new String[] {"QUESTION_GROUP", "PRACTICE_SET"}) {
+        // QUESTION, QUESTION_GROUP, PRACTICE_SET are validated now; these types still have no
+        // validator.
+        for (String type : new String[] {"UNKNOWN_TYPE_1", "UNKNOWN_TYPE_2"}) {
             UUID itemId = UUID.randomUUID();
             ContentItem item = new ContentItem(itemId, type, UUID.randomUUID(), null, null);
             ContentRevision revision =
@@ -46,7 +47,13 @@ class ContentPublicationTests {
                             null,
                             UUID.randomUUID());
 
-            assertThatThrownBy(() -> publication.prepare(item, revision))
+            assertThatThrownBy(
+                            () ->
+                                    publication.prepare(
+                                            item,
+                                            revision,
+                                            UUID.randomUUID(),
+                                            (groupId, childItem, childRevision) -> {}))
                     .as("type %s", type)
                     .isInstanceOfSatisfying(
                             BusinessException.class,

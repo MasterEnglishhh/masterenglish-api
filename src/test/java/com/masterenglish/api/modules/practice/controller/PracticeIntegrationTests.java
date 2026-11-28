@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -333,6 +334,153 @@ class PracticeIntegrationTests {
                                 .with(user(UserPrincipal.create(learner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.questions[0].prompt").value("Old prompt"));
+    }
+
+    @Test
+    @DisplayName(
+            "AC20/AC27 - Unpublish question loại bỏ khỏi lần cấp mới nhưng bảo toàn attempt đã lưu, replay, submit và chấm điểm")
+    void
+            unpublishingQuestionExcludesItFromNewSelectionWhilePreservingExistingAttemptReplayAndSubmission()
+                    throws Exception {
+        // 1. Seed Published Grammar topic and two questions
+        UUID topic = publishTopic();
+        UUID qUnpub =
+                publishQuestion(topic, "Unpublished Grammar Prompt", "right-unpub", "wrong-unpub");
+        UUID qActive =
+                publishQuestion(topic, "Active Grammar Prompt", "right-active", "wrong-active");
+
+        // 2. Learner starts an attempt before unpublish
+        UUID requestId1 = UUID.randomUUID();
+        JsonNode attempt1 = startTopic(learner, requestId1, 2, topic, 201);
+        UUID attemptId1 = UUID.fromString(attempt1.path("id").asText());
+
+        assertThat(attempt1.path("status").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(attempt1.path("totalCount").asInt()).isEqualTo(2);
+        assertThat(attempt1.path("questions")).hasSize(2);
+
+        // Verify correct keys and explanations are not revealed before submit
+        for (JsonNode q : attempt1.path("questions")) {
+            assertAbsent(q.path("correct"));
+            assertAbsent(q.path("explanation"));
+            for (JsonNode opt : q.path("options")) {
+                assertAbsent(opt.path("correct"));
+            }
+        }
+
+        // 3. Unpublish the first question via HTTP with CONTENT_ADMIN
+        mockMvc.perform(
+                        post("/api/v1/admin/content/items/{id}/unpublish", qUnpub)
+                                .with(user(UserPrincipal.create(adminOnly)))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\":\"Question unpublish for syllabus update\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Nội dung đã được ngừng xuất bản."));
+
+        // Verify pointers/revisions are preserved
+        UUID pubRev = currentRevision(qUnpub);
+        assertThat(pubRev).isNotNull();
+        Boolean isArchived =
+                jdbc.queryForObject(
+                        "SELECT is_archived FROM content_items WHERE id = ?",
+                        Boolean.class,
+                        qUnpub);
+        assertThat(isArchived).isTrue();
+        Instant accessRevokedAt =
+                jdbc.queryForObject(
+                        "SELECT access_revoked_at FROM content_items WHERE id = ?",
+                        Instant.class,
+                        qUnpub);
+        assertThat(accessRevokedAt).isNull();
+
+        // 4. Start new attempt with new requestId -> unpublished question is NOT picked
+        UUID requestId2 = UUID.randomUUID();
+        JsonNode attempt2 = startTopic(learner, requestId2, 2, topic, 201);
+        // Only 1 question is available because qUnpub is excluded
+        assertThat(attempt2.path("totalCount").asInt()).isEqualTo(1);
+        assertThat(attempt2.path("questions")).hasSize(1);
+        String pickedPrompt = attempt2.path("questions").get(0).path("prompt").asText();
+        assertThat(pickedPrompt).isEqualTo("Active Grammar Prompt");
+        assertThat(pickedPrompt).isNotEqualTo("Unpublished Grammar Prompt");
+
+        // Exercises count also only counts visible published questions
+        mockMvc.perform(
+                        get("/api/v1/grammar/topics/" + topic + "/exercises")
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.availableQuestions").value(1));
+
+        // 5. Retry old requestId1 -> replays the exact same attempt1 with 2 questions
+        JsonNode replay = startTopic(learner, requestId1, 2, topic, 200);
+        assertThat(replay.path("id").asText()).isEqualTo(attemptId1.toString());
+        assertThat(replay.path("totalCount").asInt()).isEqualTo(2);
+
+        // GET attempt also returns original sealed attempt without revealing correctness
+        mockMvc.perform(
+                        get("/api/v1/attempts/" + attemptId1)
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(attemptId1.toString()))
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.totalCount").value(2))
+                .andExpect(jsonPath("$.questions[0].correct").doesNotExist());
+
+        // 6. Answer and submit attempt1 -> same snapshot, grading, and answer semantics
+        answer(
+                learner,
+                attemptId1,
+                1,
+                optionIdWithBody(attempt1, 1, correctByPrompt(attempt1, 1)),
+                200);
+        answer(
+                learner,
+                attemptId1,
+                2,
+                optionIdWithBody(attempt1, 2, correctByPrompt(attempt1, 2)),
+                200);
+
+        JsonNode submitted = submit(learner, attemptId1);
+        assertThat(submitted.path("status").asText()).isEqualTo("SUBMITTED");
+        assertThat(submitted.path("correctCount").asInt()).isEqualTo(2);
+        assertThat(submitted.path("score").asInt()).isEqualTo(100);
+        assertThat(submitted.path("questions").get(0).path("correct").asBoolean()).isTrue();
+        assertThat(submitted.path("questions").get(1).path("correct").asBoolean()).isTrue();
+        assertThat(submitted.path("questions").get(0).path("explanation").asText()).isNotBlank();
+        assertThat(submitted.path("questions").get(1).path("explanation").asText()).isNotBlank();
+
+        // 7. Check legacy archive still sets revoke
+        mockMvc.perform(
+                        post("/api/v1/admin/content/items/{id}/archive", qUnpub)
+                                .with(user(UserPrincipal.create(adminOnly)))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\":\"Permanent copyright revoke\"}"))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("Nội dung đã được chuyển sang trạng thái lưu trữ."));
+
+        Instant revokedAtAfterArchive =
+                jdbc.queryForObject(
+                        "SELECT access_revoked_at FROM content_items WHERE id = ?",
+                        Instant.class,
+                        qUnpub);
+        assertThat(revokedAtAfterArchive).isNotNull();
+        String revokeReason =
+                jdbc.queryForObject(
+                        "SELECT access_revoke_reason FROM content_items WHERE id = ?",
+                        String.class,
+                        qUnpub);
+        assertThat(revokeReason).isEqualTo("Permanent copyright revoke");
+
+        // 8. Replay of submitted attempt remains available even after legacy archive
+        mockMvc.perform(
+                        get("/api/v1/attempts/" + attemptId1)
+                                .with(user(UserPrincipal.create(learner))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.score").value(100))
+                .andExpect(jsonPath("$.correctCount").value(2));
     }
 
     @Test

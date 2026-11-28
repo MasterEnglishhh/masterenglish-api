@@ -19,6 +19,8 @@ import com.masterenglish.api.common.security.AuthenticatedUser;
 import com.masterenglish.api.common.security.RoleCode;
 import com.masterenglish.api.modules.admin.dto.request.CreateContentSourceRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateDeckDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateGrammarDraftRequest;
+import com.masterenglish.api.modules.admin.dto.request.CreateQuestionDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.CreateWordDraftRequest;
 import com.masterenglish.api.modules.admin.dto.request.LockUserRequest;
 import com.masterenglish.api.modules.admin.dto.request.UpdateFeatureFlagRequest;
@@ -39,6 +41,7 @@ import com.masterenglish.api.modules.admin.service.AdminSystemService;
 import com.masterenglish.api.modules.admin.service.AdminUserService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -259,8 +262,15 @@ class AdminControllerUnitTests {
 
         when(contentServiceMock.findContentItems(any(), any(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(mockItem), 0, 10, 1, 1, false));
+        when(contentServiceMock.findContentItems(any(), any(), any(), any(), any()))
+                .thenReturn(new PageResponse<>(List.of(mockItem), 0, 10, 1, 1, false));
         when(contentServiceMock.createWordDraft(any(), eq(testActorId))).thenReturn(mockItem);
         when(contentServiceMock.createDeckDraft(any(), eq(testActorId))).thenReturn(mockItem);
+        when(contentServiceMock.createGrammarTopicDraft(any(), eq(testActorId)))
+                .thenReturn(mockItem);
+        when(contentServiceMock.createGrammarLessonDraft(any(), eq(testActorId)))
+                .thenReturn(mockItem);
+        when(contentServiceMock.createQuestionDraft(any(), eq(testActorId))).thenReturn(mockItem);
         when(contentServiceMock.submitRevision(eq(revId), eq(testActorId))).thenReturn(mockRev);
         when(contentServiceMock.approveRevision(eq(revId), any(), eq(testActorId)))
                 .thenReturn(mockRev);
@@ -297,6 +307,37 @@ class AdminControllerUnitTests {
                                 .content(objectMapper.writeValueAsString(deckReq)))
                 .andExpect(status().isCreated());
 
+        CreateGrammarDraftRequest topicReq =
+                new CreateGrammarDraftRequest(Map.of("name", "Present Tenses"), List.of(), "topic");
+        contentMvc
+                .perform(
+                        post("/api/v1/admin/content/grammar/topics")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(topicReq)))
+                .andExpect(status().isCreated());
+
+        CreateGrammarDraftRequest lessonReq =
+                new CreateGrammarDraftRequest(
+                        Map.of("title", "Present Simple"), List.of(), "lesson");
+        contentMvc
+                .perform(
+                        post("/api/v1/admin/content/grammar/lessons")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(lessonReq)))
+                .andExpect(status().isCreated());
+
+        CreateQuestionDraftRequest questionReq =
+                new CreateQuestionDraftRequest(
+                        Map.of("prompt", "Choose the correct word: She ___ to school."),
+                        List.of(),
+                        "question");
+        contentMvc
+                .perform(
+                        post("/api/v1/admin/content/questions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(questionReq)))
+                .andExpect(status().isCreated());
+
         contentMvc
                 .perform(post("/api/v1/admin/content/revisions/" + revId + "/submit"))
                 .andExpect(status().isOk());
@@ -324,6 +365,13 @@ class AdminControllerUnitTests {
                         post("/api/v1/admin/content/items/" + itemId + "/archive")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"reason\":\"Old\"}"))
+                .andExpect(status().isOk());
+
+        contentMvc
+                .perform(
+                        post("/api/v1/admin/content/items/" + itemId + "/unpublish")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\":\"Out of curriculum\"}"))
                 .andExpect(status().isOk());
 
         contentMvc

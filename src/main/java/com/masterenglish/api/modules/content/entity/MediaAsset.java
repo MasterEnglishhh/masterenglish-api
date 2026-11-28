@@ -65,9 +65,65 @@ public class MediaAsset {
     @Column(name = "archived_at")
     private Instant archivedAt;
 
+    @Column(name = "deletion_started_at")
+    private Instant deletionStartedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public MediaAsset(
+            UUID id,
+            String mediaType,
+            String purpose,
+            String originalFilename,
+            String mimeType,
+            UUID sourceId,
+            UUID uploadedBy,
+            String status) {
+        this.id = id != null ? id : UUID.randomUUID();
+        this.mediaType = mediaType;
+        this.purpose = purpose != null ? purpose : "CONTENT";
+        this.originalFilename = originalFilename;
+        this.mimeType = mimeType;
+        this.sourceId = sourceId;
+        this.uploadedBy = uploadedBy;
+        this.status = status != null ? status : "PENDING";
+        this.createdAt = Instant.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    public void markReady(
+            String bucket,
+            String objectKey,
+            Long fileSizeBytes,
+            String checksumSha256,
+            Integer width,
+            Integer height,
+            Integer durationMs) {
+        this.bucket = bucket;
+        this.objectKey = objectKey;
+        this.fileSizeBytes = fileSizeBytes;
+        this.checksumSha256 = checksumSha256;
+        this.width = width;
+        this.height = height;
+        this.durationMs = durationMs;
+        this.status = "READY";
+        this.failureCode = null;
+        this.updatedAt = Instant.now();
+    }
+
+    public void markFailed(String failureCode) {
+        this.status = "FAILED";
+        this.failureCode = failureCode;
+        this.updatedAt = Instant.now();
+    }
+
+    public void archive() {
+        this.status = "ARCHIVED";
+        this.archivedAt = Instant.now();
+        this.updatedAt = this.archivedAt;
+    }
 }

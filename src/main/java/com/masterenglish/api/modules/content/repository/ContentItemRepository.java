@@ -59,7 +59,10 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
                 ORDER BY r.version_no DESC
                 LIMIT 1
             ) latest ON TRUE
-            WHERE (CAST(:contentType AS text) IS NULL OR i.content_type = :contentType)
+            WHERE (CAST(:domain AS text) IS NULL OR
+                   (:domain = 'GRAMMAR' AND i.content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')) OR
+                   (:domain = 'VOCABULARY' AND i.content_type IN ('WORD', 'DECK')))
+              AND (CAST(:contentType AS text) IS NULL OR i.content_type = :contentType)
               AND (CAST(:status AS text) IS NULL OR :status =
                    CASE WHEN i.is_archived THEN 'ARCHIVED' ELSE COALESCE(latest.status, 'DRAFT') END)
               AND (CAST(:search AS text) IS NULL
@@ -67,7 +70,13 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
                              lower(:search)) > 0
                    OR strpos(lower(COALESCE(
                        COALESCE(latest.snapshot -> 'data', latest.snapshot) ->>
-                           (CASE i.content_type WHEN 'WORD' THEN 'lemma' WHEN 'DECK' THEN 'title' END),
+                           (CASE i.content_type
+                                WHEN 'WORD' THEN 'lemma'
+                                WHEN 'DECK' THEN 'title'
+                                WHEN 'GRAMMAR_TOPIC' THEN 'name'
+                                WHEN 'GRAMMAR_LESSON' THEN 'title'
+                                WHEN 'QUESTION' THEN 'prompt'
+                            END),
                        i.content_type)), lower(:search)) > 0)
             """;
 
@@ -76,8 +85,14 @@ public interface ContentItemRepository extends JpaRepository<ContentItem, UUID> 
             countQuery = "SELECT count(*) " + ADMIN_CONTENT_FILTER,
             nativeQuery = true)
     Page<ContentItem> findContentItems(
+            @Param("domain") String domain,
             @Param("contentType") String contentType,
             @Param("status") String status,
             @Param("search") String search,
             Pageable pageable);
+
+    default Page<ContentItem> findContentItems(
+            String contentType, String status, String search, Pageable pageable) {
+        return findContentItems(null, contentType, status, search, pageable);
+    }
 }

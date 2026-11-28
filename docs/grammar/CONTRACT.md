@@ -1,6 +1,6 @@
 # Hợp đồng Grammar (Giai đoạn 1)
 
-Trạng thái: phần đọc và luồng publish đã triển khai trên nhánh `feat/grammar-m04`. Phần tiến độ học và bản nháp quản trị **chưa triển khai, chờ duyệt**. Các chỗ chưa được duyệt đánh dấu **[cần duyệt]**.
+Trạng thái: phần đọc và luồng publish đã triển khai trên nhánh `feat/grammar-m04`. Phần tiến độ học đã triển khai (migration V12); bản nháp quản trị topic/lesson và bộ lọc `domain=GRAMMAR` đã triển khai trên nhánh `feat/m08-content-ops`.
 
 Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5, mục 7) và `docs/database/DATA_DICTIONARY.md` (`grammar_topics`, `grammar_lessons`, `lesson_progress`).
 
@@ -30,8 +30,8 @@ Quy tắc nền lấy từ `docs/database/SCHEMA_CONTRACTS.md` (mục 2, mục 5
 | Validate snapshot khi duyệt và xuất bản | Đã triển khai |
 | Chiếu bản xuất bản vào `grammar_topics` và `grammar_lessons` | Đã triển khai |
 | Bảng `lesson_progress` | Đã triển khai (migration V12) |
-| API quản trị tạo và sửa bản nháp grammar | Chưa triển khai, chờ duyệt (xem mục 7) |
-| Bộ lọc `domain=GRAMMAR` ở danh sách quản trị | Chưa triển khai, chờ duyệt |
+| API quản trị tạo và sửa bản nháp grammar | Đã triển khai (module `admin`/`content`, xem mục 7) |
+| Bộ lọc `domain=GRAMMAR` ở danh sách quản trị | Đã triển khai (module `admin`/`content`, xem mục 8.6) |
 
 ## 4. API học viên (`hasRole('LEARNER')`)
 
@@ -153,18 +153,15 @@ Kiểm thử trong `modules/grammar` xác nhận mã lỗi `VALIDATION_ERROR` �
 3. Sau khi validate thành công, `content` phát `RevisionPublished`. `grammar` ghi bảng đọc trong cùng transaction.
 4. Nếu bước nào lỗi, cả lượt xuất bản được rollback.
 
-## 7. Bản nháp quản trị (chưa triển khai, chờ duyệt)
+## 7. Bản nháp quản trị (Đã triển khai)
 
-Đề xuất: thêm sự kiện tạo bản nháp grammar trong `common/events`, xử lý trong `content`, và endpoint trong `admin`. Cần duyệt vì đụng tới ba module khác.
+Đã triển khai trong module `admin` và `content` qua sự kiện `ContentEvents` trên nhánh `feat/m08-content-ops`:
 
-Đường dẫn dự kiến (theo bản nháp cũ):
-
-- `POST /api/v1/admin/content/grammar/topics`, `PUT /api/v1/admin/content/grammar/topics/{id}`
-- `POST /api/v1/admin/content/grammar/lessons`, `PUT /api/v1/admin/content/grammar/lessons/{id}`
-
-Bản nháp chỉ cần đủ trường khi xuất bản. Duyệt và xuất bản dùng các endpoint revision có sẵn.
-
-**Phạm vi:** API tạo/sửa Draft và bộ lọc `domain=GRAMMAR` thuộc `admin`/`content`, ngoài phạm vi tự triển khai của `modules/grammar`.
+- `POST /api/v1/admin/content/grammar/topics`: Tạo bản nháp chủ điểm ngữ pháp (`GRAMMAR_TOPIC`) kèm revision DRAFT đầu tiên, trả về 201 `AdminContentItemDto`. Hỗ trợ partial draft (bắt buộc `title`, `slug`, `data` là JSON object, tùy chọn `sourceIds`, `changeSummary`).
+- `POST /api/v1/admin/content/grammar/lessons`: Tạo bản nháp bài học ngữ pháp (`GRAMMAR_LESSON`) kèm revision DRAFT đầu tiên, trả về 201 `AdminContentItemDto`. Bắt buộc `title`, `slug`, `data` là JSON object.
+- Chỉnh sửa bản nháp: Tái sử dụng generic revision endpoint `PUT /api/v1/admin/content/revisions/{id}`. Khi sửa `REJECTED` hoặc `APPROVED`, revision được reset về `DRAFT` và xóa metadata duyệt.
+- Giới hạn snapshot bài học: Allowlist known fields, chuỗi JSON `body` tối đa 100.000 ký tự và 1 MiB theo UTF-8, độ sâu lồng tối đa 16 mức (tính `body` là mức 1), chỉ gồm 5 loại khối (`heading`, `paragraph`, `note`, `example`, `table`), cấm hoàn toàn HTML thô.
+- Xuất bản: Tái sử dụng generic endpoint `POST /api/v1/admin/content/revisions/{id}/publish`. Yêu cầu chủ điểm phải được xuất bản trước, bài học ghim revision đã xuất bản của chủ điểm qua `pinned_topic_revision_id`. Khóa phụ thuộc được lưu bất biến trong `revision_dependencies`. Khi xuất bản `GRAMMAR_LESSON` v1, tập `revision_media_refs` phải rỗng; nếu có media ref sẽ bị chặn với `400 VALIDATION_ERROR`.
 
 ## 8. Quyết định đã chốt và trạng thái triển khai
 
@@ -175,7 +172,7 @@ Người dùng đã chốt sáu quyết định dưới đây. Trạng thái ghi
 3. **Tổng hợp tiến độ theo chủ điểm.** Đã chốt: phụ thuộc một chiều `learning → grammar`, `grammar` không phụ thuộc `learning`. Module `grammar` chỉ trả dữ liệu nội dung, có thể kèm `lessonCount` đếm bài đã xuất bản. Tổng hợp tiến độ người học (`completedLessonCount`, `totalLessonCount` chỉ tính bài đã xuất bản, chưa lưu trữ hay thu hồi, và cờ `hasUpdate` khi `last_completed_revision_id` khác `published_revision_id`) đặt trong `GET /api/v1/grammar/progress` của module `learning`. Trạng thái: chưa triển khai.
 4. **`difficulty`** chỉ nhận `BASIC`, `INTERMEDIATE`, `ADVANCED`. Trạng thái: khớp bảng `grammar_topics` (V10) và validator.
 5. **Danh sách chủ điểm trả `PageResponse<T>`**, mặc định 20, tối đa 100, sắp `sort_order ASC, id ASC`. Trạng thái: đã triển khai. Đổi hình dạng phản hồi mục 4.1, FE cần đồng bộ.
-6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: chưa triển khai (Chặng B).
+6. **`domain=GRAMMAR`** trong danh sách quản trị chỉ lọc `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`, không gộp `QUESTION`. Trạng thái: đã triển khai (`GET /api/v1/admin/content/items?domain=GRAMMAR` lọc đúng `GRAMMAR_TOPIC` và `GRAMMAR_LESSON`; `domain=VOCABULARY` lọc `WORD` và `DECK`; domain lạ trả về 400 `VALIDATION_ERROR`).
 
 Phạm vi triển khai: tổng hợp tiến độ (quyết định 3) thuộc phạm vi module `learning`. Draft quản trị (§7) và bộ lọc `domain=GRAMMAR` (quyết định 6) thuộc phạm vi `admin`/`content`. Các phần này nằm ngoài phạm vi tự triển khai của `modules/grammar`.
 
@@ -186,7 +183,7 @@ Ghi chú tham chiếu: quy tắc chọn câu cho mixed attempt (phương án A) 
 ## 9. Bàn giao
 
 - **`learning`:** tổng hợp tiến độ theo chủ điểm (`completedLessonCount`, `totalLessonCount`, `hasUpdate`) nằm trong `GET /api/v1/grammar/progress`. `grammar` cần cung cấp public facade đếm bài đã xuất bản theo chủ điểm, và `learning` đọc qua facade đó. Facade chưa có. Vì facade đặt trong `common/events`, cần duyệt riêng, ngoài phạm vi module `grammar`.
-- **`admin`/`content`:** API tạo và sửa Draft cho `GRAMMAR_TOPIC` và `GRAMMAR_LESSON` (§7), và bộ lọc `domain=GRAMMAR` (`content_type IN ('GRAMMAR_TOPIC', 'GRAMMAR_LESSON')`, không gộp `QUESTION`). `AdminContentController` hiện chỉ có `/words` và `/decks`. Cần sự kiện tạo bản nháp trong `common/events` và handler ở `content`.
-- **`content` (kiểm tra `revision_media_refs`):** lesson v1 phải có tập `revision_media_refs` rỗng khi xuất bản. `SnapshotValidationRequested` không mang thông tin media nên `grammar` không kiểm tra được. `content` cần kiểm tra trước khi phát sự kiện.
+- **`admin`/`content`:** Đã triển khai API tạo bản nháp `POST /grammar/topics` và `POST /grammar/lessons`, chỉnh sửa bản nháp qua `PUT /revisions/{id}`, và bộ lọc `domain=GRAMMAR` / `domain=VOCABULARY` trên `GET /items`.
+- **`content` (kiểm tra `revision_media_refs`):** Đã triển khai kiểm tra `revision_media_refs` rỗng cho bài học ngữ pháp v1 trước khi duyệt và xuất bản (`hasRevisionMediaRefs` ném `400 VALIDATION_ERROR` nếu tồn tại media ref).
 - **Frontend:** `GET /api/v1/grammar/topics` trả `PageResponse<GrammarTopicResponse>` (`items`, `page`, `size`, `totalItems`, `totalPages`, `hasNext`). Phản hồi cũ là mảng, FE cần cập nhật. Trường kích thước là `size`, không phải `pageSize` như SRS v5.0.
 - **Ghi nhận checkpoint:** `GrammarPracticeControllerIntegrationTests.java` nằm trong `modules/practice/controller` theo đường dẫn. `GrammarPracticeController` đã có trên nhánh từ `9ea157d`. Commit checkpoint `6d733df` giữ nguyên, không viết lại lịch sử.

@@ -86,9 +86,41 @@ public class ContentSource {
     }
 
     public boolean availableForPublication() {
-        return "ACTIVE".equals(status)
-                && ((licenseCode != null && !licenseCode.isBlank())
-                        || (permissionNote != null && !permissionNote.isBlank()));
+        if (!"ACTIVE".equals(status)) {
+            return false;
+        }
+        boolean hasPermission =
+                (licenseCode != null && !licenseCode.isBlank())
+                        || (permissionNote != null && !permissionNote.isBlank());
+        if (!hasPermission) {
+            return false;
+        }
+        if ("EXTERNAL".equals(sourceType) && (attribution == null || attribution.isBlank())) {
+            return false;
+        }
+        return true;
+    }
+
+    public void update(
+            String title,
+            String sourceType,
+            String sourceUrl,
+            String author,
+            String licenseCode,
+            String licenseUrl,
+            String attribution,
+            String permissionNote,
+            String status) {
+        this.title = title;
+        this.sourceType = sourceType != null ? sourceType : "SELF_AUTHORED";
+        this.sourceUrl = sourceUrl;
+        this.author = author;
+        this.licenseCode = licenseCode;
+        this.licenseUrl = licenseUrl;
+        this.attribution = attribution;
+        this.permissionNote = permissionNote;
+        this.status = status != null ? status : "ACTIVE";
+        this.updatedAt = Instant.now();
     }
 
     @PrePersist

@@ -25,6 +25,9 @@ public class Question {
     @Column(nullable = false, length = 16)
     private String category;
 
+    @Column(name = "part_number")
+    private Integer partNumber;
+
     @Column(name = "question_type_code", nullable = false, length = 32)
     private String questionTypeCode;
 
@@ -39,6 +42,18 @@ public class Question {
 
     @Column(nullable = false)
     private String explanation;
+
+    @Column(name = "group_id")
+    private UUID groupId;
+
+    @Column(name = "group_position")
+    private Integer groupPosition;
+
+    @Column(name = "in_current_group", nullable = false)
+    private boolean inCurrentGroup = false;
+
+    @Column(name = "blank_key", length = 80)
+    private String blankKey;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -55,9 +70,34 @@ public class Question {
             String prompt,
             String explanation,
             Instant now) {
+        this(
+                id,
+                publishedRevisionId,
+                "GRAMMAR",
+                null,
+                questionTypeCode,
+                practiceMode,
+                difficulty,
+                prompt,
+                explanation,
+                now);
+    }
+
+    public Question(
+            UUID id,
+            UUID publishedRevisionId,
+            String category,
+            Integer partNumber,
+            String questionTypeCode,
+            String practiceMode,
+            String difficulty,
+            String prompt,
+            String explanation,
+            Instant now) {
         this.id = id;
         this.publishedRevisionId = publishedRevisionId;
-        this.category = "GRAMMAR";
+        this.category = category != null ? category : "GRAMMAR";
+        this.partNumber = partNumber;
         this.questionTypeCode = questionTypeCode;
         this.practiceMode = practiceMode;
         this.difficulty = difficulty;
@@ -75,12 +115,56 @@ public class Question {
             String prompt,
             String explanation,
             Instant now) {
+        replaceWith(
+                revisionId,
+                this.category,
+                this.partNumber,
+                questionTypeCode,
+                practiceMode,
+                difficulty,
+                prompt,
+                explanation,
+                now);
+    }
+
+    public void replaceWith(
+            UUID revisionId,
+            String category,
+            Integer partNumber,
+            String questionTypeCode,
+            String practiceMode,
+            String difficulty,
+            String prompt,
+            String explanation,
+            Instant now) {
         this.publishedRevisionId = revisionId;
+        this.category = category != null ? category : this.category;
+        this.partNumber = partNumber;
         this.questionTypeCode = questionTypeCode;
         this.practiceMode = practiceMode;
         this.difficulty = difficulty;
         this.prompt = prompt;
         this.explanation = explanation;
         this.updatedAt = now;
+    }
+
+    public void assignGroup(UUID groupId, int position, String blankKey) {
+        if (this.inCurrentGroup && this.groupId != null && !this.groupId.equals(groupId)) {
+            throw new com.masterenglish.api.common.error.BusinessException(
+                    com.masterenglish.api.common.error.ErrorCode.CONFLICT,
+                    "Question already belongs to another group.");
+        }
+        this.groupId = groupId;
+        this.groupPosition = position;
+        this.inCurrentGroup = true;
+        this.blankKey = blankKey;
+    }
+
+    public void retireFromGroup() {
+        this.inCurrentGroup = false;
+    }
+
+    public boolean isGrouped() {
+        return groupId != null && inCurrentGroup;
     }
 }

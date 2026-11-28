@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -23,20 +24,22 @@ public class PronunciationController {
     }
 
     @GetMapping
-    public ResponseEntity<Void> playback(@PathVariable UUID revisionId) {
+    public ResponseEntity<Void> playback(
+            @PathVariable UUID revisionId, @RequestParam(required = false) UUID senseId) {
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(pronunciation.playbackLocation(revisionId))
+                .location(pronunciation.playbackLocation(revisionId, senseId))
                 .cacheControl(CacheControl.noStore())
                 .header("Referrer-Policy", "no-referrer")
                 .build();
     }
 
     @GetMapping("/ticket")
-    public ResponseEntity<PronunciationTicketResponse> ticket(@PathVariable UUID revisionId) {
+    public ResponseEntity<PronunciationTicketResponse> ticket(
+            @PathVariable UUID revisionId, @RequestParam(required = false) UUID senseId) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(
                         new PronunciationTicketResponse(
-                                pronunciation.playbackLocation(revisionId).toString()));
+                                pronunciation.playbackLocation(revisionId, senseId).toString()));
     }
 }
