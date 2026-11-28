@@ -92,13 +92,6 @@ public class ContentRevision {
         this.updatedAt = this.createdAt;
     }
 
-    /** Sửa tại chỗ chỉ khi còn là bản nháp; từ lúc nộp duyệt trở đi revision bất biến. */
-    public void updateDraft(String snapshot, String changeSummary) {
-        requireStatus("DRAFT");
-        this.snapshot = snapshot;
-        this.changeSummary = changeSummary;
-    }
-
     public void submitForReview() {
         requireStatus("DRAFT");
         this.status = "IN_REVIEW";
@@ -151,6 +144,45 @@ public class ContentRevision {
             this.reviewedAt = Instant.now();
         }
         this.publishedAt = Instant.now();
+    }
+
+    public void resetToDraft() {
+        if (!"REJECTED".equals(status) && !"APPROVED".equals(status) && !"DRAFT".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Cannot reset revision to DRAFT from status " + status);
+        }
+        this.status = "DRAFT";
+        this.reviewedBy = null;
+        this.reviewedAt = null;
+        this.reviewNote = null;
+    }
+
+    /**
+     * Patches the snapshot to inject resolved child revision pins. Only allowed when the revision
+     * is APPROVED, immediately before publication. Does not alter the workflow status.
+     */
+    public void resolveChildPins(String snapshot) {
+        if (!"APPROVED".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "resolveChildPins is only allowed on APPROVED revisions, current status: "
+                            + status);
+        }
+        this.snapshot = snapshot != null ? snapshot : "{}";
+    }
+
+    public void updateDraft(String snapshot, String changeSummary) {
+        if (!"DRAFT".equals(status) && !"REJECTED".equals(status) && !"APPROVED".equals(status)) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT, "Cannot update revision in status " + status);
+        }
+        if ("REJECTED".equals(status) || "APPROVED".equals(status)) {
+            resetToDraft();
+        }
+        this.snapshot = snapshot != null ? snapshot : "{}";
+        if (changeSummary != null) {
+            this.changeSummary = changeSummary;
+        }
     }
 
     private void requireStatus(String expected) {

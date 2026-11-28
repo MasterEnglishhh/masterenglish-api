@@ -87,6 +87,32 @@ class ErrorHandlingTests {
     }
 
     @Test
+    void unexpectedExceptionsDoNotLogExceptionMessageOrThrowableStackTrace() throws Exception {
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger)
+                        org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            mvc.perform(get("/base-test/unexpected-sentinel"))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+            assertThat(appender.list).isNotEmpty();
+            ch.qos.logback.classic.spi.ILoggingEvent event = appender.list.get(0);
+            assertThat(event.getFormattedMessage())
+                    .doesNotContain("SENTINEL_SECRET_TOKEN_99999")
+                    .doesNotContain("SENTINEL_CAUSE_SECRET_88888");
+            assertThat(event.getThrowableProxy()).isNull();
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
     void replacesInvalidIncomingRequestIds() throws Exception {
         var response =
                 mvc.perform(
@@ -176,6 +202,13 @@ class ErrorHandlingTests {
         @GetMapping("/base-test/unexpected")
         String unexpected() {
             throw new IllegalArgumentException("password=do-not-expose");
+        }
+
+        @GetMapping("/base-test/unexpected-sentinel")
+        String unexpectedSentinel() {
+            throw new RuntimeException(
+                    "SENTINEL_SECRET_TOKEN_99999",
+                    new IllegalStateException("SENTINEL_CAUSE_SECRET_88888"));
         }
 
         @GetMapping("/base-test/page")

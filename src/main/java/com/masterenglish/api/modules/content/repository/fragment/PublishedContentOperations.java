@@ -34,4 +34,18 @@ public interface PublishedContentOperations {
             @Param("itemId") UUID itemId,
             @Param("revisionId") UUID revisionId,
             @Param("type") String type);
+
+    String PUBLISHED_REVISION_FOR_SHARE =
+            """
+            SELECT r.id FROM content_revisions r
+            JOIN content_items i ON i.id = r.content_item_id
+            WHERE i.id = :itemId AND i.content_type = :type
+              AND r.status = 'PUBLISHED' AND i.published_revision_id = r.id
+              AND NOT i.is_archived AND i.access_revoked_at IS NULL
+            FOR SHARE OF i, r
+            """;
+
+    @Query(value = PUBLISHED_REVISION_FOR_SHARE, nativeQuery = true)
+    Optional<UUID> findPublishedRevisionForShare(
+            @Param("itemId") UUID itemId, @Param("type") String type);
 }

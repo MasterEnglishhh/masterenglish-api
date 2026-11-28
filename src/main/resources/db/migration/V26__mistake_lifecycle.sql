@@ -1,6 +1,6 @@
--- V15: mistake lifecycle and practice from mistakes (M04.09).
+-- V26: mistake lifecycle and practice from mistakes (M04.09).
 -- Tables and constraints follow docs/database/DATA_DICTIONARY.md (Approved Baseline v3.0).
--- V1..V14 are not edited.
+-- V1..V25 are not edited.
 
 CREATE TABLE mistake_records (
     id UUID PRIMARY KEY,

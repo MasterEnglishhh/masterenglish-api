@@ -1,6 +1,6 @@
 # Hợp đồng Practice và Results (bản chốt Giai đoạn 1)
 
-Trạng thái: **đã triển khai cho Giai đoạn 1 (Slice 2, migration V18; các số V14/V15 trong thân tài liệu nay là V18/V19)** trên nhánh `feat/m04-grammar-complete`. Bản thiết kế bên dưới giữ nguyên làm căn cứ; các điểm đã đổi khi triển khai được ghi ở mục 18. Chưa triển khai: thống kê điểm yếu và lỗi sai (Slice 3). Frontend chưa dùng các endpoint này.
+Trạng thái: **đã triển khai cho Giai đoạn 1 (Slice 2, migration V25; các số V14/V15 và V18/V19 của M04 trong thân tài liệu nay là V25/V26)** trên nhánh `feat/m04-grammar-complete`. Sau khi đồng bộ PR #22 với `main`, V18–V24 thuộc M08 được giữ nguyên; nâng cấp practice và mistake lifecycle tiếp nối ở V25/V26. Bản thiết kế bên dưới giữ nguyên làm căn cứ; các điểm đã đổi khi triển khai được ghi ở mục 18. Chưa triển khai: thống kê điểm yếu và lỗi sai (Slice 3). Frontend chưa dùng các endpoint này.
 Nhánh: `feat/m04-grammar`. Ngày: 2026-11-21.
 
 Nguồn chuẩn (đã duyệt, đọc trực tiếp trong repository):

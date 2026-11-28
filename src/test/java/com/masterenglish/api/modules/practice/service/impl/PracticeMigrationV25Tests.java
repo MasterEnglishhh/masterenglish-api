@@ -15,11 +15,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Upgrades a database that already applied V1..V13 (and V16, V17) to V18 and checks that the
- * attempts survive with the baseline shape. No Spring context: Flyway runs against its own
- * PostgreSQL 17 container.
+ * Upgrades a database that already applied V1..V24 to V25 and checks that the attempts survive with
+ * the baseline shape. No Spring context: Flyway runs against its own PostgreSQL 17 container.
  */
-class PracticeMigrationV18Tests {
+class PracticeMigrationV25Tests {
 
     private static PostgreSQLContainer postgres;
 
@@ -52,7 +51,7 @@ class PracticeMigrationV18Tests {
     void v13AttemptsSurviveTheUpgradeWithBaselineShape() throws Exception {
         flyway("13").clean();
         flyway("13").migrate();
-        flyway("17").migrate();
+        flyway("24").migrate();
 
         UUID user = UUID.randomUUID();
         UUID topic = UUID.randomUUID();
@@ -212,10 +211,10 @@ class PracticeMigrationV18Tests {
             c.setAutoCommit(true);
         }
 
-        flyway("18").migrate();
+        flyway("25").migrate();
 
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("18");
+            assertThat(latestVersion(c)).isEqualTo("25");
             assertThat(count(c, "legacy_v13_attempts")).isEqualTo(2);
             assertThat(count(c, "attempts")).isEqualTo(2);
             assertThat(count(c, "attempt_question_snapshots")).isEqualTo(2);
@@ -301,12 +300,12 @@ class PracticeMigrationV18Tests {
     }
 
     @Test
-    void freshDatabaseReachesV18WithTheBaselineShells() throws Exception {
-        flyway("18").clean();
-        flyway("18").migrate();
+    void freshDatabaseReachesV25WithTheBaselineShells() throws Exception {
+        flyway("25").clean();
+        flyway("25").migrate();
 
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("18");
+            assertThat(latestVersion(c)).isEqualTo("25");
             for (String shell :
                     new String[] {
                         "question_groups", "practice_sets", "set_items", "attempt_group_snapshots"
@@ -317,7 +316,7 @@ class PracticeMigrationV18Tests {
                             singleValue(
                                     c,
                                     "SELECT count(*) FROM pg_constraint"
-                                            + " WHERE conname = 'questions_c7'"))
+                                            + " WHERE conname = 'questions_c10'"))
                     .isEqualTo("1");
         }
     }

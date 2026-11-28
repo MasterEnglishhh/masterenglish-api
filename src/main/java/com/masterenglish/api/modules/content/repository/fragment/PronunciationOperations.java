@@ -12,16 +12,85 @@ public interface PronunciationOperations {
     @Query(
             value =
                     """
-                    SELECT p.word_id AS "wordId", m.bucket, m.object_key AS "key"
-                    FROM word_pronunciations p JOIN media_assets m ON m.id = p.media_asset_id
-                    WHERE p.word_revision_id = :revisionId AND m.status = 'READY'
-                      AND m.media_type = 'AUDIO' AND m.purpose = 'CONTENT'
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM content_revisions r,
+                             jsonb_array_elements(COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses') s
+                        WHERE r.id = :revisionId
+                          AND s ->> 'id' = :senseId
+                    )
+                    """,
+            nativeQuery = true)
+    boolean hasSenseInRevision(
+            @Param("revisionId") UUID revisionId, @Param("senseId") String senseId);
+
+    @Query(
+            value =
+                    """
+                    SELECT r.content_item_id AS "wordId", m.bucket, m.object_key AS "key"
+                    FROM content_revisions r
+                    JOIN LATERAL jsonb_array_elements(
+                             COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses'
+                         ) s ON TRUE
+                    JOIN revision_media_refs ref
+                        ON ref.revision_id = r.id
+                        AND ref.media_id = CAST(s ->> 'audio_media_id' AS uuid)
+                    JOIN media_assets m ON m.id = ref.media_id
+                    WHERE r.id = :revisionId
+                      AND s ->> 'id' = :senseId
+                      AND s ->> 'audio_media_id' IS NOT NULL
+                      AND m.status IN ('READY', 'ARCHIVED')
+                      AND m.media_type = 'AUDIO'
+                      AND m.purpose = 'CONTENT'
                       AND m.deletion_started_at IS NULL
-                    ORDER BY CASE WHEN p.locale = 'en-GB' THEN 0 ELSE 1 END, p.locale
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<Asset> findPlayableSenseAsset(
+            @Param("revisionId") UUID revisionId, @Param("senseId") String senseId);
+
+    @Query(
+            value =
+                    """
+                    SELECT "wordId", bucket, "key" FROM (
+                        SELECT r.content_item_id AS "wordId", m.bucket, m.object_key AS "key", 0 AS priority
+                        FROM revision_media_refs ref
+                        JOIN content_revisions r ON r.id = ref.revision_id
+                        JOIN media_assets m ON m.id = ref.media_id
+                        WHERE ref.revision_id = :revisionId
+                          AND ref.usage_role = 'STIMULUS'
+                          AND m.status IN ('READY', 'ARCHIVED')
+                          AND m.media_type = 'AUDIO'
+                          AND m.purpose = 'CONTENT'
+                          AND m.deletion_started_at IS NULL
+                        UNION ALL
+                        SELECT p.word_id AS "wordId", m.bucket, m.object_key AS "key", 1 AS priority
+                        FROM word_pronunciations p
+                        JOIN media_assets m ON m.id = p.media_asset_id
+                        WHERE p.word_revision_id = :revisionId
+                          AND m.status = 'READY'
+                          AND m.media_type = 'AUDIO'
+                          AND m.purpose = 'CONTENT'
+                          AND m.deletion_started_at IS NULL
+                    ) assets
+                    ORDER BY priority
                     LIMIT 1
                     """,
             nativeQuery = true)
     Optional<Asset> findPlayableAsset(@Param("revisionId") UUID revisionId);
+
+    @Query(
+            value =
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM content_revisions r
+                        JOIN content_items i ON i.id = r.content_item_id
+                        WHERE i.id = :itemId AND r.id = :revisionId AND i.content_type = 'WORD'
+                          AND r.status = 'PUBLISHED' AND i.access_revoked_at IS NULL
+                    )
+                    """,
+            nativeQuery = true)
+    boolean isPlaybackAllowed(@Param("itemId") UUID itemId, @Param("revisionId") UUID revisionId);
 
     @Query(
             value =

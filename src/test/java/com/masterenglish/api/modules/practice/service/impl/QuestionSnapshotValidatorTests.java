@@ -194,8 +194,8 @@ class QuestionSnapshotValidatorTests {
     @Test
     void rejectsWrongCategory() {
         Map<String, Object> data = valid();
-        data.put("category", "TOEIC");
-        assertRejected(data, "category phải là GRAMMAR.");
+        data.put("category", "INVALID");
+        assertRejected(data, "category phải là GRAMMAR, VOCABULARY hoặc TOEIC.");
     }
 
     private void assertRejected(Map<String, Object> data, String message) {

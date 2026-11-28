@@ -99,6 +99,34 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                 List.of()));
     }
 
+    @ExceptionHandler(com.masterenglish.api.common.storage.StorageDisabledException.class)
+    ResponseEntity<Object> handleStorageDisabled(
+            com.masterenglish.api.common.storage.StorageDisabledException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(
+                        problem(
+                                HttpStatus.SERVICE_UNAVAILABLE,
+                                ErrorCode.SERVICE_UNAVAILABLE,
+                                "Storage service is currently unavailable.",
+                                request,
+                                List.of()));
+    }
+
+    @ExceptionHandler(com.masterenglish.api.common.storage.StorageException.class)
+    ResponseEntity<Object> handleStorageException(
+            com.masterenglish.api.common.storage.StorageException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(
+                        problem(
+                                HttpStatus.SERVICE_UNAVAILABLE,
+                                ErrorCode.SERVICE_UNAVAILABLE,
+                                "Storage operation failed.",
+                                request,
+                                List.of()));
+    }
+
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,

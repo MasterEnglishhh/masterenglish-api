@@ -38,6 +38,32 @@ public class PronunciationServiceImpl implements PronunciationService {
 
     @Override
     @Transactional(readOnly = true)
+    public String audioUrl(UUID wordId, UUID revisionId, UUID senseId) {
+        if (senseId == null) {
+            return audioUrl(wordId, revisionId);
+        }
+        var backend = storage.getIfAvailable();
+        if (backend == null) return null;
+        String senseIdStr = senseId.toString();
+        if (!repository.hasSenseInRevision(revisionId, senseIdStr)) {
+            return null;
+        }
+        var senseAsset =
+                repository
+                        .findPlayableSenseAsset(revisionId, senseIdStr)
+                        .filter(
+                                a ->
+                                        a.getWordId().equals(wordId)
+                                                && a.getBucket().equals(backend.bucket()));
+        if (senseAsset.isPresent()) {
+            return "/api/v1/vocabulary/pronunciations/" + revisionId + "?senseId=" + senseId;
+        }
+        // Legacy fallback only within the same revision (Word-level audio)
+        return audioUrl(wordId, revisionId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public URI playbackLocation(UUID revisionId) {
         log.debug("Resolving pronunciation playback for revision {}", revisionId);
         var backend = storage.getIfAvailable();
@@ -46,11 +72,33 @@ public class PronunciationServiceImpl implements PronunciationService {
                 repository
                         .findPlayableAsset(revisionId)
                         .filter(a -> a.getBucket().equals(backend.bucket()))
-                        .filter(
-                                a ->
-                                        repository
-                                                .snapshot(a.getWordId(), revisionId, "WORD", false)
-                                                .isPresent())
+                        .filter(a -> repository.isPlaybackAllowed(a.getWordId(), revisionId))
+                        .orElseThrow(PronunciationServiceImpl::unavailable);
+        return backend.signGet(found.getKey());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public URI playbackLocation(UUID revisionId, UUID senseId) {
+        if (senseId == null) {
+            return playbackLocation(revisionId);
+        }
+        log.debug(
+                "Resolving sense pronunciation playback for revision {} sense {}",
+                revisionId,
+                senseId);
+        var backend = storage.getIfAvailable();
+        if (backend == null) throw unavailable();
+        String senseIdStr = senseId.toString();
+        if (!repository.hasSenseInRevision(revisionId, senseIdStr)) {
+            throw unavailable();
+        }
+        var found =
+                repository
+                        .findPlayableSenseAsset(revisionId, senseIdStr)
+                        .or(() -> repository.findPlayableAsset(revisionId))
+                        .filter(a -> a.getBucket().equals(backend.bucket()))
+                        .filter(a -> repository.isPlaybackAllowed(a.getWordId(), revisionId))
                         .orElseThrow(PronunciationServiceImpl::unavailable);
         return backend.signGet(found.getKey());
     }

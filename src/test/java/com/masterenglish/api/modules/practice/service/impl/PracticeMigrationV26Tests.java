@@ -15,10 +15,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * V19 on a fresh database and on a database that already applied V18 with attempt data. V19 only
- * adds tables, so the V18 rows must survive it.
+ * V26 on a fresh database and on a database that already applied V25 with attempt data. V26 only
+ * adds tables, so the V25 rows must survive it.
  */
-class PracticeMigrationV19Tests {
+class PracticeMigrationV26Tests {
 
     private static PostgreSQLContainer postgres;
 
@@ -48,11 +48,11 @@ class PracticeMigrationV19Tests {
     }
 
     @Test
-    void freshDatabaseReachesV19WithTheMistakeTablesAndTheirChecks() throws Exception {
-        flyway("19").clean();
-        flyway("19").migrate();
+    void freshDatabaseReachesV26WithTheMistakeTablesAndTheirChecks() throws Exception {
+        flyway("26").clean();
+        flyway("26").migrate();
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("19");
+            assertThat(latestVersion(c)).isEqualTo("26");
             assertThat(
                             scalar(
                                     c,
@@ -73,9 +73,9 @@ class PracticeMigrationV19Tests {
     }
 
     @Test
-    void upgradeFromV18KeepsTheAttemptRowsItAlreadyHas() throws Exception {
-        flyway("18").clean();
-        flyway("18").migrate();
+    void upgradeFromV25KeepsTheAttemptRowsItAlreadyHas() throws Exception {
+        flyway("25").clean();
+        flyway("25").migrate();
         UUID user = UUID.randomUUID();
         UUID attempt = UUID.randomUUID();
         try (Connection c = connect();
@@ -85,7 +85,7 @@ class PracticeMigrationV19Tests {
                             + " email_verified_at, first_name, last_name)"
                             + " VALUES ('"
                             + user
-                            + "', 'v15-upgrade@example.com', 'x', 'Learner',"
+                            + "', 'v26-upgrade@example.com', 'x', 'Learner',"
                             + " 'ACTIVE', now(), 'Upgrade', 'Learner')");
             s.executeUpdate(
                     "INSERT INTO attempts (id, user_id, category, source_type, source_config,"
@@ -102,10 +102,10 @@ class PracticeMigrationV19Tests {
                             + "', 'IN_PROGRESS', 2)");
         }
 
-        flyway("19").migrate();
+        flyway("26").migrate();
 
         try (Connection c = connect()) {
-            assertThat(latestVersion(c)).isEqualTo("19");
+            assertThat(latestVersion(c)).isEqualTo("26");
             assertThat(scalar(c, "SELECT count(*) FROM attempts WHERE id = '" + attempt + "'"))
                     .isEqualTo("1");
             assertThat(scalar(c, "SELECT count(*) FROM mistake_records")).isEqualTo("0");

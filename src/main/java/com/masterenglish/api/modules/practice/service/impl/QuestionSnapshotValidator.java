@@ -40,6 +40,17 @@ public class QuestionSnapshotValidator {
                     "word_sense_ids");
     private static final Set<String> OPTION_FIELDS = Set.of("id", "position", "body");
     private static final Set<String> ANSWER_KEY_FIELDS = Set.of("correctOptionId");
+    private static final Set<String> MATERIAL_FIELDS =
+            Set.of(
+                    "id",
+                    "position",
+                    "material_type",
+                    "usage_role",
+                    "media_id",
+                    "body",
+                    "document_key");
+    private static final Set<String> MATERIAL_TYPES = Set.of("TEXT", "IMAGE", "AUDIO");
+    private static final Set<String> USAGE_ROLES = Set.of("STIMULUS", "TRANSCRIPT", "EXPLANATION");
     private static final Set<String> PRACTICE_MODES =
             Set.of(
                     "STANDARD",
@@ -52,6 +63,7 @@ public class QuestionSnapshotValidator {
     private static final int MAX_PROMPT = 10_000;
     private static final int MAX_EXPLANATION = 20_000;
     private static final int MAX_OPTION_BODY = 2_000;
+    private static final int MAX_MATERIAL_BODY = 50_000;
     private static final int MIN_OPTIONS = 2;
     private static final int MAX_OPTIONS = 6;
     private static final int MAX_TOPICS = 10;
@@ -79,15 +91,30 @@ public class QuestionSnapshotValidator {
             throw fail("Snapshot câu hỏi phải là một object JSON.");
         }
         rejectUnknown(data, FIELDS, "snapshot field");
-        if (!"GRAMMAR".equals(text(data, "category"))) {
-            throw fail("category phải là GRAMMAR.");
+        String category = text(data, "category");
+        if (!Set.of("GRAMMAR", "VOCABULARY", "TOEIC").contains(category)) {
+            throw fail("category phải là GRAMMAR, VOCABULARY hoặc TOEIC.");
         }
-        // Not stored by Practice in M04. Reject non-empty values instead of dropping them silently.
-        requireAbsentOrNull(data, "part_number", "part_number phải là null trong Practice M04.");
-        requireAbsentOrNull(data, "group", "group phải là null trong Practice M04.");
-        requireAbsentOrEmptyArray(data, "materials", "materials phải là mảng rỗng trong M04.");
-        requireAbsentOrEmptyArray(
-                data, "word_sense_ids", "word_sense_ids phải là mảng rỗng trong M04.");
+        Integer partNumber = null;
+        if ("TOEIC".equals(category)) {
+            if (!data.hasNonNull("part_number") || !data.path("part_number").isInt()) {
+                throw fail("part_number là bắt buộc đối với câu hỏi TOEIC.");
+            }
+            partNumber = data.path("part_number").asInt();
+            if (partNumber < 1 || partNumber > 7) {
+                throw fail("part_number phải từ 1 đến 7.");
+            }
+        } else if ("GRAMMAR".equals(category)) {
+            requireAbsentOrNull(
+                    data, "part_number", "part_number phải là null trong Practice M04.");
+            requireAbsentOrNull(data, "group", "group phải là null trong Practice M04.");
+            requireAbsentOrEmptyArray(data, "materials", "materials phải là mảng rỗng trong M04.");
+            requireAbsentOrEmptyArray(
+                    data, "word_sense_ids", "word_sense_ids phải là mảng rỗng trong M04.");
+        } else {
+            requireAbsentOrNull(data, "part_number", "part_number phải là null đối với non-TOEIC.");
+        }
+
         // Required at publication (drafts may omit them). No silent defaults: a missing value is an
         // error.
         requireText(data, "question_type_code", "question_type_code là bắt buộc khi publish.");
@@ -104,9 +131,94 @@ public class QuestionSnapshotValidator {
         }
         plainText(data, "prompt", MAX_PROMPT);
         plainText(data, "explanation", MAX_EXPLANATION);
-        validateTopics(data.path("topic_ids"));
-        Set<UUID> optionIds = validateOptions(questionId, data.path("options"));
+
+        if ("GRAMMAR".equals(category)) {
+            validateTopics(data.path("topic_ids"));
+            requireAbsentOrEmptyArray(
+                    data, "word_sense_ids", "word_sense_ids phải là mảng rỗng trong GRAMMAR.");
+        } else if ("VOCABULARY".equals(category)) {
+            validateWordSenses(data.path("word_sense_ids"));
+        } else if ("TOEIC".equals(category)) {
+            if (data.hasNonNull("topic_ids")
+                    && data.path("topic_ids").isArray()
+                    && !data.path("topic_ids").isEmpty()) {
+                validateTopics(data.path("topic_ids"));
+            }
+            if (data.hasNonNull("word_sense_ids")
+                    && data.path("word_sense_ids").isArray()
+                    && !data.path("word_sense_ids").isEmpty()) {
+                validateWordSenses(data.path("word_sense_ids"));
+            }
+        }
+
+        if (data.hasNonNull("materials")) {
+            validateMaterials(data.path("materials"));
+        }
+
+        Set<UUID> optionIds =
+                validateOptions(questionId, data.path("options"), category, partNumber);
         validateAnswerKey(data.path("answer_key"), optionIds);
+    }
+
+    private void validateWordSenses(JsonNode senses) {
+        if (!senses.isArray() || senses.size() < 1 || senses.size() > 10) {
+            throw fail("word_sense_ids phải là mảng từ 1 đến 10 phần tử.");
+        }
+        Set<UUID> seen = new HashSet<>();
+        for (JsonNode s : senses) {
+            UUID senseId = uuid(s, "word_sense_ids chứa UUID không hợp lệ.");
+            if (!seen.add(senseId)) {
+                throw fail("word_sense_ids không được trùng nhau.");
+            }
+        }
+    }
+
+    private void validateMaterials(JsonNode materials) {
+        if (!materials.isArray() || materials.size() > 10) {
+            throw fail("materials phải là mảng tối đa 10 phần tử.");
+        }
+        Set<Integer> positions = new HashSet<>();
+        for (JsonNode mat : materials) {
+            if (!mat.isObject()) {
+                throw fail("Mỗi material phải là object.");
+            }
+            rejectUnknown(mat, MATERIAL_FIELDS, "material field");
+            if (mat.hasNonNull("id")) {
+                uuid(mat.path("id"), "material.id phải là UUID.");
+            }
+            JsonNode posNode = mat.path("position");
+            if (!posNode.isInt() || posNode.asInt() < 1 || !positions.add(posNode.asInt())) {
+                throw fail("material.position phải là số nguyên dương duy nhất.");
+            }
+            requireText(mat, "material_type", "material_type là bắt buộc.");
+            String type = text(mat, "material_type");
+            if (!MATERIAL_TYPES.contains(type)) {
+                throw fail("material_type chỉ nhận TEXT, IMAGE hoặc AUDIO.");
+            }
+            if (mat.hasNonNull("usage_role")) {
+                String role = text(mat, "usage_role");
+                if (!USAGE_ROLES.contains(role)) {
+                    throw fail("usage_role chỉ nhận STIMULUS, TRANSCRIPT hoặc EXPLANATION.");
+                }
+            }
+            if ("TEXT".equals(type)) {
+                if (mat.hasNonNull("media_id")) {
+                    throw fail("material TEXT không được chứa media_id.");
+                }
+                plainText(mat, "body", MAX_MATERIAL_BODY);
+            } else {
+                if (mat.hasNonNull("body")) {
+                    throw fail("material IMAGE/AUDIO không được chứa body.");
+                }
+                uuid(mat.path("media_id"), "material.media_id phải là UUID.");
+            }
+            if (mat.hasNonNull("document_key")) {
+                String docKey = text(mat, "document_key");
+                if (docKey == null || docKey.length() > 80) {
+                    throw fail("document_key không được vượt quá 80 ký tự.");
+                }
+            }
+        }
     }
 
     private void validateTopics(JsonNode topics) {
@@ -129,9 +241,23 @@ public class QuestionSnapshotValidator {
      * Option ids are stable across revisions, so each must be unique and must not belong to another
      * question.
      */
-    private Set<UUID> validateOptions(UUID questionId, JsonNode options) {
-        if (!options.isArray() || options.size() < MIN_OPTIONS || options.size() > MAX_OPTIONS) {
-            throw fail("options phải là mảng từ 2 đến 6 phần tử.");
+    private Set<UUID> validateOptions(
+            UUID questionId, JsonNode options, String category, Integer partNumber) {
+        int minOptions =
+                "TOEIC".equals(category)
+                        ? (partNumber != null && partNumber == 2 ? 3 : 4)
+                        : MIN_OPTIONS;
+        int maxOptions =
+                "TOEIC".equals(category)
+                        ? (partNumber != null && partNumber == 2 ? 3 : 4)
+                        : MAX_OPTIONS;
+        if (!options.isArray() || options.size() < minOptions || options.size() > maxOptions) {
+            if ("TOEIC".equals(category)) {
+                throw fail(
+                        "TOEIC Part " + partNumber + " yêu cầu đúng " + minOptions + " lựa chọn.");
+            }
+            throw fail(
+                    "options phải là mảng từ " + minOptions + " đến " + maxOptions + " phần tử.");
         }
         Set<UUID> ids = new HashSet<>();
         Set<Integer> positions = new HashSet<>();
@@ -150,9 +276,9 @@ public class QuestionSnapshotValidator {
             JsonNode position = option.path("position");
             if (!position.isInt()
                     || position.asInt() < 1
-                    || position.asInt() > MAX_OPTIONS
+                    || position.asInt() > maxOptions
                     || !positions.add(position.asInt())) {
-                throw fail("position phải là số nguyên duy nhất từ 1 đến 6.");
+                throw fail("position phải là số nguyên duy nhất từ 1 đến " + maxOptions + ".");
             }
             plainText(option, "body", MAX_OPTION_BODY);
         }

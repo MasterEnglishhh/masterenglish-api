@@ -106,6 +106,7 @@ public class GrammarSnapshotValidator {
         optionalInt(data, "position", 0, MAX_POSITION, true);
         if (data.hasNonNull("body_schema_version")
                 && (!data.path("body_schema_version").isIntegralNumber()
+                        || !data.path("body_schema_version").canConvertToInt()
                         || data.path("body_schema_version").asInt() != 1)) {
             fail("body_schema_version must be 1.");
         }

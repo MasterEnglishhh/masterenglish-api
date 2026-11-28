@@ -341,7 +341,10 @@ class AdminApiIntegrationTests {
                     row.path("type").asText().startsWith("GRAMMAR_"));
         }
 
-        getJson("/api/v1/admin/content/items?domain=VOCABULARY", admin, 400);
+        JsonNode vocabulary = getJson("/api/v1/admin/content/items?domain=VOCABULARY", admin, 200);
+        org.junit.jupiter.api.Assertions.assertEquals(1, vocabulary.path("items").size());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                word.path("id").asText(), vocabulary.path("items").get(0).path("id").asText());
     }
 
     @Test
@@ -574,13 +577,25 @@ class AdminApiIntegrationTests {
                 SecurityMockMvcRequestPostProcessors.user(UserPrincipal.create(contentAdminUser));
         UUID sourceId = grammarSource(admin, "Nguồn HTML");
         UUID topicId = publishedTopic(admin, sourceId, "html-topic");
-        JsonNode lesson =
+        assertValidationError(
                 postJson(
                         "/api/v1/admin/content/grammar/lessons",
                         lessonBody(topicId, "Bài HTML", "<b>không</b> được", sourceId),
                         admin,
+                        400),
+                null);
+        JsonNode lesson =
+                postJson(
+                        "/api/v1/admin/content/grammar/lessons",
+                        lessonBody(topicId, "Bài HTML", "Nội dung thường", sourceId),
+                        admin,
                         201);
         String revisionId = lesson.path("latestRevisionId").asText();
+        // Dữ liệu cũ có thể vượt qua guard lúc lưu; publish vẫn phải từ chối và rollback.
+        var revision = revisions.findById(UUID.fromString(revisionId)).orElseThrow();
+        revision.updateDraft(
+                revision.getSnapshot().replace("Nội dung thường", "<b>không</b> được"), null);
+        revisions.saveAndFlush(revision);
         assertValidationError(
                 publishExpectingFailure(revisionId, admin),
                 "HTML is not allowed in grammar content.");

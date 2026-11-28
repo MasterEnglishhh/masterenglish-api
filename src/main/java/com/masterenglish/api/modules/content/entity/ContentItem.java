@@ -98,6 +98,11 @@ public class ContentItem {
         this.accessRevokeReason = null;
     }
 
+    public void unpublish() {
+        this.archived = true;
+        this.archivedAt = Instant.now();
+    }
+
     @PrePersist
     void onPersist() {
         if (id == null) {

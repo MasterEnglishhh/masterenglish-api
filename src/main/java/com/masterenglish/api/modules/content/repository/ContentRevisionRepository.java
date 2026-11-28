@@ -32,9 +32,50 @@ public interface ContentRevisionRepository
 
     List<ContentRevision> findByContentItemIdOrderByVersionNoDesc(UUID contentItemId);
 
+    org.springframework.data.domain.Page<ContentRevision> findByContentItemId(
+            UUID contentItemId, org.springframework.data.domain.Pageable pageable);
+
     boolean existsByContentItemIdAndStatus(UUID contentItemId, String status);
 
     boolean existsByContentItemIdAndStatusNot(UUID contentItemId, String status);
+
+    @Query(
+            value =
+                    """
+                    SELECT r.content_item_id
+                    FROM content_revisions r
+                    WHERE COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses'
+                          @> CAST(:probe AS jsonb)
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<UUID> findOwnerItemIdBySenseProbe(@Param("probe") String probe);
+
+    @Query(
+            value =
+                    """
+                    SELECT r.content_item_id
+                    FROM content_revisions r
+                    WHERE COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses'
+                          @> CAST(:probe AS jsonb)
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<UUID> findOwnerItemIdByExampleProbe(@Param("probe") String probe);
+
+    @Query(
+            value =
+                    """
+                    SELECT r.snapshot
+                    FROM content_revisions r
+                    WHERE r.content_item_id = :itemId
+                      AND COALESCE(r.snapshot -> 'data', r.snapshot) -> 'senses'
+                          @> CAST(:probe AS jsonb)
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<String> findSnapshotContainingExample(
+            @Param("itemId") UUID itemId, @Param("probe") String probe);
 
     long countByStatus(String status);
 
@@ -42,6 +83,11 @@ public interface ContentRevisionRepository
             value = "SELECT count(*) FROM revision_media_refs WHERE revision_id = :revisionId",
             nativeQuery = true)
     long countMediaRefsByRevisionId(@Param("revisionId") UUID revisionId);
+
+    @Query(
+            value = "SELECT count(*) > 0 FROM revision_media_refs WHERE revision_id = :revisionId",
+            nativeQuery = true)
+    boolean hasRevisionMediaRefs(@Param("revisionId") UUID revisionId);
 
     interface Asset {
         UUID getWordId();

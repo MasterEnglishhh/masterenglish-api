@@ -1,10 +1,9 @@
--- V18: Nâng cấp engine luyện tập M04 lên dạng Approved Baseline v3.0 (phạm vi grammar).
+-- V25: Nâng cấp engine luyện tập M04 lên dạng Approved Baseline v3.0 (tiếp nối V21..V24 của M08).
 --
--- V1..V17 không sửa. Bảng attempt do V13 tạo có thể đã áp dụng trên môi trường dùng chung,
+-- V1..V24 không sửa. Bảng attempt do V13 tạo có thể đã áp dụng trên môi trường dùng chung,
 -- nên dữ liệu được GIỮ: sao lưu sang legacy_v13_*, tạo bảng theo baseline, rồi chuyển dữ liệu
 -- (cuối file). legacy_v13_* được giữ để đối chiếu, bỏ ở migration riêng sau khi kiểm chứng.
--- Shell tables for TOEIC / practice sets (M05) are created empty so the nullable foreign-key
--- columns exist.
+-- question_groups, practice_sets, set_items và các cột group/part_number trên questions đã có từ V21..V23.
 --
 -- Xấp xỉ khi chuyển dữ liệu: V13 không lưu revision tại thời điểm làm bài, nên snapshot câu hỏi
 -- dùng published_revision_id hiện tại và topicIds lấy từ question_topics hiện tại.
@@ -41,78 +40,16 @@ CREATE TABLE question_types (
 INSERT INTO question_types (code, name, schema_version, enabled)
 VALUES ('SINGLE_CHOICE', 'Single choice', 1, TRUE);
 
--- Shell tables for M05 (no rows, no business rules yet)
-CREATE TABLE question_groups (
-    id UUID PRIMARY KEY,
-    content_type VARCHAR(30) GENERATED ALWAYS AS ('QUESTION_GROUP'::VARCHAR) STORED,
-    published_revision_id UUID NOT NULL,
-    category VARCHAR(16) NOT NULL,
-    part_number SMALLINT,
-    title VARCHAR(200) NOT NULL,
-    group_type VARCHAR(24) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT question_groups_c1 UNIQUE (id, category),
-    CONSTRAINT question_groups_c2 UNIQUE (id, category, part_number),
-    CONSTRAINT question_groups_c3 CHECK (category IN ('VOCABULARY','GRAMMAR','TOEIC')),
-    CONSTRAINT question_groups_c4 CHECK (group_type IN ('GENERAL','CONVERSATION','TALK','TEXT_COMPLETION','PASSAGE')),
-    CONSTRAINT question_groups_c5 CHECK ((category='TOEIC' AND part_number IS NOT NULL AND ((part_number=3 AND group_type='CONVERSATION') OR (part_number=4 AND group_type='TALK') OR (part_number=6 AND group_type='TEXT_COMPLETION') OR (part_number=7 AND group_type='PASSAGE'))) OR (category<>'TOEIC' AND part_number IS NULL AND group_type='GENERAL'))
-);
-CREATE TABLE practice_sets (
-    id UUID PRIMARY KEY,
-    content_type VARCHAR(30) GENERATED ALWAYS AS ('PRACTICE_SET'::VARCHAR) STORED,
-    published_revision_id UUID NOT NULL,
-    category VARCHAR(16) NOT NULL,
-    title VARCHAR(200) NOT NULL,
-    selection_mode VARCHAR(8) NOT NULL,
-    selection_config JSONB NOT NULL DEFAULT '{}',
-    deck_id UUID,
-    topic_id UUID,
-    part_number SMALLINT,
-    time_limit_seconds INTEGER,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT practice_sets_c1 CHECK (category IN ('VOCABULARY','GRAMMAR','TOEIC')),
-    CONSTRAINT practice_sets_c2 CHECK (selection_mode IN ('FIXED','DYNAMIC')),
-    CONSTRAINT practice_sets_c3 CHECK (jsonb_typeof(selection_config) = 'object' AND octet_length(selection_config::text) <= 1048576),
-    CONSTRAINT practice_sets_c4 CHECK (time_limit_seconds IS NULL OR time_limit_seconds > 0),
-    CONSTRAINT practice_sets_c5 CHECK ((category='TOEIC' AND part_number BETWEEN 1 AND 7 AND part_number IS NOT NULL) OR (category<>'TOEIC' AND part_number IS NULL)),
-    CONSTRAINT practice_sets_c6 CHECK (deck_id IS NULL OR category='VOCABULARY'),
-    CONSTRAINT practice_sets_c7 CHECK (topic_id IS NULL OR category='GRAMMAR')
-);
-CREATE TABLE set_items (
-    id UUID PRIMARY KEY,
-    set_id UUID NOT NULL,
-    position INTEGER NOT NULL,
-    question_id UUID,
-    group_id UUID,
-    CONSTRAINT set_items_c1 UNIQUE (set_id, position),
-    CONSTRAINT set_items_c2 CHECK (position > 0),
-    CONSTRAINT set_items_c3 CHECK (num_nonnulls(question_id, group_id)=1)
-);
-
--- Questions: practice modes, question types and optional group columns
+-- Questions: practice modes and question type FK (part_number & group columns already added by V21/V22)
 ALTER TABLE questions DROP CONSTRAINT questions_c3;
 ALTER TABLE questions DROP CONSTRAINT questions_c4;
 ALTER TABLE questions
-    ADD COLUMN part_number SMALLINT,
-    ADD COLUMN group_id UUID,
-    ADD COLUMN group_position SMALLINT,
-    ADD COLUMN in_current_group BOOLEAN NOT NULL DEFAULT TRUE,
-    ADD COLUMN blank_key VARCHAR(80),
-    ADD CONSTRAINT questions_c7 CHECK (practice_mode IN ('STANDARD', 'TRANSLATE_EN_VI', 'TRANSLATE_VI_EN', 'LISTEN_AND_CHOOSE', 'FILL_OPTION')),
-    ADD CONSTRAINT questions_c8 CHECK (part_number IS NULL),
-    ADD CONSTRAINT questions_c9 CHECK ((group_id IS NULL AND group_position IS NULL) OR (group_id IS NOT NULL AND group_position > 0)),
-    ADD CONSTRAINT questions_c10 CHECK (blank_key IS NULL);
+    ADD CONSTRAINT questions_c10 CHECK (practice_mode IN ('STANDARD', 'TRANSLATE_EN_VI', 'TRANSLATE_VI_EN', 'LISTEN_AND_CHOOSE', 'FILL_OPTION'));
 ALTER TABLE questions ADD CONSTRAINT fk_questions_question_type_code_question_types
     FOREIGN KEY (question_type_code) REFERENCES question_types (code) ON DELETE RESTRICT;
-ALTER TABLE questions ADD CONSTRAINT fk_questions_group_id_question_groups
-    FOREIGN KEY (group_id) REFERENCES question_groups (id) ON DELETE RESTRICT;
 ALTER TABLE questions ADD CONSTRAINT fk_questions_group_id_category_question_groups
     FOREIGN KEY (group_id, category) REFERENCES question_groups (id, category) ON DELETE RESTRICT;
 CREATE INDEX ix_questions_filters ON questions(category, part_number, question_type_code, difficulty);
-CREATE UNIQUE INDEX uq_group_current_position ON questions(group_id, group_position) WHERE in_current_group=TRUE;
-CREATE UNIQUE INDEX uq_group_current_blank ON questions(group_id, blank_key) WHERE in_current_group=TRUE;
 
 -- Attempts and snapshots (approved baseline shape, grammar scope)
 CREATE TABLE attempts (
@@ -247,16 +184,7 @@ CREATE TABLE attempt_answers (
     CONSTRAINT attempt_answers_c7 CHECK (response_payload IS NULL OR (jsonb_typeof(response_payload) = 'object' AND octet_length(response_payload::text) <= 1048576))
 );
 
--- Foreign keys
-ALTER TABLE question_groups ADD CONSTRAINT fk_question_groups_id_content_type_content_items FOREIGN KEY (id, content_type) REFERENCES content_items (id, content_type) ON DELETE RESTRICT;
-ALTER TABLE question_groups ADD CONSTRAINT fk_question_groups_id_published_revision_id_cont_454aaec9c9 FOREIGN KEY (id, published_revision_id) REFERENCES content_revisions (content_item_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED;
-ALTER TABLE practice_sets ADD CONSTRAINT fk_practice_sets_id_content_type_content_items FOREIGN KEY (id, content_type) REFERENCES content_items (id, content_type) ON DELETE RESTRICT;
-ALTER TABLE practice_sets ADD CONSTRAINT fk_practice_sets_id_published_revision_id_content_revisions FOREIGN KEY (id, published_revision_id) REFERENCES content_revisions (content_item_id, id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED;
-ALTER TABLE practice_sets ADD CONSTRAINT fk_practice_sets_deck_id_decks FOREIGN KEY (deck_id) REFERENCES decks (id) ON DELETE RESTRICT;
-ALTER TABLE practice_sets ADD CONSTRAINT fk_practice_sets_topic_id_grammar_topics FOREIGN KEY (topic_id) REFERENCES grammar_topics (id) ON DELETE RESTRICT;
-ALTER TABLE set_items ADD CONSTRAINT fk_set_items_set_id_practice_sets FOREIGN KEY (set_id) REFERENCES practice_sets (id) ON DELETE RESTRICT;
-ALTER TABLE set_items ADD CONSTRAINT fk_set_items_question_id_questions FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE RESTRICT;
-ALTER TABLE set_items ADD CONSTRAINT fk_set_items_group_id_question_groups FOREIGN KEY (group_id) REFERENCES question_groups (id) ON DELETE RESTRICT;
+-- Foreign keys (question_groups / practice_sets / set_items FKs already created by V22)
 ALTER TABLE attempts ADD CONSTRAINT fk_attempts_user_id_users FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT;
 ALTER TABLE attempts ADD CONSTRAINT fk_attempts_source_set_id_practice_sets FOREIGN KEY (source_set_id) REFERENCES practice_sets (id) ON DELETE RESTRICT;
 ALTER TABLE attempts ADD CONSTRAINT fk_attempts_source_deck_id_decks FOREIGN KEY (source_deck_id) REFERENCES decks (id) ON DELETE RESTRICT;
@@ -281,10 +209,8 @@ ALTER TABLE attempt_snapshot_options ADD CONSTRAINT fk_attempt_snapshot_options_
 ALTER TABLE attempt_answers ADD CONSTRAINT fk_attempt_answers_attempt_id_snapshot_id_attemp_200a4d97c4 FOREIGN KEY (attempt_id, snapshot_id) REFERENCES attempt_question_snapshots (attempt_id, id) ON DELETE RESTRICT;
 ALTER TABLE attempt_answers ADD CONSTRAINT fk_attempt_answers_snapshot_id_selected_option_i_38d3d26fd0 FOREIGN KEY (snapshot_id, selected_option_id) REFERENCES attempt_snapshot_options (snapshot_id, option_id) ON DELETE RESTRICT;
 
--- Indexes
+-- Indexes (uq_set_question / uq_set_group already created by V23)
 CREATE INDEX ix_sets_filters ON practice_sets(category, part_number);
-CREATE UNIQUE INDEX uq_set_question ON set_items(set_id, question_id) WHERE question_id IS NOT NULL;
-CREATE UNIQUE INDEX uq_set_group ON set_items(set_id, group_id) WHERE group_id IS NOT NULL;
 CREATE INDEX ix_attempts_user_history ON attempts(user_id, started_at DESC);
 CREATE INDEX ix_attempts_deadline ON attempts(deadline_at) WHERE status='IN_PROGRESS';
 CREATE INDEX ix_attempts_user_open ON attempts(user_id, last_active_at) WHERE status='IN_PROGRESS';
